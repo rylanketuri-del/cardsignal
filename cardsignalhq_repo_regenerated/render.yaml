@@ -1,0 +1,39 @@
+services:
+  - type: web
+    name: cardchase-ai-api
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn api.main:app --host 0.0.0.0 --port $PORT
+    plan: free
+    envVars:
+      - key: EBAY_TOKEN
+        sync: false
+      - key: TRACKED_PLAYERS
+        sync: false
+      - key: MLB_SEASON
+        value: 2026
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: PIPELINE_TRIGGER_TOKEN
+        sync: false
+
+  - type: cron
+    name: cardchase-ai-pipeline-cron
+    env: python
+    buildCommand: pip install -r requirements.txt
+    schedule: "0 */3 * * *"
+    startCommand: python scripts/run_pipeline.py
+    plan: free
+    envVars:
+      - key: EBAY_TOKEN
+        sync: false
+      - key: TRACKED_PLAYERS
+        sync: false
+      - key: MLB_SEASON
+        value: 2026
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false

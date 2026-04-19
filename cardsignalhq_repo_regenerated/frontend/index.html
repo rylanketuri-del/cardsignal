@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <script src="./config.js"></script>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CardChase AI Dashboard</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="page">
+      <header class="topbar">
+        <div>
+          <div class="eyebrow">MLB-only MVP</div>
+          <h1>CardChase AI</h1>
+          <p class="subhead">Hot MLB players and card-market movers, plus personal watchlists and alerts.</p>
+        </div>
+        <div class="status-wrap">
+          <div class="status-pill" id="load-status">Loading leaderboard</div>
+          <div class="status-pill muted-pill" id="api-hint">API: —</div>
+          <div class="status-pill muted-pill" id="notif-summary">Notifications: —</div>
+        </div>
+      </header>
+
+      <section class="hero-grid">
+        <div class="hero-card">
+          <div class="label">Hot Right Now</div>
+          <div class="hero-main" id="hero-player">—</div>
+          <div class="hero-sub" id="hero-tag">—</div>
+        </div>
+        <div class="hero-card small">
+          <div class="label">Most Chased</div>
+          <div class="hero-main" id="most-chased">—</div>
+        </div>
+        <div class="hero-card small">
+          <div class="label">Buy Low Watch</div>
+          <div class="hero-main" id="buy-low">—</div>
+        </div>
+      </section>
+
+      <section class="grid four-up auth-layout">
+        <div class="panel">
+          <div class="panel-header">
+            <h2>Account</h2>
+            <span class="muted">Email auth</span>
+          </div>
+          <div id="auth-status" class="detail-empty">Not signed in.</div>
+          <form id="auth-form" class="stack-form">
+            <input id="auth-email" type="email" placeholder="Email" required />
+            <input id="auth-password" type="password" placeholder="Password" required />
+            <div class="button-row">
+              <button type="button" id="sign-up-btn">Sign up</button>
+              <button type="button" id="sign-in-btn" class="primary">Sign in</button>
+              <button type="button" id="sign-out-btn" class="ghost">Sign out</button>
+            </div>
+          </form>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <h2>My Watchlist</h2>
+            <span class="muted">Saved players</span>
+          </div>
+          <div id="watchlist-items" class="detail-empty">Sign in to save players.</div>
+          <div class="rule-divider"></div>
+          <form id="player-rule-form" class="checklist-form compact-form">
+            <div class="muted">Player-specific alert rule</div>
+            <select id="rule-player-name"></select>
+            <label><input type="checkbox" id="rule-hotness" checked /> Alert on hotness jumps</label>
+            <label><input type="checkbox" id="rule-buy-low" checked /> Alert on buy low</label>
+            <label><input type="checkbox" id="rule-chased" /> Alert on most chased</label>
+            <label>Minimum hotness jump<input id="rule-min-delta" type="number" min="1" step="0.5" value="8" /></label>
+            <label>Mute until<input id="rule-muted-until" type="datetime-local" /></label>
+            <div class="button-row">
+              <button type="submit" class="primary">Save rule</button>
+              <button type="button" id="rule-delete-btn" class="ghost">Clear rule</button>
+            </div>
+          </form>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <h2>Alert Preferences</h2>
+            <span class="muted">Personal notifications</span>
+          </div>
+          <form id="alerts-form" class="checklist-form">
+            <label><input type="checkbox" id="alert-hotness" checked /> Hotness jump alerts</label>
+            <label><input type="checkbox" id="alert-buy-low" checked /> Buy low alerts</label>
+            <label><input type="checkbox" id="alert-chased" /> Most chased alerts</label>
+            <label><input type="checkbox" id="alert-digest" checked /> Daily digest</label>
+            <button type="submit" class="primary">Save alert settings</button>
+          </form>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <h2>Notification Center</h2>
+            <div class="button-row compact-row">
+              <span class="muted" id="notif-unread">Unread: —</span>
+              <button type="button" id="read-all-btn" class="ghost small">Mark all read</button>
+            </div>
+          </div>
+          <div id="notifications-list" class="detail-empty">Sign in to load notifications.</div>
+        </div>
+      </section>
+
+      <section class="grid two-up charts-section">
+        <div class="panel">
+          <div class="panel-header">
+            <h2>Score History</h2>
+            <span class="muted">Selected player trend</span>
+          </div>
+          <canvas id="score-history-chart" height="160"></canvas>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <h2>Leaderboard Trend</h2>
+            <span class="muted">Top score by run</span>
+          </div>
+          <canvas id="leaderboard-history-chart" height="160"></canvas>
+        </div>
+      </section>
+
+      <section class="grid four-up admin-layout">
+        <div class="panel">
+          <div class="panel-header"><h2>Admin Access</h2><span class="muted">Token gated</span></div>
+          <form id="admin-token-form" class="stack-form">
+            <input id="admin-token" type="password" placeholder="Admin API token" />
+            <div class="button-row"><button type="submit" class="primary">Unlock admin</button></div>
+          </form>
+          <div id="admin-status" class="detail-empty">Admin tools locked.</div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header"><h2>Admin Settings</h2><span class="muted">Thresholds</span></div>
+          <form id="admin-settings-form" class="stack-form compact-form">
+            <label>Tracked players CSV<input id="admin-tracked-players-csv" type="text" placeholder="Comma-separated players" /></label>
+            <label>Hotness jump threshold<input id="admin-hotness-threshold" type="number" min="1" step="0.5" /></label>
+            <label>Daily digest hour UTC<input id="admin-digest-hour" type="number" min="0" max="23" step="1" /></label>
+            <div class="button-row"><button type="submit" class="primary">Save admin settings</button></div>
+          </form>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header"><h2>Tracked Players</h2><span class="muted">Admin list</span></div>
+          <div id="admin-tracked-players" class="detail-empty">Unlock admin to load tracked players.</div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header"><h2>Add Tracked Player</h2><span class="muted">MLB only</span></div>
+          <form id="admin-player-form" class="stack-form compact-form">
+            <input id="admin-player-name" type="text" placeholder="Player name" />
+            <input id="admin-player-notes" type="text" placeholder="Notes" />
+            <label><input id="admin-player-active" type="checkbox" checked /> Active</label>
+            <div class="button-row"><button type="submit" class="primary">Add player</button></div>
+          </form>
+        </div>
+      </section>
+
+      <section class="grid two-up">
+        <div class="panel">
+          <div class="panel-header">
+            <h2>Leaderboard</h2>
+            <span class="muted">Top total score</span>
+          </div>
+          <div id="leaderboard-table"></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <h2>Player Detail</h2>
+            <span class="muted">Click a row</span>
+          </div>
+          <div id="player-detail" class="detail-empty">Select a player from the leaderboard.</div>
+        </div>
+      </section>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>
