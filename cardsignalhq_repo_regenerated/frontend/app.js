@@ -1,4 +1,7 @@
-const API_BASE_URL = (window.CARDCHASE_API_BASE_URL || 'http://localhost:8000').replace(/\/$/, '');
+const API_BASE_URL =
+  (window.APP_CONFIG && window.APP_CONFIG.API_BASE_URL) ||
+  "https://cardsignal-api.onrender.com";
+
 const SOURCE_URL = `${API_BASE_URL}/api/leaderboard/latest`;
 
 let supabaseClient = null;
