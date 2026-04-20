@@ -15,7 +15,8 @@ from cardchase_ai.delivery import AlertDeliveryClient, DeliverySettings, build_n
 from cardchase_ai.models.schemas import HitterHotnessBreakdown, MarketSnapshot, RollingHitterStats
 from cardchase_ai.score import build_hotness_breakdown
 from cardchase_ai.storage import SupabaseStorage
-from cardchase_ai.utils.rolling import filter_last_n_days, summarize_hitter_window, summarize_market
+from cardchase_ai.utils.rolling import filter_last_n_days, summarize_hitter_window
+from cardchase_ai.utils.normalize import summarize_market
 
 SEARCH_TEMPLATES = {
     "broad": "{player} baseball card",
