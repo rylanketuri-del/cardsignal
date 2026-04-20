@@ -1,3 +1,5 @@
-window.CARDCHASE_API_BASE_URL = window.CARDCHASE_API_BASE_URL || 'http://localhost:8000';
-window.CARDCHASE_SUPABASE_URL = window.CARDCHASE_SUPABASE_URL || '';
-window.CARDCHASE_SUPABASE_ANON_KEY = window.CARDCHASE_SUPABASE_ANON_KEY || '';
+window.APP_CONFIG = {
+  API_BASE_URL:
+    window.APP_CONFIG?.API_BASE_URL ||
+    "https://cardsignal-api.onrender.com",
+};
