@@ -1,6 +1,4 @@
-const API_BASE_URL =
-  (window.APP_CONFIG && window.APP_CONFIG.API_BASE_URL) ||
-  "https://cardsignal-api.onrender.com";
+const API_BASE_URL = (window.APP_CONFIG && window.APP_CONFIG.API_BASE_URL) || "https://cardsignal-api.onrender.com";
 
 const SOURCE_URL = `${API_BASE_URL}/api/leaderboard/latest`;
 
