@@ -45,7 +45,7 @@ class PipelineResult(BaseModel):
 def _build_outputs() -> list[PlayerPipelineOutput]:
     settings = get_settings()
     mlb_client = MLBClient()
-    ebay_client = EbayClient(settings.ebay_token, marketplace_id=settings.ebay_marketplace_id)
+    ebay_client = EbayClient(settings.ebay_token, marketplace_id=settings.ebay_marketplace_id) if settings.ebay_token else None
 
     outputs = []
     for player_name in settings.tracked_players:
@@ -59,6 +59,8 @@ def _build_outputs() -> list[PlayerPipelineOutput]:
             payload = ebay_client.search_items(template.format(player=player_name), include_auctions=True)
             listings = ebay_client.parse_listings(payload)
             market_snapshots[query_name] = summarize_market(query_name, listings)
+            market_snapshots = ebay_client.get_market_data(...) if ebay_client else {}
+            market_snapshots = ebay_client.get_market_data(...)
 
         hotness = build_hotness_breakdown(
             player_name=player.full_name,
