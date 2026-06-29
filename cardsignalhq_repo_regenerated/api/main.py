@@ -197,11 +197,17 @@ def verify_ebay_account_deletion_challenge(challenge_code: str):
         "https://cardsignal-api.onrender.com/api/ebay/account-deletion",
     )
 
-    challenge_response = hashlib.sha256(
-        f"{challenge_code}{verification_token}{endpoint}".encode("utf-8")
-    ).hexdigest()
+    m = hashlib.sha256()
+    m.update(challenge_code.encode("utf-8"))
+    m.update(verification_token.encode("utf-8"))
+    m.update(endpoint.encode("utf-8"))
 
-    return {"challengeResponse": challenge_response}
+    return {"challengeResponse": m.hexdigest()}
+
+
+@app.post("/api/ebay/account-deletion")
+async def receive_ebay_account_deletion_notification():
+    return {"status": "received"}
 
 
 @app.post("/api/ebay/account-deletion")
