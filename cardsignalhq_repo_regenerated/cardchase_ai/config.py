@@ -13,7 +13,10 @@ load_dotenv()
 
 @dataclass(frozen=True)
 class Settings:
+   class Settings:
     ebay_token: str
+    ebay_client_id: str
+    ebay_client_secret: str
     ebay_marketplace_id: str
     tracked_players: List[str]
     output_dir: Path
@@ -41,8 +44,11 @@ def get_settings() -> Settings:
         if name.strip()
     ]
     return Settings(
-        ebay_token=os.getenv("EBAY_TOKEN", ""),
-        ebay_marketplace_id=os.getenv("EBAY_MARKETPLACE_ID", "EBAY_US"),
+        return Settings(
+    ebay_token=os.getenv("EBAY_TOKEN", ""),
+    ebay_client_id=os.getenv("EBAY_CLIENT_ID", ""),
+    ebay_client_secret=os.getenv("EBAY_CLIENT_SECRET", ""),
+    ebay_marketplace_id=os.getenv("EBAY_MARKETPLACE_ID", "EBAY_US"),
         tracked_players=tracked_players,
         output_dir=Path(os.getenv("OUTPUT_DIR", "./output")),
         mlb_season=int(os.getenv("MLB_SEASON", "2026")),
