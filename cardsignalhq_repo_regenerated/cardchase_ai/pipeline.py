@@ -41,16 +41,16 @@ class PipelineResult(BaseModel):
     alerts_created: int = 0
     deliveries_attempted: int = 0
 
-
 def _build_outputs() -> list[PlayerPipelineOutput]:
     settings = get_settings()
     mlb_client = MLBClient()
     ebay_client = EbayClient(
-    token=settings.ebay_token,
-    marketplace_id=settings.ebay_marketplace_id,
-    client_id=settings.ebay_client_id,
-    client_secret=settings.ebay_client_secret,
-)
+        token=settings.ebay_token,
+        marketplace_id=settings.ebay_marketplace_id,
+        client_id=settings.ebay_client_id,
+        client_secret=settings.ebay_client_secret,
+    )
+
 
     outputs = []
     for player_name in settings.tracked_players:
