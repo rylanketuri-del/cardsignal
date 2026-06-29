@@ -186,6 +186,27 @@ def health() -> ApiStatus:
             data_source = "file"
     return ApiStatus(status="ok", season=settings.mlb_season, tracked_players=settings.tracked_players, generated_at=generated_at, data_source=data_source)
 
+@app.get("/api/ebay/account-deletion")
+def verify_ebay_account_deletion_challenge(challenge_code: str):
+    import hashlib
+    import os
+
+    verification_token = os.getenv("EBAY_MARKETPLACE_DELETION_VERIFICATION_TOKEN", "")
+    endpoint = os.getenv(
+        "EBAY_MARKETPLACE_DELETION_ENDPOINT",
+        "https://cardsignal-api.onrender.com/api/ebay/account-deletion",
+    )
+
+    challenge_response = hashlib.sha256(
+        f"{challenge_code}{verification_token}{endpoint}".encode("utf-8")
+    ).hexdigest()
+
+    return {"challengeResponse": challenge_response}
+
+
+@app.post("/api/ebay/account-deletion")
+async def receive_ebay_account_deletion_notification():
+    return {"status": "received"}
 
 @app.get("/api/config")
 def get_public_config() -> JSONResponse:
