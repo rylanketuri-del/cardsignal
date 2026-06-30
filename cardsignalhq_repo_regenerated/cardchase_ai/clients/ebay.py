@@ -79,6 +79,9 @@ class EbayClient:
         response.raise_for_status()
         return response.json()
 
+    def search_items(self, query: str, limit: int = 50, include_auctions: bool = True) -> Dict[str, Any]:
+        return self.search(query=query, limit=limit, include_auctions=include_auctions)
+
     def get_market_data(self, player_name: str) -> Dict[str, Any]:
         searches = {
             "broad": f"{player_name} baseball card",
