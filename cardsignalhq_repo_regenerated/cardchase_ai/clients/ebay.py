@@ -29,9 +29,7 @@ class EbayClient:
             return self._cached_token
 
         if not self.client_id or not self.client_secret:
-            raise ValueError(
-                "Missing eBay credentials. Add EBAY_CLIENT_ID and EBAY_CLIENT_SECRET to Render."
-            )
+            raise ValueError("Missing eBay credentials. Add EBAY_CLIENT_ID and EBAY_CLIENT_SECRET to Render.")
 
         raw_credentials = f"{self.client_id}:{self.client_secret}".encode("utf-8")
         encoded_credentials = base64.b64encode(raw_credentials).decode("utf-8")
@@ -82,13 +80,14 @@ class EbayClient:
     def search_items(self, query: str, limit: int = 50, include_auctions: bool = True) -> Dict[str, Any]:
         return self.search(query=query, limit=limit, include_auctions=include_auctions)
 
-        def parse_listings(self, payload: Dict[str, Any]) -> list[Dict[str, Any]]:
+    def parse_listings(self, payload: Dict[str, Any]) -> list[Dict[str, Any]]:
         items = payload.get("itemSummaries", []) or []
 
         listings = []
         for item in items:
             price = item.get("price") or {}
-            shipping = item.get("shippingOptions", [{}])[0].get("shippingCost", {}) if item.get("shippingOptions") else {}
+            shipping_options = item.get("shippingOptions") or []
+            shipping = shipping_options[0].get("shippingCost", {}) if shipping_options else {}
 
             listings.append({
                 "title": item.get("title", ""),
