@@ -82,6 +82,28 @@ class EbayClient:
     def search_items(self, query: str, limit: int = 50, include_auctions: bool = True) -> Dict[str, Any]:
         return self.search(query=query, limit=limit, include_auctions=include_auctions)
 
+        def parse_listings(self, payload: Dict[str, Any]) -> list[Dict[str, Any]]:
+        items = payload.get("itemSummaries", []) or []
+
+        listings = []
+        for item in items:
+            price = item.get("price") or {}
+            shipping = item.get("shippingOptions", [{}])[0].get("shippingCost", {}) if item.get("shippingOptions") else {}
+
+            listings.append({
+                "title": item.get("title", ""),
+                "price": float(price.get("value", 0) or 0),
+                "currency": price.get("currency", "USD"),
+                "shipping_price": float(shipping.get("value", 0) or 0),
+                "condition": item.get("condition", ""),
+                "item_url": item.get("itemWebUrl", ""),
+                "image_url": (item.get("image") or {}).get("imageUrl", ""),
+                "buying_options": item.get("buyingOptions", []),
+                "item_id": item.get("itemId", ""),
+            })
+
+        return listings
+
     def get_market_data(self, player_name: str) -> Dict[str, Any]:
         searches = {
             "broad": f"{player_name} baseball card",
