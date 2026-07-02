@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Iterable, List
+from typing import Any, Dict, List
 
 from cardchase_ai.models.schemas import ListingSummary, ListingTagSummary, MarketSnapshot
 
@@ -25,49 +25,78 @@ TAG_TO_SUMMARY_FIELD = {
 }
 
 
-
 def tag_listing_title(title: str) -> List[str]:
     lowered = f" {title.lower()} "
     tags: List[str] = []
+
     for tag, terms in KEYWORDS.items():
         if any(term in lowered for term in terms):
             tags.append(tag)
+
     if any(tag in tags for tag in ["psa10", "auto", "bowman_1st", "chrome", "numbered"]):
         tags.append("premium")
+
     return sorted(set(tags))
 
 
+def normalize_listing(listing: Any) -> Dict[str, Any]:
+    if isinstance(listing, ListingSummary):
+        data = listing.model_dump()
+    elif isinstance(listing, dict):
+        data = dict(listing)
+    else:
+        data = {
+            "item_id": getattr(listing, "item_id", ""),
+            "title": getattr(listing, "title", ""),
+            "price": getattr(listing, "price", None),
+            "currency": getattr(listing, "currency", None),
+            "condition": getattr(listing, "condition", None),
+            "created_at": getattr(listing, "created_at", None),
+            "item_web_url": getattr(listing, "item_web_url", None),
+            "tags": getattr(listing, "tags", []),
+        }
 
-def enrich_listings(listings):
-    enriched = []
+    title = data.get("title", "") or ""
+    data["tags"] = tag_listing_title(title)
 
-    for listing in listings:
-        if isinstance(listing, dict):
-            title = listing.get("title", "")
-            listing["tags"] = tag_listing_title(title)
-            enriched.append(listing)
-        else:
-            listing.tags = tag_listing_title(listing.title)
-            enriched.append(listing)
+    return {
+        "item_id": str(data.get("item_id", "") or ""),
+        "title": str(data.get("title", "") or ""),
+        "price": data.get("price"),
+        "currency": data.get("currency"),
+        "condition": data.get("condition"),
+        "created_at": data.get("created_at"),
+        "item_web_url": data.get("item_web_url"),
+        "tags": data.get("tags", []),
+    }
 
-    return enriched
+
+def enrich_listings(listings: List[Any]) -> List[Dict[str, Any]]:
+    return [normalize_listing(listing) for listing in listings]
 
 
-
-def summarize_market(query_name: str, listings: List[ListingSummary]) -> MarketSnapshot:
+def summarize_market(query_name: str, listings: List[Any]) -> MarketSnapshot:
     enriched = enrich_listings(listings)
-    prices = sorted([listing.price for listing in enriched if listing.price is not None])
+
+    prices = sorted([
+        listing["price"]
+        for listing in enriched
+        if listing.get("price") is not None
+    ])
+
     tag_summary = ListingTagSummary()
     premium_count = 0
 
     for listing in enriched:
-        for tag in listing.tags:
+        for tag in listing.get("tags", []):
             if tag == "premium":
                 premium_count += 1
                 continue
+
             field_name = TAG_TO_SUMMARY_FIELD.get(tag)
             if field_name:
                 setattr(tag_summary, field_name, getattr(tag_summary, field_name) + 1)
+
     tag_summary.premium_count = premium_count
 
     avg_price = round(sum(prices) / len(prices), 2) if prices else None
