@@ -38,11 +38,18 @@ def tag_listing_title(title: str) -> List[str]:
 
 
 
-def enrich_listings(listings: Iterable[ListingSummary]) -> List[ListingSummary]:
-    enriched: List[ListingSummary] = []
+def enrich_listings(listings):
+    enriched = []
+
     for listing in listings:
-        listing.tags = tag_listing_title(listing.title)
-        enriched.append(listing)
+        if isinstance(listing, dict):
+            title = listing.get("title", "")
+            listing["tags"] = tag_listing_title(title)
+            enriched.append(listing)
+        else:
+            listing.tags = tag_listing_title(listing.title)
+            enriched.append(listing)
+
     return enriched
 
 
