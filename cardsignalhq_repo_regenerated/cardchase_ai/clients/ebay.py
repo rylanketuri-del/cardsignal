@@ -90,7 +90,7 @@ class EbayClient:
             shipping_options = item.get("shippingOptions") or []
             shipping = shipping_options[0].get("shippingCost", {}) if shipping_options else {}
 
-                    listings.append(SimpleNamespace(
+            listings.append(SimpleNamespace(
                 title=item.get("title", ""),
                 price=float(price.get("value", 0) or 0),
                 currency=price.get("currency", "USD"),
