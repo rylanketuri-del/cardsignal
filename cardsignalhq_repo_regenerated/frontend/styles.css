@@ -134,9 +134,10 @@ canvas { width: 100% !important; min-height: 280px; }
 .eyebrow {
   margin: 0 0 4px;
   font-size: 12px;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: #8b949e;
+  color: var(--green);
+  font-weight: 700;
 }
 
 .section-header h2 {
