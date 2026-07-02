@@ -60,12 +60,10 @@ def _build_outputs() -> list[PlayerPipelineOutput]:
         stats_30d = summarize_hitter_window(filter_last_n_days(gamelog, 30))
 
         market_snapshots: Dict[str, MarketSnapshot] = {}
-        for query_name, template in SEARCH_TEMPLATES.items():
-            payload = ebay_client.search_items(template.format(player=player_name), include_auctions=True)
-            listings = ebay_client.parse_listings(payload)
-            market_snapshots[query_name] = summarize_market(query_name, listings)
-            market_snapshots = ebay_client.get_market_data(...) if ebay_client else {}
-            market_snapshots = ebay_client.get_market_data(...)
+    for query_name, template in SEARCH_TEMPLATES.items():
+        payload = ebay_client.search_items(template.format(player=player_name), include_auctions=True)
+        listings = ebay_client.parse_listings(payload)
+        market_snapshots[query_name] = summarize_market(query_name, listings)
 
         hotness = build_hotness_breakdown(
             player_name=player.full_name,
