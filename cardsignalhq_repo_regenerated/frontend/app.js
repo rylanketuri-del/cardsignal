@@ -71,39 +71,21 @@ function setAdminStatus(message, isError = false) {
 }
 
 function buildLeaderboard(entries) {
-  if (!entries || !entries.length) {
-    return `<div class="detail-empty">No leaderboard data yet. Run the pipeline first.</div>`;
-  }
-
   return `
-    <table class="table leaderboard-table">
-      <thead>
-        <tr>
-          <th>Rank</th>
-          <th>Player</th>
-          <th>Total</th>
-          <th>Performance</th>
-          <th>Market</th>
-          <th>Tag</th>
-        </tr>
-      </thead>
+    <table class="table">
+      <thead><tr><th>Rank</th><th>Player</th><th>Total</th><th>Performance</th><th>Market</th><th>Tag</th></tr></thead>
       <tbody>
-        ${entries.map((entry, index) => {
-          const hotness = entry.hotness || {};
-          return `
-            <tr data-index="${index}" data-player-id="${entry.player_id || ''}">
-              <td>#${entry.rank || index + 1}</td>
-              <td><strong>${entry.player_name || 'Unknown Player'}</strong></td>
-              <td class="score">${formatScore(hotness.total_score)}</td>
-              <td>${formatScore(hotness.performance_score)}</td>
-              <td>${formatScore(hotness.market_score)}</td>
-              <td><span class="${tagClass(hotness.tag)}">${hotness.tag || '—'}</span></td>
-            </tr>
-          `;
-        }).join('')}
+        ${entries.map((entry, index) => `
+          <tr data-index="${index}" data-player-id="${entry.player_id || ''}">
+            <td>#${entry.rank || index + 1}</td>
+            <td>${entry.player_name}</td>
+            <td class="score">${formatScore(entry.hotness.total_score)}</td>
+            <td>${formatScore(entry.hotness.performance_score)}</td>
+            <td>${formatScore(entry.hotness.market_score)}</td>
+            <td><span class="${tagClass(entry.hotness.tag)}">${entry.hotness.tag}</span></td>
+          </tr>`).join('')}
       </tbody>
-    </table>
-  `;
+    </table>`;
 }
 
 function renderPlayerDetail(entry) {
