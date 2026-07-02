@@ -1,8 +1,6 @@
 import base64
 import time
-from types import SimpleNamespace
 from typing import Any, Dict
-from urllib.parse import quote_plus
 
 import requests
 
@@ -81,7 +79,7 @@ class EbayClient:
     def search_items(self, query: str, limit: int = 50, include_auctions: bool = True) -> Dict[str, Any]:
         return self.search(query=query, limit=limit, include_auctions=include_auctions)
 
-       def parse_listings(self, payload: Dict[str, Any]) -> list[Dict[str, Any]]:
+    def parse_listings(self, payload: Dict[str, Any]) -> list[Dict[str, Any]]:
         items = payload.get("itemSummaries", []) or []
 
         listings = []
@@ -104,6 +102,7 @@ class EbayClient:
             })
 
         return listings
+
     def get_market_data(self, player_name: str) -> Dict[str, Any]:
         searches = {
             "broad": f"{player_name} baseball card",
