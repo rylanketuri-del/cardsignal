@@ -1,5 +1,6 @@
 import base64
 import time
+from types import SimpleNamespace
 from typing import Any, Dict
 from urllib.parse import quote_plus
 
@@ -89,17 +90,18 @@ class EbayClient:
             shipping_options = item.get("shippingOptions") or []
             shipping = shipping_options[0].get("shippingCost", {}) if shipping_options else {}
 
-            listings.append({
-                "title": item.get("title", ""),
-                "price": float(price.get("value", 0) or 0),
-                "currency": price.get("currency", "USD"),
-                "shipping_price": float(shipping.get("value", 0) or 0),
-                "condition": item.get("condition", ""),
-                "item_url": item.get("itemWebUrl", ""),
-                "image_url": (item.get("image") or {}).get("imageUrl", ""),
-                "buying_options": item.get("buyingOptions", []),
-                "item_id": item.get("itemId", ""),
-            })
+                    listings.append(SimpleNamespace(
+                title=item.get("title", ""),
+                price=float(price.get("value", 0) or 0),
+                currency=price.get("currency", "USD"),
+                shipping_price=float(shipping.get("value", 0) or 0),
+                condition=item.get("condition", ""),
+                item_url=item.get("itemWebUrl", ""),
+                image_url=(item.get("image") or {}).get("imageUrl", ""),
+                buying_options=item.get("buyingOptions", []),
+                item_id=item.get("itemId", ""),
+                tags=[],
+            ))
 
         return listings
 
