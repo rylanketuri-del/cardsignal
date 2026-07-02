@@ -70,22 +70,80 @@ function setAdminStatus(message, isError = false) {
   root.style.color = isError ? '#ff9c9c' : '#c9f27b';
 }
 
+function getHeatLabel(score = 0) {
+  if (score >= 95) return "On Fire";
+  if (score >= 80) return "Very Hot";
+  if (score >= 60) return "Hot";
+  if (score >= 40) return "Warming";
+  return "Cold";
+}
+
+function getHeatClass(score = 0) {
+  if (score >= 95) return "heat-fire";
+  if (score >= 80) return "heat-red";
+  if (score >= 60) return "heat-orange";
+  if (score >= 40) return "heat-yellow";
+  return "heat-cold";
+}
+
 function buildLeaderboard(entries) {
   return `
-    <table class="table">
-      <thead><tr><th>Rank</th><th>Player</th><th>Total</th><th>Performance</th><th>Market</th><th>Tag</th></tr></thead>
-      <tbody>
-        ${entries.map((entry, index) => `
-          <tr data-index="${index}" data-player-id="${entry.player_id || ''}">
-            <td>#${entry.rank || index + 1}</td>
-            <td>${entry.player_name}</td>
-            <td class="score">${formatScore(entry.hotness.total_score)}</td>
-            <td>${formatScore(entry.hotness.performance_score)}</td>
-            <td>${formatScore(entry.hotness.market_score)}</td>
-            <td><span class="${tagClass(entry.hotness.tag)}">${entry.hotness.tag}</span></td>
-          </tr>`).join('')}
-      </tbody>
-    </table>`;
+    <section class="leaderboard-section">
+      <div class="section-header">
+        <div>
+          <p class="eyebrow">Live MLB Market Signal</p>
+          <h2>🔥 Hottest Players Today</h2>
+        </div>
+        <span class="pill">${entries.length} tracked</span>
+      </div>
+
+      <div class="leaderboard-cards">
+        ${entries.map((entry, index) => {
+          const score = entry.hotness?.total_score || 0;
+          const performance = entry.hotness?.performance_score || 0;
+          const market = entry.hotness?.market_score || 0;
+          const heatLabel = getHeatLabel(score);
+          const heatClass = getHeatClass(score);
+
+          return `
+            <article class="leaderboard-card ${heatClass}" data-player-id="${entry.player_id || ''}">
+              <div class="rank">#${entry.rank || index + 1}</div>
+
+              <div class="player-main">
+                <div class="player-avatar">
+                  ${(entry.player_name || "?").charAt(0)}
+                </div>
+
+                <div>
+                  <h3>${entry.player_name}</h3>
+                  <p>${heatLabel}</p>
+                </div>
+              </div>
+
+              <div class="score-block">
+                <span class="score">${formatScore(score)}</span>
+                <small>Hotness</small>
+              </div>
+
+              <div class="metric">
+                <span>${formatScore(performance)}</span>
+                <small>Performance</small>
+              </div>
+
+              <div class="metric">
+                <span>${formatScore(market)}</span>
+                <small>Market</small>
+              </div>
+
+              <button class="view-player-btn" onclick="openPlayerDetail('${entry.player_id}')">
+                View
+              </button>
+            </article>
+          `;
+        }).join("")}
+      </div>
+    </section>
+  `;
 }
 
 function renderPlayerDetail(entry) {
