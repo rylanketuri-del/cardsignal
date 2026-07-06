@@ -93,7 +93,7 @@ function buildLeaderboard(entries) {
         <div>
           <p class="eyebrow">Market Leaders</p>
           <h2>Today’s Leaders</h2>
-          <p class="cs-section-subtitle">The players showing the strongest blend of performance and card market movement.</p>
+          <p class="cs-section-subtitle">The strongest players across performance, demand, and market movement.</p>
         </div>
         <span class="pill">${entries.length} tracked</span>
       </div>
@@ -103,9 +103,9 @@ function buildLeaderboard(entries) {
           const score = entry.hotness?.total_score || 0;
           const performance = entry.hotness?.performance_score || 0;
           const market = entry.hotness?.market_score || 0;
-          const confidence = entry.hotness?.confidence_multiplier || 0;
           const heatLabel = getHeatLabel(score);
-          const playerInitials = String(entry.player_name || "?")
+
+          const initials = String(entry.player_name || "?")
             .split(" ")
             .map(part => part[0])
             .join("")
@@ -113,12 +113,11 @@ function buildLeaderboard(entries) {
             .toUpperCase();
 
           return `
-            <article class="cs-leader-card" data-player-id="${entry.player_id || ''}">
+            <article class="cs-leader-card" data-player-index="${index}">
               <div class="cs-leader-rank">${entry.rank || index + 1}</div>
 
               <div class="cs-leader-main">
-                <div class="cs-player-medallion">${playerInitials}</div>
-
+                <div class="cs-player-medallion">${initials}</div>
                 <div>
                   <h3>${entry.player_name}</h3>
                   <p>${heatLabel}</p>
@@ -139,13 +138,9 @@ function buildLeaderboard(entries) {
                   <span>${formatScore(market)}</span>
                   <small>Market</small>
                 </div>
-                <div>
-                  <span>${formatScore(confidence)}</span>
-                  <small>Confidence</small>
-                </div>
               </div>
 
-              <button class="cs-view-link" onclick="openPlayerDetail('${entry.player_id}')">
+              <button class="cs-view-link" type="button">
                 View Report →
               </button>
             </article>
