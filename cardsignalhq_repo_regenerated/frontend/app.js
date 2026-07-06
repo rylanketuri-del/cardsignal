@@ -494,30 +494,49 @@ function calculateMarketPulse(entries) {
   return Math.round(total / entries.length);
 }
 
+function getTopMovers(entries) {
+  return entries.slice(0, 3);
+}
+
 function renderMarketPulse(entries) {
-  const hot = entries[0];
-
-  const chased = [...entries].sort(
-    (a, b) => b.hotness.market_score - a.hotness.market_score
-  )[0];
-
-  const buyLow =
-    entries.find(player => player.hotness.tag === "BUY LOW") || entries[0];
-
   const pulse = calculateMarketPulse(entries);
+  const topMovers = getTopMovers(entries);
 
-  document.getElementById("market-pulse-score").textContent = pulse;
+  const pulseCard = document.querySelector(".market-pulse-card");
 
-  document.getElementById("hero-player").textContent = hot.player_name;
+  pulseCard.innerHTML = `
+    <div class="market-pulse-top">
+      <div>
+        <div class="label">Market Pulse</div>
+        <h2>Today’s Card Market</h2>
+      </div>
+      <span class="market-status">Strong</span>
+    </div>
 
-  document.getElementById("hero-tag").textContent =
-    `${hot.hotness.tag} • ${formatScore(hot.hotness.total_score)} CardSignal Score`;
+    <div class="market-pulse-body">
+      <div class="market-pulse-number">${pulse}</div>
 
-  document.getElementById("most-chased").textContent =
-    `${chased.player_name} • ${formatScore(chased.hotness.market_score)}`;
+      <div class="market-pulse-info">
+        <strong>CardSignal Pulse</strong>
+        <p>Live blend of player performance, collector demand, and card-market movement.</p>
 
-  document.getElementById("buy-low").textContent =
-    `${buyLow.player_name} • ${buyLow.hotness.tag}`;
+        <div class="pulse-meta">
+          <span>↑ Active market</span>
+          <span>${entries.length} tracked players</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="pulse-movers">
+      <div class="label">Top Signals</div>
+      ${topMovers.map(player => `
+        <div class="pulse-mover-row">
+          <span>${player.player_name}</span>
+          <strong>${formatScore(player.hotness?.total_score)}</strong>
+        </div>
+      `).join("")}
+    </div>
+  `;
 }
 
 function renderCollectorsPick(entries) {
@@ -527,11 +546,28 @@ function renderCollectorsPick(entries) {
   const market = hot.hotness?.market_score || 0;
   const performance = hot.hotness?.performance_score || 0;
 
-  document.getElementById("collector-pick-score").textContent =
-    formatScore(score);
+  const card = document.querySelector(".collector-pick-card");
 
-  document.getElementById("collector-pick-copy").textContent =
-    `${hot.player_name} is today’s strongest collector signal with a ${formatScore(performance)} performance score and a ${formatScore(market)} market score.`;
+  card.innerHTML = `
+    <div class="collector-pick-top">
+      <div>
+        <div class="label">Collector’s Pick</div>
+        <div class="hero-main">${hot.player_name}</div>
+        <div class="hero-sub">${hot.hotness.tag}</div>
+      </div>
+
+      <div class="collector-pick-badge">${formatScore(score)}</div>
+    </div>
+
+    <p class="collector-pick-copy">
+      ${hot.player_name} is today’s strongest collector signal, combining a ${formatScore(performance)}
+      performance score with a ${formatScore(market)} market score.
+    </p>
+
+    <button class="collector-pick-button" type="button" id="collector-pick-button">
+      View Player Report →
+    </button>
+  `;
 
   document.getElementById("collector-pick-button").onclick = async () => {
     await selectPlayer(hot);
@@ -543,7 +579,34 @@ function renderCollectorsPick(entries) {
   };
 }
 
+function renderMiniSignals(entries) {
+  const chased = [...entries].sort(
+    (a, b) => b.hotness.market_score - a.hotness.market_score
+  )[0];
+
+  const buyLow =
+    entries.find(player => player.hotness.tag === "BUY LOW") || entries[0];
+
+  document.querySelectorAll(".market-mini-card")[0].innerHTML = `
+    <div class="label">Most Chased</div>
+    <div class="mini-signal-name">${chased.player_name}</div>
+    <div class="mini-signal-score">${formatScore(chased.hotness.market_score)}</div>
+    <div class="mini-signal-caption">Market Score</div>
+  `;
+
+  document.querySelectorAll(".market-mini-card")[1].innerHTML = `
+    <div class="label">Buy Low Watch</div>
+    <div class="mini-signal-name">${buyLow.player_name}</div>
+    <div class="mini-signal-score">${buyLow.hotness.tag}</div>
+    <div class="mini-signal-caption">Current Signal</div>
+  `;
+}
+
 function renderDashboardV2(entries) {
+  renderMarketPulse(entries);
+  renderCollectorsPick(entries);
+  renderMiniSignals(entries);
+}
 
   renderMarketPulse(entries);
 
