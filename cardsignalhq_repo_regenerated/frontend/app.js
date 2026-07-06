@@ -576,11 +576,13 @@ async function init() {
     if (adminToken) await loadAdmin();
 
   } catch (error) {
-    status.textContent = 'Load failed';
-    status.style.color = '#ff9c9c';
-    document.getElementById('leaderboard-table').innerHTML =
-      `<div class="detail-empty">${error.message}</div>`;
-  }
+  console.error("CardSignal load error:", error);
+
+  status.textContent = `Load failed: ${error.message}`;
+  status.style.color = '#9A6656';
+
+  document.getElementById('leaderboard-table').innerHTML =
+    `<div class="detail-empty">Load failed: ${error.message}</div>`;
 }
 
 init();
