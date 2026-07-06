@@ -479,7 +479,54 @@ async function loadAdmin() {
     setAdminStatus('Admin tools unlocked.');
   } catch (error) { setAdminStatus(error.message, true); }
 }
+/* ==========================================================
+   CardSignal UI Render Helpers
+   ========================================================== */
 
+function calculateMarketPulse(entries) {
+  if (!entries || !entries.length) return 0;
+
+  const total = entries.reduce(
+    (sum, player) => sum + (player.hotness?.total_score || 0),
+    0
+  );
+
+  return Math.round(total / entries.length);
+}
+
+function renderMarketPulse(entries) {
+  const hot = entries[0];
+
+  const chased = [...entries].sort(
+    (a, b) => b.hotness.market_score - a.hotness.market_score
+  )[0];
+
+  const buyLow =
+    entries.find(player => player.hotness.tag === "BUY LOW") || entries[0];
+
+  const pulse = calculateMarketPulse(entries);
+
+  document.getElementById("market-pulse-score").textContent = pulse;
+
+  document.getElementById("hero-player").textContent = hot.player_name;
+
+  document.getElementById("hero-tag").textContent =
+    `${hot.hotness.tag} • ${formatScore(hot.hotness.total_score)} CardSignal Score`;
+
+  document.getElementById("most-chased").textContent =
+    `${chased.player_name} • ${formatScore(chased.hotness.market_score)}`;
+
+  document.getElementById("buy-low").textContent =
+    `${buyLow.player_name} • ${buyLow.hotness.tag}`;
+}
+
+function renderDashboardV2(entries) {
+
+  renderMarketPulse(entries);
+
+  renderCollectorsPick(entries);
+
+}
 async function init() {
   const status = document.getElementById('load-status');
   document.getElementById('api-hint').textContent = `API: ${API_BASE_URL}`;
@@ -500,22 +547,7 @@ async function init() {
 
     if (!entries.length) throw new Error('Leaderboard response is empty.');
 
-    const hot = entries[0];
-    const chased = [...entries].sort((a, b) => b.hotness.market_score - a.hotness.market_score)[0];
-    const buyLow = entries.find(item => item.hotness.tag === 'BUY LOW') || entries[0];
-
-    const pulseScore = Math.round(
-      entries.reduce((sum, item) => sum + (item.hotness?.total_score || 0), 0) / entries.length
-    );
-
-    document.getElementById('market-pulse-score').textContent = pulseScore;
-    document.getElementById('hero-player').textContent = hot.player_name;
-    document.getElementById('hero-tag').textContent =
-      `${hot.hotness.tag} • ${formatScore(hot.hotness.total_score)} CardSignal Score`;
-    document.getElementById('most-chased').textContent =
-      `${chased.player_name} • ${formatScore(chased.hotness.market_score)}`;
-    document.getElementById('buy-low').textContent =
-      `${buyLow.player_name} • ${buyLow.hotness.tag}`;
+    renderDashboardV2(entries);
 
     const leaderboardRoot = document.getElementById('leaderboard-table');
     leaderboardRoot.innerHTML = buildLeaderboard(entries);
