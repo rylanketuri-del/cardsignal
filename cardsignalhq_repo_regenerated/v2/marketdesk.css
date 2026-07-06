@@ -1,0 +1,404 @@
+/* ==========================================================
+   CardSignal V2
+   Market Desk Styles
+   ========================================================== */
+
+.v2-app {
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--text);
+}
+
+.v2-shell {
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    min-height: 100vh;
+}
+
+/* ==========================================================
+   Sidebar
+   ========================================================== */
+
+.v2-sidebar {
+    background: var(--charcoal);
+    color: var(--white);
+    padding: 32px 22px;
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+}
+
+.v2-logo {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.v2-logo-icon {
+    width: 52px;
+    height: 52px;
+    border-radius: 16px;
+    background: var(--panel);
+
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 4px;
+
+    padding: 10px;
+}
+
+.v2-logo-icon span {
+    width: 5px;
+    border-radius: 999px;
+    display: block;
+}
+
+.v2-logo-icon span:nth-child(1){
+    height:18px;
+    background:var(--copper);
+}
+
+.v2-logo-icon span:nth-child(2){
+    height:28px;
+    background:var(--copper);
+}
+
+.v2-logo-icon span:nth-child(3){
+    height:34px;
+    background:var(--charcoal);
+}
+
+.v2-logo-icon span:nth-child(4){
+    height:24px;
+    background:var(--copper);
+}
+
+.v2-wordmark {
+    font-family: Cormorant, serif;
+    font-size: 20px;
+    font-weight: 700;
+    line-height: .9;
+    letter-spacing: .14em;
+}
+
+.v2-wordmark hr{
+    border:none;
+    height:1px;
+    background:rgba(255,255,255,.35);
+    margin:6px 0;
+}
+
+/* ==========================================================
+   Navigation
+   ========================================================== */
+
+.v2-nav-group{
+    display:grid;
+    gap:8px;
+}
+
+.v2-nav-title{
+    color:rgba(255,255,255,.45);
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:.14em;
+    margin-bottom:6px;
+}
+
+.v2-nav-item{
+    display:flex;
+    align-items:center;
+    gap:10px;
+
+    padding:12px 14px;
+
+    border-radius:14px;
+
+    color:rgba(255,255,255,.72);
+
+    text-decoration:none;
+
+    font-size:14px;
+
+    font-weight:600;
+
+    transition:all .22s ease;
+}
+
+.v2-nav-item:hover{
+    background:rgba(255,255,255,.08);
+    color:white;
+}
+
+.v2-nav-item.active{
+    background:rgba(255,255,255,.08);
+    color:#D59D69;
+}
+
+/* ==========================================================
+   Collector+
+   ========================================================== */
+
+.v2-premium{
+
+    margin-top:auto;
+
+    background:rgba(255,255,255,.08);
+
+    border:1px solid rgba(255,255,255,.12);
+
+    border-radius:22px;
+
+    padding:18px;
+}
+
+.v2-premium h3{
+
+    margin:0 0 8px;
+
+    font-size:18px;
+
+}
+
+.v2-premium p{
+
+    margin:0;
+
+    color:rgba(255,255,255,.62);
+
+    line-height:1.5;
+
+    font-size:13px;
+
+}
+
+/* ==========================================================
+   Main Content
+   ========================================================== */
+
+.v2-main{
+
+    max-width:1440px;
+
+    width:100%;
+
+    margin:0 auto;
+
+    padding:36px 42px 56px;
+
+}
+
+/* ==========================================================
+   Header
+   ========================================================== */
+
+.v2-header{
+
+    display:grid;
+
+    grid-template-columns:1fr 420px auto;
+
+    gap:22px;
+
+    align-items:center;
+
+    margin-bottom:34px;
+
+}
+
+.v2-greeting{
+
+    color:var(--muted);
+
+    font-size:14px;
+
+    margin-bottom:8px;
+
+}
+
+.v2-title{
+
+    font-family:Cormorant,serif;
+
+    font-size:56px;
+
+    line-height:.95;
+
+    margin:0;
+
+}
+
+.v2-subtitle{
+
+    margin-top:10px;
+
+    color:var(--muted);
+
+    font-size:15px;
+
+}
+
+.v2-search{
+
+    background:var(--panel);
+
+    border:1px solid var(--stone);
+
+    border-radius:18px;
+
+    height:56px;
+
+    display:flex;
+
+    align-items:center;
+
+    padding:0 18px;
+
+    box-shadow:var(--shadow-soft);
+
+}
+
+.v2-search input{
+
+    width:100%;
+
+    background:none;
+
+    border:none;
+
+    outline:none;
+
+    color:var(--text);
+
+    font:inherit;
+
+}
+
+.v2-actions{
+
+    display:flex;
+
+    gap:12px;
+
+}
+
+.v2-circle{
+
+    width:44px;
+
+    height:44px;
+
+    border-radius:999px;
+
+    background:var(--panel);
+
+    border:1px solid var(--stone);
+
+    display:grid;
+
+    place-items:center;
+
+    box-shadow:var(--shadow-soft);
+
+}
+
+.v2-avatar{
+
+    background:var(--charcoal);
+
+    color:white;
+
+    font-weight:700;
+
+}
+
+/* ==========================================================
+   Grid
+   ========================================================== */
+
+.v2-grid{
+
+    display:grid;
+
+    grid-template-columns:1.35fr .65fr;
+
+    gap:24px;
+
+}
+
+.v2-card{
+
+    background:var(--panel);
+
+    border:1px solid rgba(220,214,206,.85);
+
+    border-radius:24px;
+
+    padding:24px;
+
+    box-shadow:var(--shadow-soft);
+
+    transition:all .22s ease;
+
+}
+
+.v2-card:hover{
+
+    transform:translateY(-2px);
+
+    box-shadow:var(--shadow-hover);
+
+}
+
+.v2-label{
+
+    text-transform:uppercase;
+
+    letter-spacing:.14em;
+
+    font-size:12px;
+
+    color:var(--muted);
+
+    margin-bottom:14px;
+
+}
+
+/* ==========================================================
+   Responsive
+   ========================================================== */
+
+@media (max-width:980px){
+
+    .v2-shell{
+
+        grid-template-columns:1fr;
+
+    }
+
+    .v2-header{
+
+        grid-template-columns:1fr;
+
+    }
+
+    .v2-grid{
+
+        grid-template-columns:1fr;
+
+    }
+
+    .v2-main{
+
+        padding:24px;
+
+    }
+
+    .v2-title{
+
+        font-size:44px;
+
+    }
+
+}
