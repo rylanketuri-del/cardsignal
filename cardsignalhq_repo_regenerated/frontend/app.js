@@ -484,45 +484,70 @@ async function init() {
   const status = document.getElementById('load-status');
   document.getElementById('api-hint').textContent = `API: ${API_BASE_URL}`;
   document.getElementById('admin-token').value = adminToken;
+
   try {
     await bootstrapSupabase();
     bindAuthActions();
     bindAdminActions();
 
-    const payload = await fetch(SOURCE_URL).then(res => { if (!res.ok) throw new Error(`Could not load ${SOURCE_URL}.`); return res.json(); });
+    const payload = await fetch(SOURCE_URL).then(res => {
+      if (!res.ok) throw new Error(`Could not load ${SOURCE_URL}.`);
+      return res.json();
+    });
+
     const entries = payload.items || [];
     latestEntries = entries;
+
     if (!entries.length) throw new Error('Leaderboard response is empty.');
 
     const hot = entries[0];
     const chased = [...entries].sort((a, b) => b.hotness.market_score - a.hotness.market_score)[0];
-    const pulseScore = Math.round(entries.reduce((sum, item) => sum + (item.hotness?.total_score || 0), 0) / entries.length);
+    const buyLow = entries.find(item => item.hotness.tag === 'BUY LOW') || entries[0];
+
+    const pulseScore = Math.round(
+      entries.reduce((sum, item) => sum + (item.hotness?.total_score || 0), 0) / entries.length
+    );
 
     document.getElementById('market-pulse-score').textContent = pulseScore;
     document.getElementById('hero-player').textContent = hot.player_name;
-    document.getElementById('hero-tag').textContent = `${hot.hotness.tag} • ${formatScore(hot.hotness.total_score)} CardSignal Score`;
-    document.getElementById('most-chased').textContent = `${chased.player_name} • ${formatScore(chased.hotness.market_score)}`;
-    document.getElementById('buy-low').textContent = `${buyLow.player_name} • ${buyLow.hotness.tag}`;
+    document.getElementById('hero-tag').textContent =
+      `${hot.hotness.tag} • ${formatScore(hot.hotness.total_score)} CardSignal Score`;
+    document.getElementById('most-chased').textContent =
+      `${chased.player_name} • ${formatScore(chased.hotness.market_score)}`;
+    document.getElementById('buy-low').textContent =
+      `${buyLow.player_name} • ${buyLow.hotness.tag}`;
 
     const leaderboardRoot = document.getElementById('leaderboard-table');
     leaderboardRoot.innerHTML = buildLeaderboard(entries);
-    const rows = [...leaderboardRoot.querySelectorAll('tbody tr')];
-    rows.forEach((row, index) => row.addEventListener('click', async () => {
-      rows.forEach(r => r.classList.remove('active'));
-      row.classList.add('active');
-      await selectPlayer(entries[index]);
-    }));
-    if (rows[0]) rows[0].classList.add('active');
+
+    const leaderCards = [...leaderboardRoot.querySelectorAll('.cs-leader-card')];
+
+    leaderCards.forEach((card, index) => {
+      card.addEventListener('click', async () => {
+        leaderCards.forEach(c => c.classList.remove('active'));
+        card.classList.add('active');
+        await selectPlayer(entries[index]);
+      });
+    });
+
+    if (leaderCards[0]) leaderCards[0].classList.add('active');
+
     await selectPlayer(entries[0]);
     await renderLeaderboardHistory();
+
     status.textContent = `Loaded ${entries.length} players from ${payload.data_source || 'api'}`;
 
-    if (currentUser) await Promise.all([loadRules(), loadWatchlist(), loadAlerts(), loadNotifications()]);
+    if (currentUser) {
+      await Promise.all([loadRules(), loadWatchlist(), loadAlerts(), loadNotifications()]);
+    }
+
     if (adminToken) await loadAdmin();
+
   } catch (error) {
     status.textContent = 'Load failed';
     status.style.color = '#ff9c9c';
-    document.getElementById('leaderboard-table').innerHTML = `<div class="detail-empty">${error.message}</div>`;
+    document.getElementById('leaderboard-table').innerHTML =
+      `<div class="detail-empty">${error.message}</div>`;
   }
 }
 
