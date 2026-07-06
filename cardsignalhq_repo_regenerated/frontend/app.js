@@ -496,9 +496,11 @@ async function init() {
 
     const hot = entries[0];
     const chased = [...entries].sort((a, b) => b.hotness.market_score - a.hotness.market_score)[0];
-    const buyLow = entries.find(item => item.hotness.tag === 'BUY LOW') || entries[0];
+    const pulseScore = Math.round(entries.reduce((sum, item) => sum + (item.hotness?.total_score || 0), 0) / entries.length);
+
+    document.getElementById('market-pulse-score').textContent = pulseScore;
     document.getElementById('hero-player').textContent = hot.player_name;
-    document.getElementById('hero-tag').textContent = `${hot.hotness.tag} • ${formatScore(hot.hotness.total_score)}`;
+    document.getElementById('hero-tag').textContent = `${hot.hotness.tag} • ${formatScore(hot.hotness.total_score)} CardSignal Score`;
     document.getElementById('most-chased').textContent = `${chased.player_name} • ${formatScore(chased.hotness.market_score)}`;
     document.getElementById('buy-low').textContent = `${buyLow.player_name} • ${buyLow.hotness.tag}`;
 
