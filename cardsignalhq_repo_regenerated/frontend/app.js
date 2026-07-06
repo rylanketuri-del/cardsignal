@@ -601,11 +601,6 @@ function renderDashboardV2(entries) {
   renderMarketPulse(entries);
   renderCollectorsPick(entries);
   renderMiniSignals(entries);
-}
-
-  renderMarketPulse(entries);
-
-  renderCollectorsPick(entries);
 
 }
 async function init() {
