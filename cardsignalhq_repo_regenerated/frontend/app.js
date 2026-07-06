@@ -529,14 +529,21 @@ function renderDashboardV2(entries) {
 }
 async function init() {
   const status = document.getElementById('load-status');
-  document.getElementById('api-hint').textContent = `API: ${API_BASE_URL}`;
-  document.getElementById('admin-token').value = adminToken;
 
   try {
+    status.textContent = 'Starting app...';
+
+    document.getElementById('api-hint').textContent = `API: ${API_BASE_URL}`;
+    document.getElementById('admin-token').value = adminToken;
+
+    status.textContent = 'Connecting auth...';
     await bootstrapSupabase();
+
+    status.textContent = 'Binding controls...';
     bindAuthActions();
     bindAdminActions();
 
+    status.textContent = 'Loading leaderboard...';
     const payload = await fetch(SOURCE_URL).then(res => {
       if (!res.ok) throw new Error(`Could not load ${SOURCE_URL}.`);
       return res.json();
@@ -547,6 +554,7 @@ async function init() {
 
     if (!entries.length) throw new Error('Leaderboard response is empty.');
 
+    status.textContent = 'Rendering Market Desk...';
     renderDashboardV2(entries);
 
     const leaderboardRoot = document.getElementById('leaderboard-table');
@@ -576,13 +584,17 @@ async function init() {
     if (adminToken) await loadAdmin();
 
   } catch (error) {
-  console.error("CardSignal load error:", error);
+    console.error("CardSignal load error:", error);
 
-  status.textContent = `Load failed: ${error.message}`;
-  status.style.color = '#9A6656';
+    status.textContent = `Load failed: ${error.message}`;
+    status.style.color = '#9A6656';
 
-  document.getElementById('leaderboard-table').innerHTML =
-    `<div class="detail-empty">Load failed: ${error.message}</div>`;
+    const leaderboardRoot = document.getElementById('leaderboard-table');
+    if (leaderboardRoot) {
+      leaderboardRoot.innerHTML =
+        `<div class="detail-empty">Load failed: ${error.message}</div>`;
+    }
+  }
 }
 
 init();
