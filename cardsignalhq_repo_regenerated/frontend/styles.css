@@ -789,3 +789,163 @@ canvas { width: 100% !important; min-height: 280px; }
     font-size: 46px;
   }
 }
+/* ===========================
+   Sprint 3 — Market Leaders Polish
+=========================== */
+
+.cs-market-leaders {
+  margin-top: 0;
+}
+
+.cs-section-header {
+  align-items: flex-end;
+  gap: 24px;
+}
+
+.cs-section-header h2 {
+  font-family: Cormorant, Georgia, serif;
+  font-size: 42px;
+  line-height: 0.95;
+  letter-spacing: -0.03em;
+}
+
+.cs-section-subtitle {
+  margin: 10px 0 0;
+  max-width: 620px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.cs-leader-grid {
+  display: grid;
+  gap: 14px;
+}
+
+.cs-leader-card {
+  display: grid;
+  grid-template-columns: 44px minmax(220px, 1.4fr) 150px minmax(220px, 1fr) 130px;
+  align-items: center;
+  gap: 20px;
+  padding: 22px;
+  border-radius: 26px;
+  background: var(--panel);
+  border: 1px solid rgba(220, 214, 206, 0.92);
+  box-shadow: var(--shadow-soft);
+  cursor: pointer;
+  transition: transform var(--transition-base), box-shadow var(--transition-base), border-color var(--transition-base);
+}
+
+.cs-leader-card:hover,
+.cs-leader-card.active {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-hover);
+  border-color: rgba(187, 132, 85, 0.45);
+}
+
+.cs-leader-card.active {
+  background: linear-gradient(180deg, var(--panel), #F7F1EA);
+}
+
+.cs-leader-rank {
+  width: 36px;
+  height: 36px;
+  border-radius: 13px;
+  background: var(--paper);
+  color: var(--bronze);
+  display: grid;
+  place-items: center;
+  font-weight: 900;
+}
+
+.cs-leader-main {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.cs-player-medallion {
+  width: 56px;
+  height: 56px;
+  border-radius: 19px;
+  background: linear-gradient(180deg, var(--charcoal), #2A241F);
+  color: var(--sand);
+  display: grid;
+  place-items: center;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.08);
+}
+
+.cs-leader-main h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: 20px;
+  line-height: 1.1;
+}
+
+.cs-leader-main p {
+  margin: 6px 0 0;
+  color: var(--bronze);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.cs-score-wrap {
+  display: grid;
+  gap: 4px;
+}
+
+.cs-score {
+  font-family: Cormorant, Georgia, serif;
+  font-size: 48px;
+  line-height: 0.88;
+  color: var(--charcoal);
+  font-weight: 700;
+}
+
+.cs-score-wrap small,
+.cs-mini-metrics small {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+}
+
+.cs-mini-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 18px;
+}
+
+.cs-mini-metrics span {
+  display: block;
+  font-weight: 900;
+  font-size: 19px;
+}
+
+.cs-view-link {
+  justify-self: end;
+  border-radius: 999px;
+  padding: 11px 15px;
+  background: var(--charcoal);
+  color: var(--white);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+@media (max-width: 1100px) {
+  .cs-leader-card {
+    grid-template-columns: 44px 1fr;
+  }
+
+  .cs-score-wrap,
+  .cs-mini-metrics,
+  .cs-view-link {
+    grid-column: 2;
+  }
+
+  .cs-view-link {
+    justify-self: start;
+  }
+}
