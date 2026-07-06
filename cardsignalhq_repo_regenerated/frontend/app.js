@@ -88,31 +88,36 @@ function getHeatClass(score = 0) {
 
 function buildLeaderboard(entries) {
   return `
-    <section class="leaderboard-section">
-      <div class="section-header">
+    <section class="leaderboard-section cs-market-leaders">
+      <div class="section-header cs-section-header">
         <div>
-          <p class="eyebrow">Live MLB Market Signal</p>
-          <h2>🔥 Hottest Players Today</h2>
+          <p class="eyebrow">Market Leaders</p>
+          <h2>Today’s Leaders</h2>
+          <p class="cs-section-subtitle">The players showing the strongest blend of performance and card market movement.</p>
         </div>
         <span class="pill">${entries.length} tracked</span>
       </div>
 
-      <div class="leaderboard-cards">
+      <div class="cs-leader-grid">
         ${entries.map((entry, index) => {
           const score = entry.hotness?.total_score || 0;
           const performance = entry.hotness?.performance_score || 0;
           const market = entry.hotness?.market_score || 0;
+          const confidence = entry.hotness?.confidence_multiplier || 0;
           const heatLabel = getHeatLabel(score);
-          const heatClass = getHeatClass(score);
+          const playerInitials = String(entry.player_name || "?")
+            .split(" ")
+            .map(part => part[0])
+            .join("")
+            .slice(0, 2)
+            .toUpperCase();
 
           return `
-            <article class="leaderboard-card ${heatClass}" data-player-id="${entry.player_id || ''}">
-              <div class="rank">#${entry.rank || index + 1}</div>
+            <article class="cs-leader-card" data-player-id="${entry.player_id || ''}">
+              <div class="cs-leader-rank">${entry.rank || index + 1}</div>
 
-              <div class="player-main">
-                <div class="player-avatar">
-                  ${(entry.player_name || "?").charAt(0)}
-                </div>
+              <div class="cs-leader-main">
+                <div class="cs-player-medallion">${playerInitials}</div>
 
                 <div>
                   <h3>${entry.player_name}</h3>
@@ -120,23 +125,28 @@ function buildLeaderboard(entries) {
                 </div>
               </div>
 
-              <div class="score-block">
-                <span class="score">${formatScore(score)}</span>
-                <small>Hotness</small>
+              <div class="cs-score-wrap">
+                <span class="cs-score">${formatScore(score)}</span>
+                <small>CardSignal Score</small>
               </div>
 
-              <div class="metric">
-                <span>${formatScore(performance)}</span>
-                <small>Performance</small>
+              <div class="cs-mini-metrics">
+                <div>
+                  <span>${formatScore(performance)}</span>
+                  <small>Performance</small>
+                </div>
+                <div>
+                  <span>${formatScore(market)}</span>
+                  <small>Market</small>
+                </div>
+                <div>
+                  <span>${formatScore(confidence)}</span>
+                  <small>Confidence</small>
+                </div>
               </div>
 
-              <div class="metric">
-                <span>${formatScore(market)}</span>
-                <small>Market</small>
-              </div>
-
-              <button class="view-player-btn" onclick="openPlayerDetail('${entry.player_id}')">
-                View
+              <button class="cs-view-link" onclick="openPlayerDetail('${entry.player_id}')">
+                View Report →
               </button>
             </article>
           `;
