@@ -520,6 +520,29 @@ function renderMarketPulse(entries) {
     `${buyLow.player_name} • ${buyLow.hotness.tag}`;
 }
 
+function renderCollectorsPick(entries) {
+  const hot = entries[0];
+
+  const score = hot.hotness?.total_score || 0;
+  const market = hot.hotness?.market_score || 0;
+  const performance = hot.hotness?.performance_score || 0;
+
+  document.getElementById("collector-pick-score").textContent =
+    formatScore(score);
+
+  document.getElementById("collector-pick-copy").textContent =
+    `${hot.player_name} is today’s strongest collector signal with a ${formatScore(performance)} performance score and a ${formatScore(market)} market score.`;
+
+  document.getElementById("collector-pick-button").onclick = async () => {
+    await selectPlayer(hot);
+
+    document.getElementById("player-detail")?.scrollIntoView({
+      behavior: "smooth",
+      block: "start"
+    });
+  };
+}
+
 function renderDashboardV2(entries) {
 
   renderMarketPulse(entries);
