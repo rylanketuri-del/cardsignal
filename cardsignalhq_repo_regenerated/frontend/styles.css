@@ -670,3 +670,122 @@ canvas { width: 100% !important; min-height: 280px; }
     flex-direction: column;
   }
 }
+/* ===========================
+   Sprint 2 — Market Desk Polish
+=========================== */
+
+.topbar h1 {
+  font-family: Cormorant, Georgia, serif;
+  font-size: 58px;
+  letter-spacing: -0.035em;
+}
+
+.subhead {
+  font-size: 16px;
+  color: var(--muted);
+}
+
+.market-pulse-body {
+  display: flex;
+  align-items: flex-end;
+  gap: 28px;
+}
+
+.market-pulse-number {
+  font-family: Cormorant, Georgia, serif;
+  font-size: 116px;
+  line-height: 0.78;
+  letter-spacing: -0.06em;
+  font-weight: 700;
+  color: var(--charcoal);
+}
+
+.market-pulse-info strong {
+  display: block;
+  font-size: 20px;
+  margin-bottom: 8px;
+}
+
+.market-pulse-info p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+  max-width: 420px;
+}
+
+.pulse-meta {
+  display: flex;
+  gap: 10px;
+  margin-top: 16px;
+  flex-wrap: wrap;
+}
+
+.pulse-meta span {
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--bronze);
+  padding: 7px 10px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.pulse-movers {
+  margin-top: 28px;
+  border-top: 1px solid var(--stone);
+  padding-top: 18px;
+}
+
+.pulse-mover-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  color: var(--text);
+}
+
+.pulse-mover-row strong {
+  color: var(--bronze);
+}
+
+.collector-pick-badge {
+  min-width: 66px;
+  height: 66px;
+}
+
+.mini-signal-name {
+  margin-top: 18px;
+  font-size: 26px;
+  font-weight: 900;
+  color: var(--charcoal);
+}
+
+.mini-signal-score {
+  margin-top: 8px;
+  font-family: Cormorant, Georgia, serif;
+  font-size: 46px;
+  line-height: 0.9;
+  color: var(--bronze);
+  font-weight: 700;
+}
+
+.mini-signal-caption {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+@media (max-width: 980px) {
+  .market-pulse-body {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .market-pulse-number {
+    font-size: 88px;
+  }
+
+  .topbar h1 {
+    font-size: 46px;
+  }
+}
