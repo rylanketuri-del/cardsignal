@@ -1427,3 +1427,59 @@ button,
 .player-save-btn {
   -webkit-tap-highlight-color: transparent;
 }
+/* ===========================
+   Sprint 3.8.1 — Sport Tabs + Beta Badge
+=========================== */
+
+.brand-kicker {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--bronze);
+  text-transform: uppercase;
+  letter-spacing: .16em;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.brand-kicker strong {
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--charcoal);
+  padding: 5px 8px;
+  font-size: 10px;
+  letter-spacing: .08em;
+}
+
+.sport-tabs {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: -8px 0 26px;
+}
+
+.sport-tab {
+  border-radius: 999px;
+  padding: 10px 14px;
+  background: rgba(255,255,255,.55);
+  border: 1px solid var(--stone);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.sport-tab.active,
+.sport-tab.active-sport {
+  background: var(--charcoal);
+  color: var(--white);
+  border-color: var(--charcoal);
+}
+
+.sport-tab.disabled {
+  opacity: .48;
+  cursor: not-allowed;
+}
+
+.sport-tab.disabled:hover {
+  transform: none;
+}
