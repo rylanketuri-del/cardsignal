@@ -14,7 +14,6 @@ from cardchase_ai.alerts import (
     event_passes_player_rule,
 )
 from cardchase_ai.clients.ebay import EbayClient
-from cardchase_ai.clients.mlb import MLBClient
 from cardchase_ai.config import get_settings
 from cardchase_ai.delivery import (
     AlertDeliveryClient,
