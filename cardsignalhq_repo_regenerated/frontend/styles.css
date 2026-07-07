@@ -1483,3 +1483,55 @@ button,
 .sport-tab.disabled:hover {
   transform: none;
 }
+/* ===========================
+   Sprint 3.8.2
+   Product Navigation
+=========================== */
+
+.product-nav{
+    display:flex;
+    gap:12px;
+    margin:0 0 28px;
+    flex-wrap:wrap;
+}
+
+.product-nav-item{
+
+    border:none;
+    border-radius:999px;
+
+    padding:11px 18px;
+
+    background:white;
+
+    color:var(--muted);
+
+    font-weight:700;
+
+    border:1px solid var(--stone);
+
+    transition:all .22s ease;
+
+}
+
+.product-nav-item.active{
+
+    background:var(--charcoal);
+
+    color:white;
+
+}
+
+.product-nav-item.disabled{
+
+    opacity:.45;
+
+    cursor:not-allowed;
+
+}
+
+.product-nav-item.disabled:hover{
+
+    transform:none;
+
+}
