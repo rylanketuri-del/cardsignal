@@ -779,6 +779,17 @@ function getTopMovers(entries) {
 function renderMarketPulse(entries) {
   const pulse = calculateMarketPulse(entries);
   const topMovers = getTopMovers(entries);
+  const avgPerformance = Math.round(
+    entries.reduce((sum, p) => sum + (p.hotness?.performance_score || 0), 0) / entries.length
+  );
+  const avgMarket = Math.round(
+    entries.reduce((sum, p) => sum + (p.hotness?.market_score || 0), 0) / entries.length
+  );
+  const strongest = entries[0];
+  const generatedAt = new Date().toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit"
+  });
 
   const pulseCard = document.querySelector(".market-pulse-card");
 
@@ -788,31 +799,48 @@ function renderMarketPulse(entries) {
         <div class="label">Market Pulse</div>
         <h2>Today’s Card Market</h2>
       </div>
-      <span class="market-status">Strong</span>
+      <span class="market-status">Active</span>
     </div>
 
-    <div class="market-pulse-body">
-      <div class="market-pulse-number">${pulse}</div>
+    <div class="live-market-body">
+      <div class="live-pulse-score">
+        <span>${pulse}</span>
+        <small>CardSignal Pulse</small>
+      </div>
 
-      <div class="market-pulse-info">
-        <strong>CardSignal Pulse</strong>
-        <p>Live blend of player performance, collector demand, and card-market movement.</p>
-
-        <div class="pulse-meta">
-          <span>↑ Active market</span>
-          <span>${entries.length} tracked players</span>
+      <div class="market-health-grid">
+        <div>
+          <strong>${avgPerformance}</strong>
+          <span>Performance</span>
+        </div>
+        <div>
+          <strong>${avgMarket}</strong>
+          <span>Demand</span>
+        </div>
+        <div>
+          <strong>${formatScore(strongest.hotness?.total_score)}</strong>
+          <span>Top Signal</span>
         </div>
       </div>
     </div>
 
-    <div class="pulse-movers">
-      <div class="label">Top Signals</div>
-      ${topMovers.map(player => `
-        <div class="pulse-mover-row">
-          <span>${player.player_name}</span>
-          <strong>${formatScore(player.hotness?.total_score)}</strong>
+    <div class="market-pulse-lower">
+      <div>
+        <div class="label">Top Movers</div>
+        <div class="pulse-movers compact">
+          ${topMovers.map(player => `
+            <div class="pulse-mover-row">
+              <span>↑ ${player.player_name}</span>
+              <strong>${formatScore(player.hotness?.total_score)}</strong>
+            </div>
+          `).join("")}
         </div>
-      `).join("")}
+      </div>
+
+      <div class="pipeline-card">
+        <span>Updated</span>
+        <strong>${generatedAt}</strong>
+      </div>
     </div>
   `;
 }
