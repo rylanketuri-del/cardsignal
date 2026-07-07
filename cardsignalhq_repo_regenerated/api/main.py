@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from cardchase_ai.clients.mlb import MLBClient
 from cardchase_ai.config import get_settings
 from cardchase_ai.pipeline import run_pipeline
 from cardchase_ai.storage import SupabaseError, SupabaseStorage
@@ -235,6 +236,19 @@ def get_latest_run() -> JSONResponse:
     if not latest_run:
         raise HTTPException(status_code=404, detail="No pipeline runs found.")
     return JSONResponse(latest_run)
+
+
+@app.get("/api/players/search")
+def search_players(q: str = "") -> JSONResponse:
+    query = (q or "").strip()
+    if len(query) < 2:
+        return JSONResponse([])
+
+    try:
+        results = MLBClient().search_players(query, limit=10)
+        return JSONResponse(results)
+    except Exception:
+        return JSONResponse([])
 
 
 @app.get("/api/players/{player_id}")

@@ -10,6 +10,17 @@ class PlayerLookup(BaseModel):
     full_name: str
 
 
+class PlayerSearchResult(BaseModel):
+    player_id: int
+    player_name: str
+    team: str = "MLB"
+    team_id: int | None = None
+    position: str | None = None
+    sport: str = "MLB"
+    headshot_url: str
+    team_logo_url: str = ""
+
+
 class HitterGameLogRow(BaseModel):
     date: str
     at_bats: int = 0
