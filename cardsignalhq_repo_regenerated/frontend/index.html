@@ -45,23 +45,31 @@
       </nav>
 
       <section class="player-search-module" id="player-search-module">
-        <div class="player-search-wrap">
-          <label class="player-search-label" for="player-search-input">
-            <span class="player-search-icon" aria-hidden="true">⌕</span>
-            <input
-              id="player-search-input"
-              type="search"
-              placeholder="Search MLB players..."
-              autocomplete="off"
-              spellcheck="false"
-            />
-          </label>
-          <div
-            id="player-search-results"
-            class="player-search-results hidden"
-            role="listbox"
-            aria-label="Player search results"
-          ></div>
+        <div class="player-search-panel">
+          <div class="player-search-copy">
+            <p class="eyebrow">Player Search</p>
+            <h2>Search the MLB market</h2>
+            <p>Find players currently appearing in today’s CardSignal leaderboard.</p>
+          </div>
+
+          <div class="player-search-control">
+            <label class="player-search-label" for="player-search-input">
+              <span class="player-search-icon" aria-hidden="true">⌕</span>
+              <input
+                id="player-search-input"
+                type="search"
+                placeholder="Search by player, team, or position..."
+                autocomplete="off"
+                spellcheck="false"
+              />
+            </label>
+
+            <div
+              class="player-search-results hidden"
+              id="player-search-results"
+              aria-live="polite"
+            ></div>
+          </div>
         </div>
       </section>
 
