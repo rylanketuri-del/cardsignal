@@ -624,7 +624,7 @@ async function init() {
     const leaderboardRoot = document.getElementById('leaderboard-table');
     leaderboardRoot.innerHTML = buildLeaderboard(entries);
 
-    const leaderCards = [...leaderboardRoot.querySelectorAll('.cs-leader-card')];
+    const leaderCards = [...leaderboardRoot.querySelectorAll('.market-leader-row')];
 
     leaderCards.forEach((card, index) => {
       card.addEventListener('click', async () => {
