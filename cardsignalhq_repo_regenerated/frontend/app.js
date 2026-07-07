@@ -1010,6 +1010,156 @@ function renderDashboardV2(entries) {
   renderMiniSignals(entries);
 
 }
+
+/* ==========================================================
+   Sprint 4.5 — Universal Player Search
+   ========================================================== */
+
+function normalizeSearchText(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function filterLatestEntries(query) {
+  const needle = normalizeSearchText(query);
+  if (!needle) return [];
+
+  return latestEntries.filter((entry) => {
+    const name = normalizeSearchText(entry.player_name);
+    const team = normalizeSearchText(getTeamAbbrev(entry));
+    const position = normalizeSearchText(entry.position);
+    return name.includes(needle) || team.includes(needle) || position.includes(needle);
+  });
+}
+
+function renderSearchResultHeadshot(entry = {}) {
+  const initials = getPlayerInitials(entry.player_name);
+  if (entry.headshot_url) {
+    return `
+      <span class="search-result-photo">
+        <img
+          src="${entry.headshot_url}"
+          alt=""
+          loading="lazy"
+          class="player-headshot-image"
+          onerror="this.remove();this.parentElement.insertAdjacentHTML('beforeend','<span>${initials}</span>')"
+        />
+      </span>`;
+  }
+  return `<span class="search-result-photo"><span>${initials}</span></span>`;
+}
+
+function renderSearchResults(matches, query) {
+  const root = document.getElementById("player-search-results");
+  if (!root) return;
+
+  if (!normalizeSearchText(query)) {
+    root.classList.add("hidden");
+    root.innerHTML = "";
+    return;
+  }
+
+  root.classList.remove("hidden");
+
+  if (!matches.length) {
+    root.innerHTML = `<div class="player-search-empty">No tracked player found yet.</div>`;
+    return;
+  }
+
+  root.innerHTML = matches.map((entry) => {
+    const score = entry.hotness?.total_score || 0;
+    const team = getTeamAbbrev(entry);
+    const position = entry.position || "—";
+
+    return `
+      <button
+        class="player-search-result"
+        type="button"
+        role="option"
+        data-player-id="${entry.player_id || ""}"
+      >
+        ${renderSearchResultHeadshot(entry)}
+        <span class="player-search-result-copy">
+          <strong>${entry.player_name}</strong>
+          <span>${team} · ${position}</span>
+        </span>
+        <span class="player-search-result-score">
+          <strong>${formatScore(score)}</strong>
+          <small>CardSignal</small>
+        </span>
+      </button>
+    `;
+  }).join("");
+
+  root.querySelectorAll(".player-search-result").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const playerId = button.dataset.playerId;
+      const entry = matches.find((item) => String(item.player_id || "") === playerId)
+        || matches.find((item) => item.player_name === button.querySelector("strong")?.textContent);
+      if (!entry) return;
+      await handleSearchResultSelect(entry);
+    });
+  });
+}
+
+function closePlayerSearch() {
+  const input = document.getElementById("player-search-input");
+  const root = document.getElementById("player-search-results");
+
+  if (input) input.value = "";
+  if (root) {
+    root.classList.add("hidden");
+    root.innerHTML = "";
+  }
+}
+
+function scrollToPlayerReport() {
+  const target = document.querySelector(".player-report-shell") || document.getElementById("player-detail");
+  target?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function highlightLeaderboardPlayer(entry) {
+  const index = latestEntries.indexOf(entry);
+  if (index < 0) return;
+
+  const leaderboardRoot = document.getElementById("leaderboard-table");
+  if (!leaderboardRoot) return;
+
+  const leaderRows = [...leaderboardRoot.querySelectorAll(".leader-table-row")];
+  leaderRows.forEach((row) => row.classList.remove("active"));
+  if (leaderRows[index]) leaderRows[index].classList.add("active");
+}
+
+async function handleSearchResultSelect(entry) {
+  closePlayerSearch();
+  highlightLeaderboardPlayer(entry);
+  await selectPlayer(entry);
+  scrollToPlayerReport();
+}
+
+function bindPlayerSearch() {
+  const input = document.getElementById("player-search-input");
+  const module = document.getElementById("player-search-module");
+  if (!input || !module) return;
+
+  input.addEventListener("input", () => {
+    renderSearchResults(filterLatestEntries(input.value), input.value);
+  });
+
+  input.addEventListener("focus", () => {
+    if (normalizeSearchText(input.value)) {
+      renderSearchResults(filterLatestEntries(input.value), input.value);
+    }
+  });
+
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closePlayerSearch();
+  });
+
+  document.addEventListener("click", (event) => {
+    if (!event.target.closest("#player-search-module")) closePlayerSearch();
+  });
+}
+
 async function init() {
   const status = document.getElementById('load-status');
 
@@ -1025,6 +1175,7 @@ async function init() {
     status.textContent = 'Binding controls...';
     bindAuthActions();
     bindAdminActions();
+    bindPlayerSearch();
 
     status.textContent = 'Loading leaderboard...';
     const payload = await fetch(SOURCE_URL).then(res => {
