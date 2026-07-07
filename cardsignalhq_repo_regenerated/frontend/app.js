@@ -1012,151 +1012,105 @@ function renderDashboardV2(entries) {
 }
 
 /* ==========================================================
-   Sprint 4.5 — Universal Player Search
+   Sprint 4.5.1 — Premium Player Search
    ========================================================== */
 
-function normalizeSearchText(value) {
-  return String(value || "").trim().toLowerCase();
-}
+function setupPlayerSearch() {
+  const input = document.getElementById("player-search-input");
+  const results = document.getElementById("player-search-results");
+  if (!input || !results) return;
 
-function filterLatestEntries(query) {
-  const needle = normalizeSearchText(query);
-  if (!needle) return [];
+  const normalize = (value) => String(value || "").trim().toLowerCase();
 
-  return latestEntries.filter((entry) => {
-    const name = normalizeSearchText(entry.player_name);
-    const team = normalizeSearchText(getTeamAbbrev(entry));
-    const position = normalizeSearchText(entry.position);
-    return name.includes(needle) || team.includes(needle) || position.includes(needle);
-  });
-}
+  const hideResults = () => {
+    results.classList.add("hidden");
+    results.innerHTML = "";
+  };
 
-function renderSearchResultHeadshot(entry = {}) {
-  const initials = getPlayerInitials(entry.player_name);
-  if (entry.headshot_url) {
-    return `
-      <span class="search-result-photo">
-        <img
-          src="${entry.headshot_url}"
-          alt=""
-          loading="lazy"
-          class="player-headshot-image"
-          onerror="this.remove();this.parentElement.insertAdjacentHTML('beforeend','<span>${initials}</span>')"
-        />
-      </span>`;
-  }
-  return `<span class="search-result-photo"><span>${initials}</span></span>`;
-}
+  const filterEntries = (query) => {
+    const needle = normalize(query);
+    if (!needle) return [];
 
-function renderSearchResults(matches, query) {
-  const root = document.getElementById("player-search-results");
-  if (!root) return;
+    return latestEntries.filter((entry) => {
+      const name = normalize(entry.player_name);
+      const team = normalize(entry.team || getTeamAbbrev(entry));
+      const position = normalize(entry.position);
+      const tag = normalize(entry.hotness?.tag);
+      return (
+        name.includes(needle)
+        || team.includes(needle)
+        || position.includes(needle)
+        || tag.includes(needle)
+      );
+    }).slice(0, 8);
+  };
 
-  if (!normalizeSearchText(query)) {
-    root.classList.add("hidden");
-    root.innerHTML = "";
-    return;
-  }
+  const renderHeadshot = (entry) => {
+    const initials = getPlayerInitials(entry.player_name);
+    if (entry.headshot_url) {
+      return `
+        <span class="player-search-result-photo">
+          <img
+            src="${entry.headshot_url}"
+            alt=""
+            loading="lazy"
+            onerror="this.remove();this.parentElement.insertAdjacentHTML('beforeend','<span>${initials}</span>')"
+          />
+        </span>`;
+    }
+    return `<span class="player-search-result-photo"><span>${initials}</span></span>`;
+  };
 
-  root.classList.remove("hidden");
+  const renderResults = (matches) => {
+    if (!matches.length) {
+      results.innerHTML = `<div class="player-search-empty">No leaderboard match yet.</div>`;
+      results.classList.remove("hidden");
+      return;
+    }
 
-  if (!matches.length) {
-    root.innerHTML = `<div class="player-search-empty">No tracked player found yet.</div>`;
-    return;
-  }
+    results.innerHTML = matches.map((entry) => {
+      const score = entry.hotness?.total_score ?? 0;
+      const team = getTeamAbbrev(entry);
+      const position = entry.position || "—";
 
-  root.innerHTML = matches.map((entry) => {
-    const score = entry.hotness?.total_score || 0;
-    const team = getTeamAbbrev(entry);
-    const position = entry.position || "—";
+      return `
+        <button class="player-search-result" type="button" data-player-id="${entry.player_id || ""}">
+          ${renderHeadshot(entry)}
+          <span class="player-search-result-copy">
+            <strong>${entry.player_name}</strong>
+            <span>${team} · ${position}</span>
+          </span>
+          <span class="player-search-result-score">
+            <strong>${formatScore(score)}</strong>
+            <small>CardSignal</small>
+          </span>
+        </button>`;
+    }).join("");
 
-    return `
-      <button
-        class="player-search-result"
-        type="button"
-        role="option"
-        data-player-id="${entry.player_id || ""}"
-      >
-        ${renderSearchResultHeadshot(entry)}
-        <span class="player-search-result-copy">
-          <strong>${entry.player_name}</strong>
-          <span>${team} · ${position}</span>
-        </span>
-        <span class="player-search-result-score">
-          <strong>${formatScore(score)}</strong>
-          <small>CardSignal</small>
-        </span>
-      </button>
-    `;
-  }).join("");
+    results.querySelectorAll(".player-search-result").forEach((button) => {
+      button.addEventListener("click", async () => {
+        const playerId = button.dataset.playerId;
+        const entry = matches.find((item) => String(item.player_id || "") === playerId)
+          || matches.find((item) => item.player_name === button.querySelector("strong")?.textContent);
+        if (!entry) return;
 
-  root.querySelectorAll(".player-search-result").forEach((button) => {
-    button.addEventListener("click", async () => {
-      const playerId = button.dataset.playerId;
-      const entry = matches.find((item) => String(item.player_id || "") === playerId)
-        || matches.find((item) => item.player_name === button.querySelector("strong")?.textContent);
-      if (!entry) return;
-      await handleSearchResultSelect(entry);
+        await selectPlayer(entry);
+        input.value = "";
+        hideResults();
+        document.querySelector(".player-report-shell")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
     });
-  });
-}
 
-function closePlayerSearch() {
-  const input = document.getElementById("player-search-input");
-  const root = document.getElementById("player-search-results");
-
-  if (input) input.value = "";
-  if (root) {
-    root.classList.add("hidden");
-    root.innerHTML = "";
-  }
-}
-
-function scrollToPlayerReport() {
-  const target = document.querySelector(".player-report-shell") || document.getElementById("player-detail");
-  target?.scrollIntoView({ behavior: "smooth", block: "start" });
-}
-
-function highlightLeaderboardPlayer(entry) {
-  const index = latestEntries.indexOf(entry);
-  if (index < 0) return;
-
-  const leaderboardRoot = document.getElementById("leaderboard-table");
-  if (!leaderboardRoot) return;
-
-  const leaderRows = [...leaderboardRoot.querySelectorAll(".leader-table-row")];
-  leaderRows.forEach((row) => row.classList.remove("active"));
-  if (leaderRows[index]) leaderRows[index].classList.add("active");
-}
-
-async function handleSearchResultSelect(entry) {
-  closePlayerSearch();
-  highlightLeaderboardPlayer(entry);
-  await selectPlayer(entry);
-  scrollToPlayerReport();
-}
-
-function bindPlayerSearch() {
-  const input = document.getElementById("player-search-input");
-  const module = document.getElementById("player-search-module");
-  if (!input || !module) return;
+    results.classList.remove("hidden");
+  };
 
   input.addEventListener("input", () => {
-    renderSearchResults(filterLatestEntries(input.value), input.value);
-  });
-
-  input.addEventListener("focus", () => {
-    if (normalizeSearchText(input.value)) {
-      renderSearchResults(filterLatestEntries(input.value), input.value);
+    const query = input.value;
+    if (!normalize(query)) {
+      hideResults();
+      return;
     }
-  });
-
-  input.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") closePlayerSearch();
-  });
-
-  document.addEventListener("click", (event) => {
-    if (!event.target.closest("#player-search-module")) closePlayerSearch();
+    renderResults(filterEntries(query));
   });
 }
 
@@ -1175,7 +1129,6 @@ async function init() {
     status.textContent = 'Binding controls...';
     bindAuthActions();
     bindAdminActions();
-    bindPlayerSearch();
 
     status.textContent = 'Loading leaderboard...';
     const payload = await fetch(SOURCE_URL).then(res => {
@@ -1187,6 +1140,8 @@ async function init() {
     latestEntries = entries;
 
     if (!entries.length) throw new Error('Leaderboard response is empty.');
+
+    setupPlayerSearch();
 
     status.textContent = 'Rendering Market Desk...';
     renderDashboardV2(entries);
