@@ -1764,6 +1764,22 @@ button,
   text-align: center;
 }
 
+.player-search-status {
+  padding: 14px 16px;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.player-search-loading {
+  color: var(--bronze);
+  letter-spacing: 0.02em;
+}
+
+.player-search-status.player-search-empty {
+  color: var(--muted);
+}
+
 .player-search-result {
   width: 100%;
   display: grid;
@@ -1780,10 +1796,17 @@ button,
 }
 
 .player-search-result:hover,
-.player-search-result:focus-visible {
+.player-search-result:focus-visible,
+.player-search-result--highlighted {
   background: rgba(187, 132, 85, 0.10);
   border-color: rgba(187, 132, 85, 0.28);
   transform: translateY(-1px);
+}
+
+.player-search-result--highlighted {
+  background: rgba(187, 132, 85, 0.16);
+  border-color: rgba(187, 132, 85, 0.42);
+  box-shadow: 0 0 0 1px rgba(187, 132, 85, 0.12);
 }
 
 .search-result-photo {
@@ -1827,6 +1850,38 @@ button,
   letter-spacing: 0.08em;
 }
 
+.player-search-result-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.player-search-result-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.player-search-result-badge--top20 {
+  color: var(--bronze);
+  background: rgba(187, 132, 85, 0.14);
+  border: 1px solid rgba(187, 132, 85, 0.28);
+}
+
+.player-search-result-badge--mlb {
+  color: #5A6B74;
+  background: rgba(90, 107, 116, 0.10);
+  border: 1px solid rgba(90, 107, 116, 0.22);
+}
+
 .player-search-result-score {
   display: grid;
   justify-items: end;
@@ -1847,6 +1902,34 @@ button,
   font-weight: 900;
   text-transform: uppercase;
   letter-spacing: 0.12em;
+}
+
+.search-score-unscored {
+  font-family: inherit;
+  font-size: 11px;
+  line-height: 1.2;
+  font-weight: 800;
+  color: var(--muted);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.player-search-result--unscored .player-search-result-score {
+  max-width: 92px;
+}
+
+.report-score-main--unscored span {
+  font-family: inherit;
+  font-size: 1.35rem;
+  line-height: 1.15;
+  font-weight: 800;
+  color: var(--muted);
+}
+
+.player-report--lightweight .collector-insight p:last-child {
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1.6;
 }
 
 @media (max-width: 640px) {
