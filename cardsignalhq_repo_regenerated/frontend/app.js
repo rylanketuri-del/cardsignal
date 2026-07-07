@@ -254,47 +254,193 @@ async function loadNotifications() {
     renderNotifications(notifications, payload.summary || {});
   } catch (error) { root.innerHTML = `<div class="detail-empty">${error.message}</div>`; }
 }
+function destroyChart(instance) {
+  if (instance) instance.destroy();
+}
 
-function destroyChart(instance) { if (instance) instance.destroy(); }
+function getChartOptions(title = "") {
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    animation: {
+      duration: 900,
+      easing: "easeOutQuart",
+    },
+    plugins: {
+      legend: {
+        position: "bottom",
+        labels: {
+          usePointStyle: true,
+          boxWidth: 8,
+          padding: 18,
+          color: "#7D7873",
+          font: {
+            size: 12,
+            weight: "600",
+          },
+        },
+      },
+      tooltip: {
+        backgroundColor: "#0F0F10",
+        titleColor: "#F7F5F2",
+        bodyColor: "#F1ECE5",
+        borderColor: "#BB8455",
+        borderWidth: 1,
+        padding: 12,
+        cornerRadius: 12,
+      },
+      title: {
+        display: !!title,
+        text: title,
+        color: "#1D1D1F",
+        font: {
+          size: 14,
+          weight: "700",
+        },
+        padding: {
+          bottom: 16,
+        },
+      },
+    },
+    scales: {
+      x: {
+        grid: {
+          display: false,
+        },
+        ticks: {
+          color: "#7D7873",
+          maxRotation: 0,
+          font: {
+            size: 11,
+          },
+        },
+      },
+      y: {
+        beginAtZero: true,
+        max: 100,
+        grid: {
+          color: "rgba(220, 214, 206, 0.65)",
+        },
+        ticks: {
+          color: "#7D7873",
+          font: {
+            size: 11,
+          },
+        },
+      },
+    },
+  };
+}
 
 async function renderScoreHistory(playerId) {
-  const canvas = document.getElementById('score-history-chart');
+  const canvas = document.getElementById("score-history-chart");
   if (!canvas || !playerId) return;
+
   try {
     const payload = await fetchPlayerHistory(playerId);
     const items = payload.items || [];
+
     destroyChart(scoreChart);
+
+    if (!items.length) {
+      const ctx = canvas.getContext("2d");
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      return;
+    }
+
     scoreChart = new Chart(canvas, {
-      type: 'line',
+      type: "line",
       data: {
-        labels: items.map(item => new Date(item.created_at).toLocaleDateString()),
+        labels: items.map(item =>
+          new Date(item.created_at).toLocaleDateString(undefined, {
+            month: "short",
+            day: "numeric",
+          })
+        ),
         datasets: [
-          { label: 'Total', data: items.map(i => i.total_score), tension: 0.3 },
-          { label: 'Performance', data: items.map(i => i.performance_score), tension: 0.3 },
-          { label: 'Market', data: items.map(i => i.market_score), tension: 0.3 },
+          {
+            label: "CardSignal",
+            data: items.map(item => Number(item.total_score || 0)),
+            borderColor: "#BB8455",
+            backgroundColor: "rgba(187, 132, 85, 0.10)",
+            borderWidth: 2.5,
+            tension: 0.35,
+            fill: true,
+            pointRadius: 3,
+            pointHoverRadius: 5,
+          },
+          {
+            label: "Performance",
+            data: items.map(item => Number(item.performance_score || 0)),
+            borderColor: "#708A72",
+            backgroundColor: "rgba(112, 138, 114, 0.08)",
+            borderWidth: 2,
+            tension: 0.35,
+            fill: false,
+            pointRadius: 2,
+            pointHoverRadius: 4,
+          },
+          {
+            label: "Market",
+            data: items.map(item => Number(item.market_score || 0)),
+            borderColor: "#8A6747",
+            backgroundColor: "rgba(138, 103, 71, 0.08)",
+            borderWidth: 2,
+            tension: 0.35,
+            fill: false,
+            pointRadius: 2,
+            pointHoverRadius: 4,
+          },
         ],
       },
-      options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, max: 100 } } },
+      options: getChartOptions("Selected Player Signal History"),
     });
-  } catch (_) {}
+  } catch (error) {
+    console.error("Score history chart error:", error);
+  }
 }
 
 async function renderLeaderboardHistory() {
-  const canvas = document.getElementById('leaderboard-history-chart');
+  const canvas = document.getElementById("leaderboard-history-chart");
   if (!canvas) return;
+
   try {
     const payload = await fetchLeaderboardHistory();
     const items = payload.items || [];
+
     destroyChart(leaderboardHistoryChart);
+
+    if (!items.length) {
+      const ctx = canvas.getContext("2d");
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      return;
+    }
+
     leaderboardHistoryChart = new Chart(canvas, {
-      type: 'bar',
+      type: "bar",
       data: {
-        labels: items.map(item => new Date(item.created_at).toLocaleDateString()),
-        datasets: [{ label: 'Top total score', data: items.map(item => Number(item.leaders?.[0]?.total_score || 0)) }],
+        labels: items.map(item =>
+          new Date(item.created_at).toLocaleDateString(undefined, {
+            month: "short",
+            day: "numeric",
+          })
+        ),
+        datasets: [
+          {
+            label: "Top CardSignal Score",
+            data: items.map(item => Number(item.leaders?.[0]?.total_score || 0)),
+            backgroundColor: "rgba(187, 132, 85, 0.75)",
+            borderColor: "#BB8455",
+            borderWidth: 1,
+            borderRadius: 10,
+          },
+        ],
       },
-      options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, max: 100 } } },
+      options: getChartOptions("Market Trend"),
     });
-  } catch (_) {}
+  } catch (error) {
+    console.error("Leaderboard history chart error:", error);
+  }
 }
 
 function wirePlayerActions() {
