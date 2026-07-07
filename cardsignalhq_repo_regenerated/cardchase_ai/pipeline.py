@@ -33,6 +33,13 @@ class PlayerPipelineOutput(BaseModel):
     stats_30d: RollingHitterStats
     market_snapshots: Dict[str, MarketSnapshot]
     hotness: HitterHotnessBreakdown
+    team: str | None = None
+    team_id: int | None = None
+    position: str | None = None
+    headshot_url: str | None = None
+    team_logo_url: str | None = None
+    sport: str = "MLB"
+    candidate_source: str = "dynamic"
 
 
 class PipelineResult(BaseModel):
