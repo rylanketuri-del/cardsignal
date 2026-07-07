@@ -1534,4 +1534,11 @@ button,
 
     transform:none;
 
+}/* ===========================
+   Sprint 4.1 — Hide Admin
+=========================== */
+
+}
+.admin-hidden {
+  display: none !important;
 }
