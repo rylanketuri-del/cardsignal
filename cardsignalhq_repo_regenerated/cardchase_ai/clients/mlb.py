@@ -77,97 +77,94 @@ class MLBClient:
 
         return rows
 
-  def get_dynamic_hitter_candidates(
-    self,
-    season: int,
-    days: int = 7,
-    limit: int = 100,
-) -> list[dict[str, Any]]:
-    end_date = date.today()
-    start_date = end_date - timedelta(days=days)
+    def get_dynamic_hitter_candidates(
+        self,
+        season: int,
+        days: int = 7,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        end_date = date.today()
+        start_date = end_date - timedelta(days=days)
 
-    data = self._get(
-        "/stats",
-        params={
-            "stats": "byDateRange",
-            "group": "hitting",
-            "playerPool": "ALL",
-            "sportIds": 1,
-            "season": season,
-            "startDate": start_date.isoformat(),
-            "endDate": end_date.isoformat(),
-            "limit": 1000,
-        },
-    )
-
-    stats = data.get("stats", [])
-    if not stats:
-        return []
-
-    splits = stats[0].get("splits", [])
-    candidates = []
-
-    for split in splits:
-        player = split.get("player") or {}
-        team = split.get("team") or {}
-        position = split.get("position") or {}
-        stat = split.get("stat") or {}
-
-        player_id = player.get("id")
-        player_name = player.get("fullName")
-        team_id = team.get("id")
-
-        if not player_id or not player_name:
-            continue
-
-        at_bats = _safe_int(stat.get("atBats"))
-        hits = _safe_int(stat.get("hits"))
-        home_runs = _safe_int(stat.get("homeRuns"))
-        rbi = _safe_int(stat.get("rbi"))
-        runs = _safe_int(stat.get("runs"))
-        stolen_bases = _safe_int(stat.get("stolenBases"))
-        ops = _safe_float(stat.get("ops")) or 0.0
-        avg = _safe_float(stat.get("avg")) or 0.0
-
-        if at_bats < 5:
-            continue
-
-        breakout_score = _breakout_score(
-            at_bats=at_bats,
-            hits=hits,
-            home_runs=home_runs,
-            rbi=rbi,
-            runs=runs,
-            stolen_bases=stolen_bases,
-            ops=ops,
-            avg=avg,
+        data = self._get(
+            "/stats",
+            params={
+                "stats": "byDateRange",
+                "group": "hitting",
+                "playerPool": "ALL",
+                "sportIds": 1,
+                "season": season,
+                "startDate": start_date.isoformat(),
+                "endDate": end_date.isoformat(),
+                "limit": 1000,
+            },
         )
 
-        candidates.append(
-            {
-                "player_id": int(player_id),
-                "player_name": player_name,
-                "team": team.get("abbreviation") or team.get("name") or "MLB",
-                "team_id": int(team_id) if team_id else None,
-                "position": position.get("abbreviation") or position.get("name") or "",
-                "headshot_url": f"https://img.mlbstatic.com/mlb-photos/image/upload/w_213,q_100/v1/people/{player_id}/headshot/current",
-                "team_logo_url": f"https://www.mlbstatic.com/team-logos/{team_id}.svg" if team_id else "",
-                "breakout_score": breakout_score,
-                "stats": {
-                    "at_bats": at_bats,
-                    "hits": hits,
-                    "home_runs": home_runs,
-                    "rbi": rbi,
-                    "runs": runs,
-                    "stolen_bases": stolen_bases,
-                    "ops": ops,
-                    "avg": avg,
-                },
-            }
-        )
+        stats = data.get("stats", [])
+        if not stats:
+            return []
 
-    candidates.sort(key=lambda item: item["breakout_score"], reverse=True)
-    return candidates[:limit]
+        splits = stats[0].get("splits", [])
+        candidates = []
+
+        for split in splits:
+            player = split.get("player") or {}
+            team = split.get("team") or {}
+            position = split.get("position") or {}
+            stat = split.get("stat") or {}
+
+            player_id = player.get("id")
+            player_name = player.get("fullName")
+            team_id = team.get("id")
+
+            if not player_id or not player_name:
+                continue
+
+            at_bats = _safe_int(stat.get("atBats"))
+            hits = _safe_int(stat.get("hits"))
+            home_runs = _safe_int(stat.get("homeRuns"))
+            rbi = _safe_int(stat.get("rbi"))
+            runs = _safe_int(stat.get("runs"))
+            stolen_bases = _safe_int(stat.get("stolenBases"))
+            ops = _safe_float(stat.get("ops")) or 0.0
+            avg = _safe_float(stat.get("avg")) or 0.0
+
+            if at_bats < 5:
+                continue
+
+            breakout_score = _breakout_score(
+                at_bats=at_bats,
+                hits=hits,
+                home_runs=home_runs,
+                rbi=rbi,
+                runs=runs,
+                stolen_bases=stolen_bases,
+                ops=ops,
+                avg=avg,
+            )
+
+            candidates.append(
+                {
+                    "player_id": int(player_id),
+                    "player_name": player_name,
+                    "team": team.get("abbreviation") or team.get("name") or "MLB",
+                    "team_id": int(team_id) if team_id else None,
+                    "position": position.get("abbreviation") or position.get("name") or "",
+                    "headshot_url": f"https://img.mlbstatic.com/mlb-photos/image/upload/w_213,q_100/v1/people/{player_id}/headshot/current",
+                    "team_logo_url": f"https://www.mlbstatic.com/team-logos/{team_id}.svg" if team_id else "",
+                    "breakout_score": breakout_score,
+                    "stats": {
+                        "at_bats": at_bats,
+                        "hits": hits,
+                        "home_runs": home_runs,
+                        "rbi": rbi,
+                        "runs": runs,
+                        "stolen_bases": stolen_bases,
+                        "ops": ops,
+                        "avg": avg,
+                    },
+                }
+            )
 
         candidates.sort(key=lambda item: item["breakout_score"], reverse=True)
         return candidates[:limit]
