@@ -1289,3 +1289,20 @@ canvas {
     font-size: 88px;
   }
 }
+/* ===========================
+   Sprint 3.6.1 — Chart Visibility Fix
+=========================== */
+
+.charts-section .light-panel {
+  min-height: 420px;
+  display: flex;
+  flex-direction: column;
+}
+
+.charts-section canvas {
+  display: block;
+  width: 100% !important;
+  height: 300px !important;
+  min-height: 300px;
+  margin-top: 18px;
+}
