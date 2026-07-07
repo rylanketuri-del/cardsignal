@@ -88,62 +88,50 @@ function getHeatClass(score = 0) {
 
 function buildLeaderboard(entries) {
   return `
-    <section class="leaderboard-section cs-market-leaders">
-      <div class="section-header cs-section-header">
+    <section class="market-leaders-module">
+      <div class="market-leaders-header">
         <div>
           <p class="eyebrow">Market Leaders</p>
           <h2>Today’s Leaders</h2>
-          <p class="cs-section-subtitle">The strongest players across performance, demand, and market movement.</p>
+          <p>The strongest collector signals across performance, demand, and card-market movement.</p>
         </div>
-        <span class="pill">${entries.length} tracked</span>
+        <div class="leaders-count">${entries.length}<span>Tracked</span></div>
       </div>
 
-      <div class="cs-leader-grid">
+      <div class="market-leaders-list">
         ${entries.map((entry, index) => {
           const score = entry.hotness?.total_score || 0;
           const performance = entry.hotness?.performance_score || 0;
           const market = entry.hotness?.market_score || 0;
-          const heatLabel = getHeatLabel(score);
-
-          const initials = String(entry.player_name || "?")
-            .split(" ")
-            .map(part => part[0])
-            .join("")
-            .slice(0, 2)
-            .toUpperCase();
+          const tag = entry.hotness?.tag || getHeatLabel(score);
 
           return `
-            <article class="cs-leader-card" data-player-index="${index}">
-              <div class="cs-leader-rank">${entry.rank || index + 1}</div>
+            <button class="market-leader-row" type="button" data-player-index="${index}">
+              <div class="leader-rank">${entry.rank || index + 1}</div>
 
-              <div class="cs-leader-main">
-                <div class="cs-player-medallion">${initials}</div>
+              <div class="leader-player">
+                <strong>${entry.player_name}</strong>
+                <span>${tag}</span>
+              </div>
+
+              <div class="leader-score">
+                ${formatScore(score)}
+                <span>Signal</span>
+              </div>
+
+              <div class="leader-metrics">
                 <div>
-                  <h3>${entry.player_name}</h3>
-                  <p>${heatLabel}</p>
+                  <strong>${formatScore(performance)}</strong>
+                  <span>Performance</span>
+                </div>
+                <div>
+                  <strong>${formatScore(market)}</strong>
+                  <span>Market</span>
                 </div>
               </div>
 
-              <div class="cs-score-wrap">
-                <span class="cs-score">${formatScore(score)}</span>
-                <small>CardSignal Score</small>
-              </div>
-
-              <div class="cs-mini-metrics">
-                <div>
-                  <span>${formatScore(performance)}</span>
-                  <small>Performance</small>
-                </div>
-                <div>
-                  <span>${formatScore(market)}</span>
-                  <small>Market</small>
-                </div>
-              </div>
-
-              <button class="cs-view-link" type="button">
-                View Report →
-              </button>
-            </article>
+              <div class="leader-action">View Report →</div>
+            </button>
           `;
         }).join("")}
       </div>
