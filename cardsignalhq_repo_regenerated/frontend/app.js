@@ -58,6 +58,12 @@ async function adminFetch(path, options = {}) {
 async function fetchPlayer(playerId) { return apiFetch(`/api/players/${playerId}`); }
 async function fetchPlayerHistory(playerId) { return apiFetch(`/api/players/${playerId}/history?limit=14`); }
 async function fetchLeaderboardHistory() { return apiFetch('/api/history/leaderboard?limit=10'); }
+async function fetchPlayerSearch(query) {
+  const response = await fetch(`${API_BASE_URL}/api/players/search?q=${encodeURIComponent(query)}`);
+  if (!response.ok) return [];
+  const data = await response.json();
+  return Array.isArray(data) ? data : (data.items || []);
+}
 
 function setAuthStatus(message, isError = false) {
   const root = document.getElementById('auth-status');
@@ -1012,8 +1018,15 @@ function renderDashboardV2(entries) {
 }
 
 /* ==========================================================
-   Sprint 4.5 — Universal Player Search
+   Sprint 4.6 — Universal Player Search Polish
    ========================================================== */
+
+let searchDebounceTimer = null;
+let searchRequestId = 0;
+let cachedBackendSearchResults = [];
+let searchIsLoading = false;
+let searchHighlightIndex = -1;
+let currentSearchMatches = [];
 
 function normalizeSearchText(value) {
   return String(value || "").trim().toLowerCase();
@@ -1029,6 +1042,34 @@ function filterLatestEntries(query) {
     const position = normalizeSearchText(entry.position);
     return name.includes(needle) || team.includes(needle) || position.includes(needle);
   });
+}
+
+function isLeaderboardPlayer(entry = {}) {
+  return latestEntries.some((item) => String(item.player_id) === String(entry.player_id));
+}
+
+function mergeSearchResults(localMatches, backendMatches) {
+  const seen = new Set();
+  const merged = [];
+
+  for (const entry of localMatches) {
+    const id = entry.player_id;
+    if (id != null) seen.add(String(id));
+    merged.push(entry);
+  }
+
+  for (const entry of backendMatches) {
+    const id = String(entry.player_id || "");
+    if (id && seen.has(id)) continue;
+    if (id) seen.add(id);
+    merged.push(entry);
+  }
+
+  return merged;
+}
+
+function getMergedSearchMatches(query) {
+  return mergeSearchResults(filterLatestEntries(query), cachedBackendSearchResults);
 }
 
 function renderSearchResultHeadshot(entry = {}) {
@@ -1048,62 +1089,109 @@ function renderSearchResultHeadshot(entry = {}) {
   return `<span class="search-result-photo"><span>${initials}</span></span>`;
 }
 
-function renderSearchResults(matches, query) {
+function renderSearchResultBadge(entry) {
+  const isTop20 = isLeaderboardPlayer(entry);
+  const label = isTop20 ? "Top 20" : "MLB Search";
+  const modifier = isTop20 ? "top20" : "mlb";
+  return `<span class="player-search-result-badge player-search-result-badge--${modifier}">${label}</span>`;
+}
+
+function applySearchHighlight() {
+  const root = document.getElementById("player-search-results");
+  if (!root) return;
+
+  const buttons = [...root.querySelectorAll(".player-search-result")];
+  buttons.forEach((button, index) => {
+    button.classList.toggle("player-search-result--highlighted", index === searchHighlightIndex);
+  });
+
+  if (searchHighlightIndex >= 0 && buttons[searchHighlightIndex]) {
+    buttons[searchHighlightIndex].scrollIntoView({ block: "nearest" });
+  }
+}
+
+function renderSearchResults(matches, query, { loading = false } = {}) {
   const root = document.getElementById("player-search-results");
   if (!root) return;
 
   if (!normalizeSearchText(query)) {
     root.classList.add("hidden");
     root.innerHTML = "";
+    currentSearchMatches = [];
+    searchHighlightIndex = -1;
     return;
   }
 
+  currentSearchMatches = matches;
   root.classList.remove("hidden");
 
-  if (!matches.length) {
-    root.innerHTML = `<div class="player-search-empty">No tracked player found yet.</div>`;
+  if (!matches.length && loading) {
+    searchHighlightIndex = -1;
+    root.innerHTML = `<div class="player-search-status player-search-loading">Searching MLB player pool...</div>`;
     return;
   }
 
-  root.innerHTML = matches.map((entry) => {
+  if (!matches.length && !loading) {
+    searchHighlightIndex = -1;
+    root.innerHTML = `<div class="player-search-status player-search-empty">No MLB player found.</div>`;
+    return;
+  }
+
+  if (searchHighlightIndex >= matches.length) {
+    searchHighlightIndex = matches.length - 1;
+  }
+
+  let html = matches.map((entry, index) => {
+    const scored = isLeaderboardPlayer(entry);
     const score = entry.hotness?.total_score || 0;
     const team = getTeamAbbrev(entry);
     const position = entry.position || "—";
+    const scoreMarkup = scored
+      ? `<strong>${formatScore(score)}</strong><small>CardSignal</small>`
+      : `<strong class="search-score-unscored">Not scored yet</strong><small>CardSignal</small>`;
+    const highlighted = index === searchHighlightIndex ? " player-search-result--highlighted" : "";
 
     return `
       <button
-        class="player-search-result"
+        class="player-search-result${scored ? "" : " player-search-result--unscored"}${highlighted}"
         type="button"
         role="option"
+        aria-selected="${index === searchHighlightIndex ? "true" : "false"}"
         data-player-id="${entry.player_id || ""}"
+        data-is-leaderboard="${scored ? "1" : "0"}"
       >
         ${renderSearchResultHeadshot(entry)}
         <span class="player-search-result-copy">
           <strong>${entry.player_name}</strong>
-          <span>${team} · ${position}</span>
+          <span class="player-search-result-meta">
+            <span>${team} · ${position}</span>
+            ${renderSearchResultBadge(entry)}
+          </span>
         </span>
         <span class="player-search-result-score">
-          <strong>${formatScore(score)}</strong>
-          <small>CardSignal</small>
+          ${scoreMarkup}
         </span>
       </button>
     `;
   }).join("");
 
-  root.querySelectorAll(".player-search-result").forEach((button) => {
-    button.addEventListener("click", async () => {
-      const playerId = button.dataset.playerId;
-      const entry = matches.find((item) => String(item.player_id || "") === playerId)
-        || matches.find((item) => item.player_name === button.querySelector("strong")?.textContent);
-      if (!entry) return;
-      await handleSearchResultSelect(entry);
-    });
-  });
+  if (loading) {
+    html += `<div class="player-search-status player-search-loading">Searching MLB player pool...</div>`;
+  }
+
+  root.innerHTML = html;
 }
 
 function closePlayerSearch() {
   const input = document.getElementById("player-search-input");
   const root = document.getElementById("player-search-results");
+
+  clearTimeout(searchDebounceTimer);
+  searchRequestId += 1;
+  cachedBackendSearchResults = [];
+  searchIsLoading = false;
+  currentSearchMatches = [];
+  searchHighlightIndex = -1;
 
   if (input) input.value = "";
   if (root) {
@@ -1136,23 +1224,185 @@ async function handleSearchResultSelect(entry) {
   scrollToPlayerReport();
 }
 
+function renderLightweightPlayerDetail(entry) {
+  const teamPosition = formatTeamPositionLabel(entry);
+
+  return `
+    <article class="player-report player-report--lightweight">
+      <div class="player-report-hero">
+        <div class="player-report-identity">
+          ${renderPlayerHeadshot(entry)}
+
+          <div>
+            <p class="eyebrow">Player Report</p>
+            <h2>${entry.player_name}</h2>
+            <div class="player-team-line">
+              <span class="team-logo-placeholder">${renderTeamLogoMarkup(entry)}</span>
+              <strong>${teamPosition}</strong>
+            </div>
+
+            <div class="player-report-meta">
+              <span>MLB Search</span>
+              <span>Not on today’s board</span>
+            </div>
+          </div>
+        </div>
+
+        <button id="watchlist-toggle-btn" class="player-save-btn">
+          ${currentUser ? "Add to Watchlist" : "Sign in to save"}
+        </button>
+      </div>
+
+      <div class="report-score-band">
+        <div class="report-score-main report-score-main--unscored">
+          <span>Not scored yet</span>
+          <small>CardSignal</small>
+        </div>
+      </div>
+
+      <section class="collector-insight">
+        <p class="eyebrow">Status</p>
+        <p>This player is not in today’s Top 20 yet. Add to Watchlist or check back after the next market run.</p>
+      </section>
+    </article>
+  `;
+}
+
+async function handleBackendOnlyPlayerSelect(entry) {
+  closePlayerSearch();
+  selectedPlayer = entry;
+
+  const detailRoot = document.getElementById("player-detail");
+  detailRoot.innerHTML = renderLightweightPlayerDetail(entry);
+  wirePlayerActions();
+
+  destroyChart(scoreChart);
+  const canvas = document.getElementById("score-history-chart");
+  if (canvas) {
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  }
+
+  const leaderboardRoot = document.getElementById("leaderboard-table");
+  leaderboardRoot?.querySelectorAll(".leader-table-row.active").forEach((row) => row.classList.remove("active"));
+
+  scrollToPlayerReport();
+}
+
+async function handleSearchResultPick(entry) {
+  if (isLeaderboardPlayer(entry)) {
+    await handleSearchResultSelect(entry);
+  } else {
+    await handleBackendOnlyPlayerSelect(entry);
+  }
+}
+
+function scheduleBackendPlayerSearch(query) {
+  const needle = normalizeSearchText(query);
+  clearTimeout(searchDebounceTimer);
+
+  if (needle.length < 2) {
+    searchIsLoading = false;
+    return;
+  }
+
+  const requestId = ++searchRequestId;
+  searchIsLoading = true;
+  renderSearchResults(getMergedSearchMatches(query), query, { loading: true });
+
+  searchDebounceTimer = setTimeout(async () => {
+    try {
+      const backendResults = await fetchPlayerSearch(query);
+      if (requestId !== searchRequestId) return;
+      cachedBackendSearchResults = backendResults;
+    } catch (_) {
+      if (requestId !== searchRequestId) return;
+      cachedBackendSearchResults = [];
+    } finally {
+      if (requestId !== searchRequestId) return;
+      searchIsLoading = false;
+      renderSearchResults(getMergedSearchMatches(query), query, { loading: false });
+    }
+  }, 250);
+}
+
+function updatePlayerSearchResults(query) {
+  const needle = normalizeSearchText(query);
+  if (needle.length < 2) {
+    cachedBackendSearchResults = [];
+    searchIsLoading = false;
+    searchHighlightIndex = -1;
+    renderSearchResults(getMergedSearchMatches(query), query, { loading: false });
+    return;
+  }
+
+  searchHighlightIndex = -1;
+  renderSearchResults(getMergedSearchMatches(query), query, { loading: searchIsLoading });
+  scheduleBackendPlayerSearch(query);
+}
+
 function setupPlayerSearch() {
   const input = document.getElementById("player-search-input");
   const module = document.getElementById("player-search-module");
-  if (!input || !module) return;
+  const results = document.getElementById("player-search-results");
+  if (!input || !module || !results) return;
 
   input.addEventListener("input", () => {
-    renderSearchResults(filterLatestEntries(input.value), input.value);
+    const query = input.value;
+    if (!normalizeSearchText(query)) {
+      closePlayerSearch();
+      return;
+    }
+    updatePlayerSearchResults(query);
   });
 
   input.addEventListener("focus", () => {
     if (normalizeSearchText(input.value)) {
-      renderSearchResults(filterLatestEntries(input.value), input.value);
+      updatePlayerSearchResults(input.value);
     }
   });
 
   input.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") closePlayerSearch();
+    if (event.key === "Escape") {
+      closePlayerSearch();
+      return;
+    }
+
+    const selectableCount = currentSearchMatches.length;
+    if (!selectableCount) return;
+
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      searchHighlightIndex = Math.min(searchHighlightIndex + 1, selectableCount - 1);
+      if (searchHighlightIndex < 0) searchHighlightIndex = 0;
+      applySearchHighlight();
+      return;
+    }
+
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      searchHighlightIndex = Math.max(searchHighlightIndex - 1, 0);
+      applySearchHighlight();
+      return;
+    }
+
+    if (event.key === "Enter" && searchHighlightIndex >= 0) {
+      event.preventDefault();
+      const entry = currentSearchMatches[searchHighlightIndex];
+      if (entry) handleSearchResultPick(entry);
+    }
+  });
+
+  results.addEventListener("click", async (event) => {
+    const button = event.target.closest(".player-search-result");
+    if (!button) return;
+
+    const playerId = button.dataset.playerId;
+    const entry = currentSearchMatches.find((item) => String(item.player_id || "") === playerId)
+      || currentSearchMatches.find((item) => item.player_name === button.querySelector("strong")?.textContent);
+    if (!entry) return;
+
+    await handleSearchResultPick(entry);
   });
 
   document.addEventListener("click", (event) => {
