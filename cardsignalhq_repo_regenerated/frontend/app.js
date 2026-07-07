@@ -1136,7 +1136,7 @@ async function handleSearchResultSelect(entry) {
   scrollToPlayerReport();
 }
 
-function bindPlayerSearch() {
+function setupPlayerSearch() {
   const input = document.getElementById("player-search-input");
   const module = document.getElementById("player-search-module");
   if (!input || !module) return;
@@ -1175,7 +1175,6 @@ async function init() {
     status.textContent = 'Binding controls...';
     bindAuthActions();
     bindAdminActions();
-    bindPlayerSearch();
 
     status.textContent = 'Loading leaderboard...';
     const payload = await fetch(SOURCE_URL).then(res => {
@@ -1185,6 +1184,7 @@ async function init() {
 
     const entries = payload.items || [];
     latestEntries = entries;
+    setupPlayerSearch();
 
     if (!entries.length) throw new Error('Leaderboard response is empty.');
 
