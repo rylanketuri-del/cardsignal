@@ -149,30 +149,169 @@ function buildLeaderboard(entries) {
   `;
 }
 
+function getCollectorGrade(score = 0) {
+  if (score >= 90) return "A+";
+  if (score >= 80) return "A";
+  if (score >= 70) return "B+";
+  if (score >= 60) return "B";
+  if (score >= 50) return "C+";
+  return "Watch";
+}
+
+function getMarketOutlook(score = 0, market = 0) {
+  if (score >= 75 && market >= 70) return "Bullish";
+  if (score >= 60 || market >= 65) return "Constructive";
+  if (score >= 45) return "Neutral";
+  return "Watchlist";
+}
+
+function buildCollectorInsight(entry) {
+  const score = entry.hotness?.total_score || 0;
+  const market = entry.hotness?.market_score || 0;
+  const performance = entry.hotness?.performance_score || 0;
+  const tag = entry.hotness?.tag || "WATCH";
+
+  if (market >= 80 && performance >= 55) {
+    return `${entry.player_name} is showing one of the stronger collector profiles on the board today. Market demand is leading the signal, while recent performance remains supportive enough to keep momentum intact. Premium parallels and graded cards should be watched closely if this demand holds.`;
+  }
+
+  if (market >= 75 && performance < 55) {
+    return `${entry.player_name} is being driven primarily by collector demand rather than recent stat production. That can create opportunity, but it also means the signal may be more sensitive to short-term market swings. Treat this as a ${tag.toLowerCase()} profile until performance catches up.`;
+  }
+
+  if (performance >= 70 && market < 60) {
+    return `${entry.player_name} has the kind of performance profile that can attract collectors quickly if the card market starts reacting. This is a potential early-watch candidate where stats may be moving before demand fully prices in.`;
+  }
+
+  if (score >= 60) {
+    return `${entry.player_name} remains relevant on today’s CardSignal board with a balanced mix of performance and market activity. The signal is not overheated yet, but the profile is strong enough to keep on the collector radar.`;
+  }
+
+  return `${entry.player_name} is currently more of a watchlist candidate than an aggressive chase. The data shows some activity, but the collector signal needs either stronger performance or clearer market demand before moving higher.`;
+}
+
 function renderPlayerDetail(entry) {
   selectedPlayer = entry;
-  const reasons = entry.hotness.reasons?.length
-    ? entry.hotness.reasons.map(reason => `<span class="reason">${reason}</span>`).join('')
-    : '<span class="reason">No key reasons generated yet</span>';
+
+  const hotness = entry.hotness || {};
+  const stats = entry.stats_7d || {};
+  const score = hotness.total_score || 0;
+  const performance = hotness.performance_score || 0;
+  const market = hotness.market_score || 0;
+  const confidence = hotness.confidence_multiplier || 0;
+  const grade = getCollectorGrade(score);
+  const outlook = getMarketOutlook(score, market);
+
+  const reasons = hotness.reasons?.length
+    ? hotness.reasons.map(reason => `<span class="report-chip">${reason}</span>`).join("")
+    : `<span class="report-chip">No key reasons generated yet</span>`;
+
   const marketRows = Object.entries(entry.market_snapshots || {}).map(([name, snapshot]) => `
-      <tr><td>${name}</td><td>${snapshot.listings_count ?? 0}</td><td>${snapshot.avg_price ? `$${snapshot.avg_price.toFixed(2)}` : '—'}</td></tr>`).join('');
+    <tr>
+      <td>${name}</td>
+      <td>${snapshot.listings_count ?? 0}</td>
+      <td>${snapshot.avg_price ? `$${snapshot.avg_price.toFixed(2)}` : "—"}</td>
+    </tr>
+  `).join("");
+
   return `
-    <div class="detail-card">
-      <div class="detail-top">
-        <div><div class="detail-name">${entry.player_name}</div><div class="hero-sub"><span class="${tagClass(entry.hotness.tag)}">${entry.hotness.tag}</span></div></div>
-        <button id="watchlist-toggle-btn" class="primary">${currentUser ? 'Save to watchlist' : 'Sign in to save'}</button>
+    <article class="player-report">
+      <div class="player-report-hero">
+        <div>
+          <p class="eyebrow">Player Report</p>
+          <h2>${entry.player_name}</h2>
+          <div class="player-report-meta">
+            <span>${hotness.tag || "WATCH"}</span>
+            <span>Collector Grade ${grade}</span>
+            <span>${outlook}</span>
+          </div>
+        </div>
+
+        <button id="watchlist-toggle-btn" class="player-save-btn">
+          ${currentUser ? "Save to watchlist" : "Sign in to save"}
+        </button>
       </div>
-      <div class="stat-grid">
-        <div class="stat-box"><div class="k">Total score</div><div class="v">${formatScore(entry.hotness.total_score)}</div></div>
-        <div class="stat-box"><div class="k">7D OPS</div><div class="v">${formatScore(entry.stats_7d.ops)}</div></div>
-        <div class="stat-box"><div class="k">7D HR</div><div class="v">${entry.stats_7d.home_runs ?? 0}</div></div>
-        <div class="stat-box"><div class="k">7D SB</div><div class="v">${entry.stats_7d.stolen_bases ?? 0}</div></div>
-        <div class="stat-box"><div class="k">Market score</div><div class="v">${formatScore(entry.hotness.market_score)}</div></div>
-        <div class="stat-box"><div class="k">Confidence</div><div class="v">${formatScore(entry.hotness.confidence_multiplier)}</div></div>
+
+      <div class="report-score-band">
+        <div class="report-score-main">
+          <span>${formatScore(score)}</span>
+          <small>CardSignal Score</small>
+        </div>
+
+        <div class="report-outlook-card">
+          <span>${grade}</span>
+          <small>Collector Grade</small>
+        </div>
+
+        <div class="report-outlook-card">
+          <span>${outlook}</span>
+          <small>Market Outlook</small>
+        </div>
       </div>
-      <div><div class="label">Why this player is here</div><div class="reasons">${reasons}</div></div>
-      <div><div class="label">Market snapshots</div><table class="mini-table"><thead><tr><td><strong>Query</strong></td><td><strong>Listings</strong></td><td><strong>Avg price</strong></td></tr></thead><tbody>${marketRows}</tbody></table></div>
-    </div>`;
+
+      <div class="report-metrics-grid">
+        <div class="report-metric">
+          <small>Performance</small>
+          <strong>${formatScore(performance)}</strong>
+        </div>
+        <div class="report-metric">
+          <small>Market</small>
+          <strong>${formatScore(market)}</strong>
+        </div>
+        <div class="report-metric">
+          <small>7D OPS</small>
+          <strong>${formatScore(stats.ops)}</strong>
+        </div>
+        <div class="report-metric">
+          <small>7D HR</small>
+          <strong>${stats.home_runs ?? 0}</strong>
+        </div>
+        <div class="report-metric">
+          <small>7D SB</small>
+          <strong>${stats.stolen_bases ?? 0}</strong>
+        </div>
+        <div class="report-metric">
+          <small>Confidence</small>
+          <strong>${formatScore(confidence)}</strong>
+        </div>
+      </div>
+
+      <section class="report-section">
+        <div class="report-section-head">
+          <p class="eyebrow">Why He’s Moving</p>
+        </div>
+        <div class="report-chip-row">${reasons}</div>
+      </section>
+
+      <section class="collector-insight">
+        <p class="eyebrow">AI Collector Insight</p>
+        <p>${buildCollectorInsight(entry)}</p>
+      </section>
+
+      <section class="report-section">
+        <div class="report-section-head">
+          <p class="eyebrow">Market Snapshot</p>
+        </div>
+
+        <table class="report-table">
+          <thead>
+            <tr>
+              <th>Query</th>
+              <th>Listings</th>
+              <th>Avg Price</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${marketRows || `
+              <tr>
+                <td colspan="3">No market snapshots available yet.</td>
+              </tr>
+            `}
+          </tbody>
+        </table>
+      </section>
+    </article>
+  `;
 }
 
 function renderNotifications(items, summary) {
