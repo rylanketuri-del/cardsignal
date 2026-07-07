@@ -1849,6 +1849,34 @@ button,
   letter-spacing: 0.12em;
 }
 
+.search-score-unscored {
+  font-family: inherit;
+  font-size: 11px;
+  line-height: 1.2;
+  font-weight: 800;
+  color: var(--muted);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.player-search-result--unscored .player-search-result-score {
+  max-width: 92px;
+}
+
+.report-score-main--unscored span {
+  font-family: inherit;
+  font-size: 1.35rem;
+  line-height: 1.15;
+  font-weight: 800;
+  color: var(--muted);
+}
+
+.player-report--unscored .collector-insight p:last-child {
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1.6;
+}
+
 @media (max-width: 640px) {
   .player-search-label {
     min-height: 54px;

@@ -58,6 +58,12 @@ async function adminFetch(path, options = {}) {
 async function fetchPlayer(playerId) { return apiFetch(`/api/players/${playerId}`); }
 async function fetchPlayerHistory(playerId) { return apiFetch(`/api/players/${playerId}/history?limit=14`); }
 async function fetchLeaderboardHistory() { return apiFetch('/api/history/leaderboard?limit=10'); }
+async function fetchPlayerSearch(query) {
+  const response = await fetch(`${API_BASE_URL}/api/players/search?q=${encodeURIComponent(query)}`);
+  if (!response.ok) return [];
+  const data = await response.json();
+  return Array.isArray(data) ? data : (data.items || []);
+}
 
 function setAuthStatus(message, isError = false) {
   const root = document.getElementById('auth-status');
@@ -1015,6 +1021,10 @@ function renderDashboardV2(entries) {
    Sprint 4.5 — Universal Player Search
    ========================================================== */
 
+let searchDebounceTimer = null;
+let searchRequestId = 0;
+let cachedBackendSearchResults = [];
+
 function normalizeSearchText(value) {
   return String(value || "").trim().toLowerCase();
 }
@@ -1029,6 +1039,34 @@ function filterLatestEntries(query) {
     const position = normalizeSearchText(entry.position);
     return name.includes(needle) || team.includes(needle) || position.includes(needle);
   });
+}
+
+function hasHotnessData(entry = {}) {
+  return typeof entry.hotness?.total_score === "number";
+}
+
+function mergeSearchResults(localMatches, backendMatches) {
+  const seen = new Set();
+  const merged = [];
+
+  for (const entry of localMatches) {
+    const id = entry.player_id;
+    if (id != null) seen.add(String(id));
+    merged.push(entry);
+  }
+
+  for (const entry of backendMatches) {
+    const id = String(entry.player_id || "");
+    if (id && seen.has(id)) continue;
+    if (id) seen.add(id);
+    merged.push(entry);
+  }
+
+  return merged;
+}
+
+function getMergedSearchMatches(query) {
+  return mergeSearchResults(filterLatestEntries(query), cachedBackendSearchResults);
 }
 
 function renderSearchResultHeadshot(entry = {}) {
@@ -1061,21 +1099,26 @@ function renderSearchResults(matches, query) {
   root.classList.remove("hidden");
 
   if (!matches.length) {
-    root.innerHTML = `<div class="player-search-empty">No tracked player found yet.</div>`;
+    root.innerHTML = `<div class="player-search-empty">No players found.</div>`;
     return;
   }
 
   root.innerHTML = matches.map((entry) => {
+    const scored = hasHotnessData(entry);
     const score = entry.hotness?.total_score || 0;
     const team = getTeamAbbrev(entry);
     const position = entry.position || "—";
+    const scoreMarkup = scored
+      ? `<strong>${formatScore(score)}</strong><small>CardSignal</small>`
+      : `<strong class="search-score-unscored">Not scored yet</strong><small>CardSignal</small>`;
 
     return `
       <button
-        class="player-search-result"
+        class="player-search-result${scored ? "" : " player-search-result--unscored"}"
         type="button"
         role="option"
         data-player-id="${entry.player_id || ""}"
+        data-has-score="${scored ? "1" : "0"}"
       >
         ${renderSearchResultHeadshot(entry)}
         <span class="player-search-result-copy">
@@ -1083,8 +1126,7 @@ function renderSearchResults(matches, query) {
           <span>${team} · ${position}</span>
         </span>
         <span class="player-search-result-score">
-          <strong>${formatScore(score)}</strong>
-          <small>CardSignal</small>
+          ${scoreMarkup}
         </span>
       </button>
     `;
@@ -1096,7 +1138,12 @@ function renderSearchResults(matches, query) {
       const entry = matches.find((item) => String(item.player_id || "") === playerId)
         || matches.find((item) => item.player_name === button.querySelector("strong")?.textContent);
       if (!entry) return;
-      await handleSearchResultSelect(entry);
+
+      if (button.dataset.hasScore === "1") {
+        await handleSearchResultSelect(entry);
+      } else {
+        await handleUnscoredPlayerSelect(entry);
+      }
     });
   });
 }
@@ -1104,6 +1151,10 @@ function renderSearchResults(matches, query) {
 function closePlayerSearch() {
   const input = document.getElementById("player-search-input");
   const root = document.getElementById("player-search-results");
+
+  clearTimeout(searchDebounceTimer);
+  searchRequestId += 1;
+  cachedBackendSearchResults = [];
 
   if (input) input.value = "";
   if (root) {
@@ -1136,18 +1187,117 @@ async function handleSearchResultSelect(entry) {
   scrollToPlayerReport();
 }
 
+function renderUnscoredPlayerDetail(entry) {
+  const teamPosition = formatTeamPositionLabel(entry);
+
+  return `
+    <article class="player-report player-report--unscored">
+      <div class="player-report-hero">
+        <div class="player-report-identity">
+          ${renderPlayerHeadshot(entry)}
+
+          <div>
+            <p class="eyebrow">Player Report</p>
+            <h2>${entry.player_name}</h2>
+            <div class="player-team-line">
+              <span class="team-logo-placeholder">${renderTeamLogoMarkup(entry)}</span>
+              <strong>${teamPosition}</strong>
+            </div>
+
+            <div class="player-report-meta">
+              <span>Not on today’s board</span>
+            </div>
+          </div>
+        </div>
+
+        <button id="watchlist-toggle-btn" class="player-save-btn">
+          ${currentUser ? "Add to Chase List" : "Sign in to save"}
+        </button>
+      </div>
+
+      <div class="report-score-band">
+        <div class="report-score-main report-score-main--unscored">
+          <span>Not scored yet</span>
+          <small>CardSignal</small>
+        </div>
+      </div>
+
+      <section class="collector-insight">
+        <p class="eyebrow">Status</p>
+        <p>This player is not in today’s Top 20 yet. Add to Chase List or check back after the next market run.</p>
+      </section>
+    </article>
+  `;
+}
+
+async function handleUnscoredPlayerSelect(entry) {
+  closePlayerSearch();
+  selectedPlayer = entry;
+
+  const detailRoot = document.getElementById("player-detail");
+  detailRoot.innerHTML = renderUnscoredPlayerDetail(entry);
+  wirePlayerActions();
+
+  destroyChart(scoreChart);
+  const canvas = document.getElementById("score-history-chart");
+  if (canvas) {
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  }
+
+  const leaderboardRoot = document.getElementById("leaderboard-table");
+  leaderboardRoot?.querySelectorAll(".leader-table-row.active").forEach((row) => row.classList.remove("active"));
+
+  scrollToPlayerReport();
+}
+
+function scheduleBackendPlayerSearch(query) {
+  const needle = normalizeSearchText(query);
+  clearTimeout(searchDebounceTimer);
+
+  if (needle.length < 2) return;
+
+  const requestId = ++searchRequestId;
+
+  searchDebounceTimer = setTimeout(async () => {
+    try {
+      const backendResults = await fetchPlayerSearch(query);
+      if (requestId !== searchRequestId) return;
+      cachedBackendSearchResults = backendResults;
+      renderSearchResults(getMergedSearchMatches(query), query);
+    } catch (_) {
+      if (requestId !== searchRequestId) return;
+      cachedBackendSearchResults = [];
+      renderSearchResults(getMergedSearchMatches(query), query);
+    }
+  }, 250);
+}
+
+function updatePlayerSearchResults(query) {
+  if (normalizeSearchText(query).length < 2) {
+    cachedBackendSearchResults = [];
+  }
+  renderSearchResults(getMergedSearchMatches(query), query);
+  scheduleBackendPlayerSearch(query);
+}
+
 function setupPlayerSearch() {
   const input = document.getElementById("player-search-input");
   const module = document.getElementById("player-search-module");
   if (!input || !module) return;
 
   input.addEventListener("input", () => {
-    renderSearchResults(filterLatestEntries(input.value), input.value);
+    const query = input.value;
+    if (!normalizeSearchText(query)) {
+      closePlayerSearch();
+      return;
+    }
+    updatePlayerSearchResults(query);
   });
 
   input.addEventListener("focus", () => {
     if (normalizeSearchText(input.value)) {
-      renderSearchResults(filterLatestEntries(input.value), input.value);
+      updatePlayerSearchResults(input.value);
     }
   });
 
