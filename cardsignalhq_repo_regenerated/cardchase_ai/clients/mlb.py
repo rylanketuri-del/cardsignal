@@ -150,7 +150,7 @@ class MLBClient:
                     "team": team.get("abbreviation") or team.get("name") or "MLB",
                     "team_id": int(team_id) if team_id else None,
                     "position": position.get("abbreviation") or position.get("name") or "",
-                    "headshot_url": f"https://img.mlbstatic.com/mlb-photos/image/upload/w_213,q_100/v1/people/{player_id}/headshot/current",
+                    "headshot_url": f"https://img.mlbstatic.com/mlb-photos/image/upload/d_people:generic:headshot:silo:current.png/w_213,q_auto:best/v1/people/{player_id}/headshot/67/current",
                     "team_logo_url": f"https://www.mlbstatic.com/team-logos/{team_id}.svg" if team_id else "",
                     "breakout_score": breakout_score,
                     "stats": {
