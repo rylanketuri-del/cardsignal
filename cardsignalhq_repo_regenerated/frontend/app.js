@@ -86,6 +86,28 @@ function getHeatClass(score = 0) {
   return "heat-cold";
 }
 
+function getPlayerInitials(playerName = "?") {
+  return String(playerName)
+    .split(" ")
+    .map(part => part[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+}
+
+function getTeamAbbrev(entry = {}) {
+  return entry.team || entry.team_abbrev || entry.mlb_team || "MLB";
+}
+
+function getSportIcon(entry = {}) {
+  const sport = String(entry.sport || "MLB").toUpperCase();
+
+  if (sport === "NFL") return "🏈";
+  if (sport === "NBA") return "🏀";
+  if (sport === "NHL") return "🏒";
+  return "⚾";
+}
+
 function buildLeaderboard(entries) {
   return `
     <section class="market-leaders-module">
@@ -116,23 +138,22 @@ function buildLeaderboard(entries) {
           const tag = entry.hotness?.tag || getHeatLabel(score);
           const trend = score >= 60 ? "↑" : "↓";
           const trendClass = score >= 60 ? "trend-up" : "trend-down";
-
-          const initials = String(entry.player_name || "?")
-            .split(" ")
-            .map(part => part[0])
-            .join("")
-            .slice(0, 2)
-            .toUpperCase();
+          const initials = getPlayerInitials(entry.player_name);
+          const team = getTeamAbbrev(entry);
+          const sportIcon = getSportIcon(entry);
 
           return `
             <button class="leader-table-row" type="button" data-player-index="${index}">
               <span class="leader-rank-small">${entry.rank || index + 1}</span>
 
               <span class="leader-profile">
-                <span class="leader-photo">${initials}</span>
+                <span class="leader-photo">
+                  <span>${initials}</span>
+                </span>
+
                 <span>
                   <strong>${entry.player_name}</strong>
-                  <em>${tag}</em>
+                  <em><span class="team-chip">${sportIcon} ${team}</span> ${tag}</em>
                 </span>
               </span>
 
@@ -190,6 +211,47 @@ function buildCollectorInsight(entry) {
   return `${entry.player_name} is currently more of a watchlist candidate than an aggressive chase. The data shows some activity, but the collector signal needs either stronger performance or clearer market demand before moving higher.`;
 }
 
+function getCollectorGrade(score = 0) {
+  if (score >= 90) return "A+";
+  if (score >= 80) return "A";
+  if (score >= 70) return "B+";
+  if (score >= 60) return "B";
+  if (score >= 50) return "C+";
+  return "Watch";
+}
+
+function getMarketOutlook(score = 0, market = 0) {
+  if (score >= 75 && market >= 70) return "Bullish";
+  if (score >= 60 || market >= 65) return "Constructive";
+  if (score >= 45) return "Neutral";
+  return "Watchlist";
+}
+
+function buildCollectorInsight(entry) {
+  const score = entry.hotness?.total_score || 0;
+  const market = entry.hotness?.market_score || 0;
+  const performance = entry.hotness?.performance_score || 0;
+  const tag = entry.hotness?.tag || "WATCH";
+
+  if (market >= 80 && performance >= 55) {
+    return `${entry.player_name} is showing one of the stronger collector profiles on the board today. Market demand is leading the signal, while recent performance remains supportive enough to keep momentum intact. Premium parallels and graded cards should be watched closely if this demand holds.`;
+  }
+
+  if (market >= 75 && performance < 55) {
+    return `${entry.player_name} is being driven primarily by collector demand rather than recent stat production. That can create opportunity, but it also means the signal may be more sensitive to short-term market swings. Treat this as a ${tag.toLowerCase()} profile until performance catches up.`;
+  }
+
+  if (performance >= 70 && market < 60) {
+    return `${entry.player_name} has the kind of performance profile that can attract collectors quickly if the card market starts reacting. This is a potential early-watch candidate where stats may be moving before demand fully prices in.`;
+  }
+
+  if (score >= 60) {
+    return `${entry.player_name} remains relevant on today’s CardSignal board with a balanced mix of performance and market activity. The signal is not overheated yet, but the profile is strong enough to keep on the collector radar.`;
+  }
+
+  return `${entry.player_name} is currently more of a watchlist candidate than an aggressive chase. The data shows some activity, but the collector signal needs either stronger performance or clearer market demand before moving higher.`;
+}
+
 function renderPlayerDetail(entry) {
   selectedPlayer = entry;
 
@@ -201,6 +263,9 @@ function renderPlayerDetail(entry) {
   const confidence = hotness.confidence_multiplier || 0;
   const grade = getCollectorGrade(score);
   const outlook = getMarketOutlook(score, market);
+  const initials = getPlayerInitials(entry.player_name);
+  const team = getTeamAbbrev(entry);
+  const sportIcon = getSportIcon(entry);
 
   const reasons = hotness.reasons?.length
     ? hotness.reasons.map(reason => `<span class="report-chip">${reason}</span>`).join("")
@@ -217,13 +282,24 @@ function renderPlayerDetail(entry) {
   return `
     <article class="player-report">
       <div class="player-report-hero">
-        <div>
-          <p class="eyebrow">Player Report</p>
-          <h2>${entry.player_name}</h2>
-          <div class="player-report-meta">
-            <span>${hotness.tag || "WATCH"}</span>
-            <span>Collector Grade ${grade}</span>
-            <span>${outlook}</span>
+        <div class="player-report-identity">
+          <div class="player-headshot-placeholder">
+            <span>${initials}</span>
+          </div>
+
+          <div>
+            <p class="eyebrow">Player Report</p>
+            <h2>${entry.player_name}</h2>
+            <div class="player-team-line">
+              <span class="team-logo-placeholder">${sportIcon}</span>
+              <strong>${team}</strong>
+            </div>
+
+            <div class="player-report-meta">
+              <span>${hotness.tag || "WATCH"}</span>
+              <span>Collector Grade ${grade}</span>
+              <span>${outlook}</span>
+            </div>
           </div>
         </div>
 
@@ -250,36 +326,16 @@ function renderPlayerDetail(entry) {
       </div>
 
       <div class="report-metrics-grid">
-        <div class="report-metric">
-          <small>Performance</small>
-          <strong>${formatScore(performance)}</strong>
-        </div>
-        <div class="report-metric">
-          <small>Market</small>
-          <strong>${formatScore(market)}</strong>
-        </div>
-        <div class="report-metric">
-          <small>7D OPS</small>
-          <strong>${formatScore(stats.ops)}</strong>
-        </div>
-        <div class="report-metric">
-          <small>7D HR</small>
-          <strong>${stats.home_runs ?? 0}</strong>
-        </div>
-        <div class="report-metric">
-          <small>7D SB</small>
-          <strong>${stats.stolen_bases ?? 0}</strong>
-        </div>
-        <div class="report-metric">
-          <small>Confidence</small>
-          <strong>${formatScore(confidence)}</strong>
-        </div>
+        <div class="report-metric"><small>Performance</small><strong>${formatScore(performance)}</strong></div>
+        <div class="report-metric"><small>Market</small><strong>${formatScore(market)}</strong></div>
+        <div class="report-metric"><small>7D OPS</small><strong>${formatScore(stats.ops)}</strong></div>
+        <div class="report-metric"><small>7D HR</small><strong>${stats.home_runs ?? 0}</strong></div>
+        <div class="report-metric"><small>7D SB</small><strong>${stats.stolen_bases ?? 0}</strong></div>
+        <div class="report-metric"><small>Confidence</small><strong>${formatScore(confidence)}</strong></div>
       </div>
 
       <section class="report-section">
-        <div class="report-section-head">
-          <p class="eyebrow">Why He’s Moving</p>
-        </div>
+        <p class="eyebrow">Why He’s Moving</p>
         <div class="report-chip-row">${reasons}</div>
       </section>
 
@@ -289,9 +345,7 @@ function renderPlayerDetail(entry) {
       </section>
 
       <section class="report-section">
-        <div class="report-section-head">
-          <p class="eyebrow">Market Snapshot</p>
-        </div>
+        <p class="eyebrow">Market Snapshot</p>
 
         <table class="report-table">
           <thead>
