@@ -98,39 +98,49 @@ function buildLeaderboard(entries) {
         <div class="leaders-count">${entries.length}<span>Tracked</span></div>
       </div>
 
-      <div class="market-leaders-list">
+      <div class="market-leaders-table">
+        <div class="leaders-table-head">
+          <span>#</span>
+          <span>Player</span>
+          <span>Signal</span>
+          <span>Performance</span>
+          <span>Market</span>
+          <span>Trend</span>
+          <span>Report</span>
+        </div>
+
         ${entries.map((entry, index) => {
           const score = entry.hotness?.total_score || 0;
           const performance = entry.hotness?.performance_score || 0;
           const market = entry.hotness?.market_score || 0;
           const tag = entry.hotness?.tag || getHeatLabel(score);
+          const trend = score >= 60 ? "↑" : "↓";
+          const trendClass = score >= 60 ? "trend-up" : "trend-down";
+
+          const initials = String(entry.player_name || "?")
+            .split(" ")
+            .map(part => part[0])
+            .join("")
+            .slice(0, 2)
+            .toUpperCase();
 
           return `
-            <button class="market-leader-row" type="button" data-player-index="${index}">
-              <div class="leader-rank">${entry.rank || index + 1}</div>
+            <button class="leader-table-row" type="button" data-player-index="${index}">
+              <span class="leader-rank-small">${entry.rank || index + 1}</span>
 
-              <div class="leader-player">
-                <strong>${entry.player_name}</strong>
-                <span>${tag}</span>
-              </div>
+              <span class="leader-profile">
+                <span class="leader-photo">${initials}</span>
+                <span>
+                  <strong>${entry.player_name}</strong>
+                  <em>${tag}</em>
+                </span>
+              </span>
 
-              <div class="leader-score">
-                ${formatScore(score)}
-                <span>Signal</span>
-              </div>
-
-              <div class="leader-metrics">
-                <div>
-                  <strong>${formatScore(performance)}</strong>
-                  <span>Performance</span>
-                </div>
-                <div>
-                  <strong>${formatScore(market)}</strong>
-                  <span>Market</span>
-                </div>
-              </div>
-
-              <div class="leader-action">View Report →</div>
+              <span class="leader-number">${formatScore(score)}</span>
+              <span>${formatScore(performance)}</span>
+              <span>${formatScore(market)}</span>
+              <span class="${trendClass}">${trend} ${Math.abs(score - performance).toFixed(1)}</span>
+              <span class="leader-report-pill">View Report</span>
             </button>
           `;
         }).join("")}
