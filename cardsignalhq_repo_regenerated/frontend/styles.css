@@ -1542,3 +1542,92 @@ button,
 .admin-hidden {
   display: none !important;
 }
+/* ===========================
+   Sprint 4.2 — Player Visual Foundation
+=========================== */
+
+.leader-photo,
+.player-headshot-placeholder {
+  position: relative;
+  overflow: hidden;
+}
+
+.leader-photo {
+  flex: 0 0 auto;
+}
+
+.leader-photo span,
+.player-headshot-placeholder span {
+  position: relative;
+  z-index: 2;
+}
+
+.leader-photo::after,
+.player-headshot-placeholder::after {
+  content: "";
+  position: absolute;
+  inset: auto -20% -35% -20%;
+  height: 65%;
+  background: radial-gradient(circle at center, rgba(187, 132, 85, .32), transparent 68%);
+  z-index: 1;
+}
+
+.team-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: 6px;
+  color: var(--charcoal);
+}
+
+.player-report-identity {
+  display: flex;
+  gap: 18px;
+  align-items: flex-start;
+}
+
+.player-headshot-placeholder {
+  width: 108px;
+  height: 108px;
+  border-radius: 32px;
+  background: linear-gradient(180deg, var(--charcoal), #2A241F);
+  color: var(--sand);
+  display: grid;
+  place-items: center;
+  font-size: 34px;
+  font-weight: 900;
+  letter-spacing: .04em;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.08);
+}
+
+.player-team-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.team-logo-placeholder {
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  background: var(--paper);
+  border: 1px solid var(--stone);
+  display: grid;
+  place-items: center;
+}
+
+@media (max-width: 640px) {
+  .player-report-identity {
+    flex-direction: column;
+  }
+
+  .player-headshot-placeholder {
+    width: 88px;
+    height: 88px;
+    border-radius: 26px;
+    font-size: 28px;
+  }
+}
