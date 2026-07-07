@@ -108,10 +108,10 @@ function getSportIcon(entry = {}) {
   return "⚾";
 }
 
-function renderTeamLogoMarkup(entry = {}, { size = 16 } = {}) {
+function renderTeamLogoMarkup(entry = {}) {
   const team = getTeamAbbrev(entry);
   if (entry.team_logo_url) {
-    return `<img src="${entry.team_logo_url}" alt="${team}" loading="lazy" style="width:${size}px;height:${size}px;object-fit:contain;display:block" />`;
+    return `<img src="${entry.team_logo_url}" alt="${team}" loading="lazy" class="team-logo-image" />`;
   }
   return getSportIcon(entry);
 }
@@ -132,7 +132,7 @@ function renderLeaderHeadshot(entry = {}) {
           src="${entry.headshot_url}"
           alt="${entry.player_name}"
           loading="lazy"
-          style="width:100%;height:100%;object-fit:cover;display:block;position:relative;z-index:2;border-radius:14px"
+          class="player-headshot-image"
           onerror="this.remove();this.parentElement.insertAdjacentHTML('beforeend','<span>${initials}</span>')"
         />
       </span>`;
@@ -149,7 +149,7 @@ function renderPlayerHeadshot(entry = {}) {
           src="${entry.headshot_url}"
           alt="${entry.player_name}"
           loading="lazy"
-          style="width:100%;height:100%;object-fit:cover;display:block;position:relative;z-index:2;border-radius:32px"
+          class="player-headshot-image"
           onerror="this.remove();this.parentElement.insertAdjacentHTML('beforeend','<span>${initials}</span>')"
         />
       </div>`;
@@ -197,7 +197,7 @@ function buildLeaderboard(entries) {
                 ${renderLeaderHeadshot(entry)}
 
                 <span>
-                  <strong>${entry.player_name} <span style="font-size:12px;color:var(--muted);font-weight:700">${teamPosition}</span></strong>
+                  <strong>${entry.player_name} <span>${teamPosition}</span></strong>
                   <em><span class="team-chip">${renderTeamLogoMarkup(entry)}</span> ${tag}</em>
                 </span>
               </span>
@@ -333,7 +333,7 @@ function renderPlayerDetail(entry) {
             <p class="eyebrow">Player Report</p>
             <h2>${entry.player_name}</h2>
             <div class="player-team-line">
-              <span class="team-logo-placeholder">${renderTeamLogoMarkup(entry, { size: 18 })}</span>
+              <span class="team-logo-placeholder">${renderTeamLogoMarkup(entry)}</span>
               <strong>${teamPosition}</strong>
             </div>
 
