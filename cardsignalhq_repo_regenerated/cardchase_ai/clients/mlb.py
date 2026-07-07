@@ -5,7 +5,7 @@ from typing import Any, Dict, List
 
 import requests
 
-from cardchase_ai.models.schemas import HitterGameLogRow, PlayerLookup
+from cardchase_ai.models.schemas import HitterGameLogRow, PlayerLookup, PlayerSearchResult
 
 MLB_BASE_URL = "https://statsapi.mlb.com/api/v1"
 
@@ -36,6 +36,42 @@ class MLBClient:
             player_id=first["id"],
             full_name=first["fullName"],
         )
+
+    def search_players(self, name: str, limit: int = 10) -> list[dict[str, Any]]:
+        data = self._get("/people/search", params={"names": name})
+        people = data.get("people", [])
+
+        results: list[dict[str, Any]] = []
+
+        for person in people:
+            if person.get("active") is not True:
+                continue
+
+            player_id = person.get("id")
+            player_name = person.get("fullName")
+            if not player_id or not player_name:
+                continue
+
+            team_obj = person.get("currentTeam") or {}
+            team_id = team_obj.get("id")
+            position_obj = person.get("primaryPosition") or {}
+
+            result = PlayerSearchResult(
+                player_id=int(player_id),
+                player_name=player_name,
+                team=team_obj.get("abbreviation") or team_obj.get("name") or "MLB",
+                team_id=int(team_id) if team_id else None,
+                position=position_obj.get("abbreviation") or position_obj.get("name") or None,
+                sport="MLB",
+                headshot_url=_headshot_url(int(player_id)),
+                team_logo_url=_team_logo_url(team_id),
+            )
+            results.append(result.model_dump())
+
+            if len(results) >= limit:
+                break
+
+        return results
 
     def get_hitter_gamelog(self, player_id: int, season: int) -> List[HitterGameLogRow]:
         data = self._get(
@@ -150,8 +186,8 @@ class MLBClient:
                     "team": team.get("abbreviation") or team.get("name") or "MLB",
                     "team_id": int(team_id) if team_id else None,
                     "position": position.get("abbreviation") or position.get("name") or "",
-                    "headshot_url": f"https://img.mlbstatic.com/mlb-photos/image/upload/d_people:generic:headshot:silo:current.png/w_213,q_auto:best/v1/people/{player_id}/headshot/67/current",
-                    "team_logo_url": f"https://www.mlbstatic.com/team-logos/{team_id}.svg" if team_id else "",
+                    "headshot_url": _headshot_url(int(player_id)),
+                    "team_logo_url": _team_logo_url(team_id),
                     "breakout_score": breakout_score,
                     "stats": {
                         "at_bats": at_bats,
@@ -168,6 +204,17 @@ class MLBClient:
 
         candidates.sort(key=lambda item: item["breakout_score"], reverse=True)
         return candidates[:limit]
+
+
+def _headshot_url(player_id: int) -> str:
+    return (
+        "https://img.mlbstatic.com/mlb-photos/image/upload/"
+        f"d_people:generic:headshot:silo:current.png/w_213,q_auto:best/v1/people/{player_id}/headshot/67/current"
+    )
+
+
+def _team_logo_url(team_id: Any) -> str:
+    return f"https://www.mlbstatic.com/team-logos/{team_id}.svg" if team_id else ""
 
 
 def _breakout_score(
