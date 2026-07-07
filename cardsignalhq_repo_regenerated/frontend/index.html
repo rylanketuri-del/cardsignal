@@ -26,6 +26,176 @@
           <div class="status-pill muted-pill" id="notif-summary">Notifications: —</div>
         </div>
       </header>
+
+      <nav class="sport-tabs" aria-label="Sport filters">
+        <button class="sport-tab active" type="button">All</button>
+        <button class="sport-tab active-sport" type="button">MLB</button>
+        <button class="sport-tab disabled" type="button">NBA Soon</button>
+        <button class="sport-tab disabled" type="button">NFL Soon</button>
+        <button class="sport-tab disabled" type="button">NHL Soon</button>
+      </nav>
+
+      <nav class="product-nav">
+        <button class="product-nav-item active">Dashboard</button>
+        <button class="product-nav-item disabled">Market Leaders</button>
+        <button class="product-nav-item disabled">Player Reports</button>
+        <button class="product-nav-item disabled">My Collection</button>
+        <button class="product-nav-item disabled">Alerts</button>
+        <button class="product-nav-item disabled">Settings</button>
+      </nav>
+
+      <section class="market-desk-hero">
+        <div class="market-pulse-card"></div>
+        <div class="collector-pick-card"></div>
+        <div class="market-mini-card"></div>
+        <div class="market-mini-card"></div>
+      </section>
+
+      <section class="product-section leaders-report-section">
+        <div id="leaderboard-table"></div>
+
+        <div class="player-report-shell">
+          <div class="section-header">
+            <div>
+              <p class="eyebrow">Player Report</p>
+              <h2>Selected Player</h2>
+            </div>
+            <span class="muted">Click a leader</span>
+          </div>
+
+          <div id="player-detail" class="detail-empty">
+            Select a player from Market Leaders.
+          </div>
+        </div>
+      </section>
+
+      <section class="grid two-up charts-section">
+        <div class="panel light-panel">
+          <div class="panel-header">
+            <h2>Signal History</h2>
+            <span class="muted">Selected player trend</span>
+          </div>
+          <canvas id="score-history-chart" height="160"></canvas>
+        </div>
+
+        <div class="panel light-panel">
+          <div class="panel-header">
+            <h2>Market Trend</h2>
+            <span class="muted">Top score by run</span>
+          </div>
+          <canvas id="leaderboard-history-chart" height="160"></canvas>
+        </div>
+      </section>
+
+      <section class="grid four-up auth-layout">
+        <div class="panel light-panel">
+          <div class="panel-header">
+            <h2>Account</h2>
+            <span class="muted">Email auth</span>
+          </div>
+
+          <div id="auth-status" class="detail-empty">Not signed in.</div>
+
+          <form id="auth-form" class="stack-form">
+            <input id="auth-email" type="email" placeholder="Email" required />
+            <input id="auth-password" type="password" placeholder="Password" required />
+
+            <div class="button-row">
+              <button type="button" id="sign-up-btn">Sign up</button>
+              <button type="button" id="sign-in-btn" class="primary">Sign in</button>
+              <button type="button" id="sign-out-btn" class="ghost">Sign out</button>
+            </div>
+          </form>
+        </div>
+
+        <div class="panel light-panel">
+          <div class="panel-header">
+            <h2>My Collection</h2>
+            <span class="muted">Saved players</span>
+          </div>
+
+          <div id="watchlist-items" class="detail-empty">Sign in to save players.</div>
+
+          <div class="rule-divider"></div>
+
+          <form id="player-rule-form" class="checklist-form compact-form">
+            <div class="muted">Player-specific signal rule</div>
+
+            <select id="rule-player-name"></select>
+
+            <label><input type="checkbox" id="rule-hotness" checked /> Hotness jump alerts</label>
+            <label><input type="checkbox" id="rule-buy-low" checked /> Buy low alerts</label>
+            <label><input type="checkbox" id="rule-chased" /> Most chased alerts</label>
+
+            <label>
+              Minimum hotness jump
+              <input id="rule-min-delta" type="number" min="1" step="0.5" value="8" />
+            </label>
+
+            <label>
+              Mute until
+              <input id="rule-muted-until" type="datetime-local" />
+            </label>
+
+            <div class="button-row">
+              <button type="submit" class="primary">Save rule</button>
+              <button type="button" id="rule-delete-btn" class="ghost">Clear rule</button>
+            </div>
+          </form>
+        </div>
+
+        <div class="panel light-panel">
+          <div class="panel-header">
+            <h2>Alert Preferences</h2>
+            <span class="muted">Personal alerts</span>
+          </div>
+
+          <form id="alerts-form" class="checklist-form">
+            <label><input type="checkbox" id="alert-hotness" checked /> Hotness jump alerts</label>
+            <label><input type="checkbox" id="alert-buy-low" checked /> Buy low alerts</label>
+            <label><input type="checkbox" id="alert-chased" /> Most chased alerts</label>
+            <label><input type="checkbox" id="alert-digest" checked /> Daily digest</label>
+
+            <button type="submit" class="primary">Save alert settings</button>
+          </form>
+        </div>
+
+        <div class="panel light-panel">
+          <div class="panel-header">
+            <h2>Notification Center</h2>
+            <div class="button-row compact-row">
+              <span class="muted" id="notif-unread">Unread: —</span>
+              <button type="button" id="read-all-btn" class="ghost small">Mark all read</button>
+            </div>
+          </div>
+
+          <div id="notifications-list" class="detail-empty">
+            Sign in to load notifications.
+          </div>
+        </div>
+      </section>
+
+      <section class="admin-hidden" aria-hidden="true">
+        <form id="admin-token-form"></form>
+        <input id="admin-token" type="hidden" />
+        <form id="admin-settings-form"></form>
+        <input id="admin-tracked-players-csv" type="hidden" />
+        <input id="admin-hotness-threshold" type="hidden" />
+        <input id="admin-digest-hour" type="hidden" />
+        <div id="admin-tracked-players"></div>
+        <form id="admin-player-form"></form>
+        <input id="admin-player-name" type="hidden" />
+        <input id="admin-player-notes" type="hidden" />
+        <input id="admin-player-active" type="checkbox" checked />
+        <div id="admin-status"></div>
+      </section>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>
 <nav class="sport-tabs" aria-label="Sport filters">
   <button class="sport-tab active" type="button">All</button>
   <button class="sport-tab active-sport" type="button">MLB</button>
