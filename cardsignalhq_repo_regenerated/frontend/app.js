@@ -108,6 +108,55 @@ function getSportIcon(entry = {}) {
   return "⚾";
 }
 
+function renderTeamLogoMarkup(entry = {}, { size = 16 } = {}) {
+  const team = getTeamAbbrev(entry);
+  if (entry.team_logo_url) {
+    return `<img src="${entry.team_logo_url}" alt="${team}" loading="lazy" style="width:${size}px;height:${size}px;object-fit:contain;display:block" />`;
+  }
+  return getSportIcon(entry);
+}
+
+function formatTeamPositionLabel(entry = {}) {
+  const team = getTeamAbbrev(entry);
+  const parts = [team];
+  if (entry.position) parts.push(entry.position);
+  return parts.join(" · ");
+}
+
+function renderLeaderHeadshot(entry = {}) {
+  const initials = getPlayerInitials(entry.player_name);
+  if (entry.headshot_url) {
+    return `
+      <span class="leader-photo">
+        <img
+          src="${entry.headshot_url}"
+          alt="${entry.player_name}"
+          loading="lazy"
+          style="width:100%;height:100%;object-fit:cover;display:block;position:relative;z-index:2;border-radius:14px"
+          onerror="this.remove();this.parentElement.insertAdjacentHTML('beforeend','<span>${initials}</span>')"
+        />
+      </span>`;
+  }
+  return `<span class="leader-photo"><span>${initials}</span></span>`;
+}
+
+function renderPlayerHeadshot(entry = {}) {
+  const initials = getPlayerInitials(entry.player_name);
+  if (entry.headshot_url) {
+    return `
+      <div class="player-headshot-placeholder">
+        <img
+          src="${entry.headshot_url}"
+          alt="${entry.player_name}"
+          loading="lazy"
+          style="width:100%;height:100%;object-fit:cover;display:block;position:relative;z-index:2;border-radius:32px"
+          onerror="this.remove();this.parentElement.insertAdjacentHTML('beforeend','<span>${initials}</span>')"
+        />
+      </div>`;
+  }
+  return `<div class="player-headshot-placeholder"><span>${initials}</span></div>`;
+}
+
 function buildLeaderboard(entries) {
   return `
     <section class="market-leaders-module">
@@ -138,22 +187,18 @@ function buildLeaderboard(entries) {
           const tag = entry.hotness?.tag || getHeatLabel(score);
           const trend = score >= 60 ? "↑" : "↓";
           const trendClass = score >= 60 ? "trend-up" : "trend-down";
-          const initials = getPlayerInitials(entry.player_name);
-          const team = getTeamAbbrev(entry);
-          const sportIcon = getSportIcon(entry);
+          const teamPosition = formatTeamPositionLabel(entry);
 
           return `
             <button class="leader-table-row" type="button" data-player-index="${index}">
               <span class="leader-rank-small">${entry.rank || index + 1}</span>
 
               <span class="leader-profile">
-                <span class="leader-photo">
-                  <span>${initials}</span>
-                </span>
+                ${renderLeaderHeadshot(entry)}
 
                 <span>
-                  <strong>${entry.player_name}</strong>
-                  <em><span class="team-chip">${sportIcon} ${team}</span> ${tag}</em>
+                  <strong>${entry.player_name} <span style="font-size:12px;color:var(--muted);font-weight:700">${teamPosition}</span></strong>
+                  <em><span class="team-chip">${renderTeamLogoMarkup(entry)}</span> ${tag}</em>
                 </span>
               </span>
 
@@ -263,9 +308,8 @@ function renderPlayerDetail(entry) {
   const confidence = hotness.confidence_multiplier || 0;
   const grade = getCollectorGrade(score);
   const outlook = getMarketOutlook(score, market);
-  const initials = getPlayerInitials(entry.player_name);
   const team = getTeamAbbrev(entry);
-  const sportIcon = getSportIcon(entry);
+  const teamPosition = formatTeamPositionLabel(entry);
 
   const reasons = hotness.reasons?.length
     ? hotness.reasons.map(reason => `<span class="report-chip">${reason}</span>`).join("")
@@ -283,16 +327,14 @@ function renderPlayerDetail(entry) {
     <article class="player-report">
       <div class="player-report-hero">
         <div class="player-report-identity">
-          <div class="player-headshot-placeholder">
-            <span>${initials}</span>
-          </div>
+          ${renderPlayerHeadshot(entry)}
 
           <div>
             <p class="eyebrow">Player Report</p>
             <h2>${entry.player_name}</h2>
             <div class="player-team-line">
-              <span class="team-logo-placeholder">${sportIcon}</span>
-              <strong>${team}</strong>
+              <span class="team-logo-placeholder">${renderTeamLogoMarkup(entry, { size: 18 })}</span>
+              <strong>${teamPosition}</strong>
             </div>
 
             <div class="player-report-meta">
@@ -1001,17 +1043,17 @@ async function init() {
     const leaderboardRoot = document.getElementById('leaderboard-table');
     leaderboardRoot.innerHTML = buildLeaderboard(entries);
 
-    const leaderCards = [...leaderboardRoot.querySelectorAll('.market-leader-row')];
+    const leaderRows = [...leaderboardRoot.querySelectorAll('.leader-table-row')];
 
-    leaderCards.forEach((card, index) => {
-      card.addEventListener('click', async () => {
-        leaderCards.forEach(c => c.classList.remove('active'));
-        card.classList.add('active');
+    leaderRows.forEach((row, index) => {
+      row.addEventListener('click', async () => {
+        leaderRows.forEach(r => r.classList.remove('active'));
+        row.classList.add('active');
         await selectPlayer(entries[index]);
       });
     });
 
-    if (leaderCards[0]) leaderCards[0].classList.add('active');
+    if (leaderRows[0]) leaderRows[0].classList.add('active');
 
     await selectPlayer(entries[0]);
     await renderLeaderboardHistory();
