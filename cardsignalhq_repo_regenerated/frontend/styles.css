@@ -1306,3 +1306,124 @@ canvas {
   min-height: 300px;
   margin-top: 18px;
 }
+/* ===========================
+   Sprint 3.7 — Premium Dashboard Polish
+=========================== */
+
+.market-pulse-card,
+.collector-pick-card,
+.market-mini-card,
+.market-leaders-module,
+.player-report-shell,
+.light-panel {
+  transition: transform var(--transition-base), box-shadow var(--transition-base), border-color var(--transition-base);
+}
+
+.market-pulse-card:hover,
+.collector-pick-card:hover,
+.market-mini-card:hover,
+.market-leaders-module:hover,
+.player-report-shell:hover,
+.light-panel:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-hover);
+  border-color: rgba(187, 132, 85, 0.38);
+}
+
+.market-desk-hero {
+  align-items: stretch;
+}
+
+.collector-pick-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.collector-pick-card::after {
+  content: "";
+  position: absolute;
+  right: -70px;
+  bottom: -80px;
+  width: 180px;
+  height: 180px;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(187, 132, 85, 0.16), transparent 70%);
+  pointer-events: none;
+}
+
+.market-mini-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.market-mini-card::after {
+  content: "↗";
+  position: absolute;
+  right: 28px;
+  bottom: 24px;
+  width: 58px;
+  height: 58px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: rgba(112, 138, 114, 0.12);
+  color: var(--sage);
+  font-size: 30px;
+  font-weight: 900;
+}
+
+.market-mini-card:first-of-type::after {
+  content: "🔥";
+  background: rgba(187, 132, 85, 0.12);
+  color: var(--bronze);
+  font-size: 24px;
+}
+
+.status-pill {
+  backdrop-filter: blur(10px);
+}
+
+.market-status {
+  background: rgba(112, 138, 114, 0.14);
+  color: var(--sage);
+}
+
+.leader-table-row.active {
+  background: rgba(187, 132, 85, 0.10);
+  box-shadow: inset 4px 0 0 var(--copper);
+}
+
+.player-report-shell {
+  scroll-margin-top: 24px;
+}
+
+.player-report {
+  animation: reportFadeIn 240ms ease both;
+}
+
+@keyframes reportFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.report-score-main {
+  background: linear-gradient(180deg, #fffdfa, var(--paper));
+}
+
+.collector-insight {
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.45);
+}
+
+button,
+.leader-table-row,
+.collector-pick-button,
+.player-save-btn {
+  -webkit-tap-highlight-color: transparent;
+}
