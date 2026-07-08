@@ -187,7 +187,7 @@ body {
 }
 
 .market-pulse-card,
-.collector-pick-card,
+.signal-of-week-card,
 .market-mini-card {
   background: var(--panel);
   border: 1px solid rgba(220, 214, 206, 0.9);
@@ -204,8 +204,7 @@ body {
   justify-content: space-between;
 }
 
-.market-pulse-top,
-.collector-pick-top {
+.market-pulse-top {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -290,55 +289,371 @@ body {
   color: var(--bronze);
 }
 
-.collector-pick-card {
+.signal-of-week-card {
+  position: relative;
+  overflow: hidden;
+  padding: 0;
   display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  gap: 18px;
+  min-height: 370px;
 }
 
-.hero-main {
-  margin-top: 12px;
-  font-size: 30px;
-  line-height: 1;
-  font-weight: 900;
-  color: var(--charcoal);
+.signal-week-inner {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  gap: 0;
 }
 
-.hero-sub {
-  margin-top: 8px;
-  color: var(--bronze);
-  font-weight: 800;
+.signal-week-media {
+  flex: 0 0 46%;
+  position: relative;
+  background: linear-gradient(180deg, rgba(15, 15, 16, 0.86), rgba(42, 36, 31, 0.92));
 }
 
-.collector-pick-badge {
-  min-width: 66px;
-  height: 66px;
-  border-radius: 22px;
-  background: var(--charcoal);
-  color: var(--sand);
+.signal-week-photo-stage {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+}
+
+.signal-week-photo-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 25%;
+  display: block;
+  position: relative;
+  z-index: 2;
+}
+
+.signal-week-photo-fallback {
+  width: 100%;
+  height: 100%;
   display: grid;
   place-items: center;
+  font-size: 44px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  color: var(--sand);
   font-family: Cormorant, Georgia, serif;
-  font-size: 30px;
-  font-weight: 700;
 }
 
-.collector-pick-copy {
+.signal-week-photo-glass {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 30% 20%, rgba(187, 132, 85, 0.22), transparent 45%),
+    linear-gradient(180deg, rgba(15, 15, 16, 0.10), rgba(15, 15, 16, 0.45));
+  z-index: 1;
+  pointer-events: none;
+  backdrop-filter: blur(8px);
+}
+
+.signal-week-copy {
+  flex: 1;
+  padding: 26px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.signal-week-eyebrow {
+  color: var(--bronze);
+  text-transform: uppercase;
+  letter-spacing: .16em;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.signal-week-opportunity {
   margin: 0;
   color: var(--muted);
   font-size: 14px;
   line-height: 1.55;
 }
 
-.collector-pick-button {
+.signal-week-name {
+  font-family: Cormorant, Georgia, serif;
+  font-size: 42px;
+  line-height: .95;
+  letter-spacing: -0.04em;
+  font-weight: 700;
+  color: var(--charcoal);
+}
+
+.signal-week-team {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.signal-week-team-logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--charcoal);
+}
+
+.signal-week-team-name {
+  font-weight: 900;
+  color: var(--charcoal);
+}
+
+.signal-week-team-sep {
+  color: rgba(125, 120, 115, 0.65);
+  font-weight: 900;
+}
+
+.signal-week-position {
+  color: var(--muted);
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  font-size: 12px;
+}
+
+.signal-week-position-line {
+  color: var(--muted);
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  font-size: 12px;
+  margin-top: -2px;
+}
+
+.signal-week-score-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: flex-start;
+  margin-top: 2px;
+}
+
+.signal-week-score {
+  display: flex;
+  flex-direction: column;
+}
+
+.signal-week-score-value {
+  font-family: Cormorant, Georgia, serif;
+  font-size: 78px;
+  line-height: 0.75;
+  letter-spacing: -0.06em;
+  font-weight: 700;
+  color: var(--charcoal);
+}
+
+.signal-week-score-label {
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: .14em;
+}
+
+.signal-week-right-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+  min-width: 170px;
+}
+
+.signal-week-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(220, 214, 206, 0.95);
+  font-weight: 900;
+  letter-spacing: .10em;
+  text-transform: uppercase;
+  font-size: 12px;
+  backdrop-filter: blur(10px);
+}
+
+.signal-week-status--hot {
+  background: rgba(154, 102, 86, 0.16);
+  border-color: rgba(154, 102, 86, 0.38);
+  color: var(--clay);
+}
+
+.signal-week-status--rising {
+  background: rgba(112, 138, 114, 0.14);
+  border-color: rgba(112, 138, 114, 0.35);
+  color: var(--sage);
+}
+
+.signal-week-status--cooling {
+  background: rgba(80, 124, 170, 0.14);
+  border-color: rgba(80, 124, 170, 0.35);
+  color: #6FA3D3;
+}
+
+.signal-week-movement {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.signal-week-movement-arrow {
+  color: var(--bronze);
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.signal-week-movement strong {
+  font-family: Cormorant, Georgia, serif;
+  font-size: 26px;
+  line-height: 0.95;
+  font-weight: 700;
+  color: var(--bronze);
+}
+
+.signal-week-movement-sub {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: .14em;
+}
+
+.signal-week-ai {
+  margin-top: 4px;
+  border-radius: 24px;
+  border: 1px solid rgba(220, 214, 206, 0.95);
+  background: rgba(252, 251, 248, 0.65);
+  padding: 14px 14px;
+}
+
+.signal-week-ai-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.signal-week-ai-label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: .14em;
+}
+
+.signal-week-ai-pill {
+  border-radius: 999px;
+  padding: 10px 14px;
+  font-weight: 900;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  font-size: 12px;
+  border: 1px solid rgba(220, 214, 206, 0.95);
+  background: rgba(255, 255, 255, 0.55);
+  color: var(--charcoal);
+}
+
+.signal-week-ai-pill--buy {
+  background: rgba(187, 132, 85, 0.14);
+  border-color: rgba(187, 132, 85, 0.35);
+  color: var(--bronze);
+}
+
+.signal-week-ai-pill--hold {
+  background: rgba(112, 138, 114, 0.14);
+  border-color: rgba(112, 138, 114, 0.35);
+  color: var(--sage);
+}
+
+.signal-week-ai-pill--sell {
+  background: rgba(154, 102, 86, 0.14);
+  border-color: rgba(154, 102, 86, 0.35);
+  color: var(--clay);
+}
+
+.signal-week-ai-reason {
+  margin: 10px 0 0;
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.signal-week-cta.primary {
   align-self: flex-start;
+  margin-top: auto;
   border-radius: 999px;
   background: var(--charcoal);
   color: var(--white);
-  padding: 11px 15px;
+  padding: 13px 16px;
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 900;
+}
+
+.signal-week-cta.primary:hover {
+  transform: translateY(-1px);
+}
+
+.signal-week-future-slot {
+  display: none;
+}
+
+@media (max-width: 980px) {
+  .signal-of-week-card {
+    min-height: auto;
+  }
+
+  .signal-week-inner {
+    flex-direction: column;
+  }
+
+  .signal-week-media {
+    flex: 0 0 auto;
+    height: 260px;
+  }
+
+  .signal-week-copy {
+    padding: 22px 16px;
+  }
+
+  .signal-week-name {
+    font-size: 38px;
+  }
+
+  .signal-week-score-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .signal-week-right-side {
+    align-items: flex-start;
+    min-width: 0;
+  }
+
+  .signal-week-score-value {
+    font-size: 68px;
+  }
+}
+
+@media (max-width: 640px) {
+  .signal-of-week-card {
+    border-radius: 24px;
+  }
+
+  .signal-week-media {
+    height: 220px;
+  }
+
+  .signal-week-copy {
+    padding: 18px 14px;
+  }
+
+  .signal-week-score-value {
+    font-size: 60px;
+  }
 }
 
 .market-mini-card {
@@ -833,7 +1148,6 @@ canvas {
   }
 
   .market-pulse-card,
-  .collector-pick-card,
   .market-mini-card,
   .panel,
   .light-panel,
@@ -1311,7 +1625,7 @@ canvas {
 =========================== */
 
 .market-pulse-card,
-.collector-pick-card,
+.signal-of-week-card,
 .market-mini-card,
 .market-leaders-module,
 .player-report-shell,
@@ -1320,7 +1634,7 @@ canvas {
 }
 
 .market-pulse-card:hover,
-.collector-pick-card:hover,
+.signal-of-week-card:hover,
 .market-mini-card:hover,
 .market-leaders-module:hover,
 .player-report-shell:hover,
@@ -1334,12 +1648,12 @@ canvas {
   align-items: stretch;
 }
 
-.collector-pick-card {
+.signal-of-week-card {
   position: relative;
   overflow: hidden;
 }
 
-.collector-pick-card::after {
+.signal-of-week-card::after {
   content: "";
   position: absolute;
   right: -70px;
@@ -1423,7 +1737,6 @@ canvas {
 
 button,
 .leader-table-row,
-.collector-pick-button,
 .player-save-btn {
   -webkit-tap-highlight-color: transparent;
 }

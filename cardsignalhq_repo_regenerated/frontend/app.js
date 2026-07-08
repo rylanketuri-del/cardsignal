@@ -1183,15 +1183,78 @@ function getTopMovers(entries) {
 }
 
 function renderMarketPulse(entries) {
-  const pulse = calculateMarketPulse(entries);
-  const topMovers = getTopMovers(entries);
+  const safeEntries = Array.isArray(entries) ? entries : [];
+
+  if (!safeEntries.length) {
+    const pulseCard = document.querySelector(".market-pulse-card");
+    if (!pulseCard) return;
+
+    const generatedAt = new Date().toLocaleTimeString([], {
+      hour: "numeric",
+      minute: "2-digit",
+    });
+
+    pulseCard.innerHTML = `
+      <div class="market-pulse-top">
+        <div>
+          <div class="label">Market Pulse</div>
+          <h2>Today’s Card Market</h2>
+        </div>
+        <span class="market-status">Active</span>
+      </div>
+
+      <div class="live-market-body">
+        <div class="live-pulse-score">
+          <span>—</span>
+          <small>CardSignal Pulse</small>
+        </div>
+
+        <div class="market-health-grid">
+          <div>
+            <strong>—</strong>
+            <span>Performance</span>
+          </div>
+          <div>
+            <strong>—</strong>
+            <span>Demand</span>
+          </div>
+          <div>
+            <strong>—</strong>
+            <span>Top Signal</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="market-pulse-lower">
+        <div>
+          <div class="label">Top Movers</div>
+          <div class="pulse-movers compact">
+            <div class="pulse-mover-row">
+              <span>—</span>
+              <strong>—</strong>
+            </div>
+          </div>
+        </div>
+
+        <div class="pipeline-card">
+          <span>Updated</span>
+          <strong>${generatedAt}</strong>
+        </div>
+      </div>
+    `;
+
+    return;
+  }
+
+  const pulse = calculateMarketPulse(safeEntries);
+  const topMovers = getTopMovers(safeEntries);
   const avgPerformance = Math.round(
-    entries.reduce((sum, p) => sum + (p.hotness?.performance_score || 0), 0) / entries.length
+    safeEntries.reduce((sum, p) => sum + (p.hotness?.performance_score || 0), 0) / safeEntries.length
   );
   const avgMarket = Math.round(
-    entries.reduce((sum, p) => sum + (p.hotness?.market_score || 0), 0) / entries.length
+    safeEntries.reduce((sum, p) => sum + (p.hotness?.market_score || 0), 0) / safeEntries.length
   );
-  const strongest = entries[0];
+  const strongest = safeEntries[0] || {};
   const generatedAt = new Date().toLocaleTimeString([], {
     hour: "numeric",
     minute: "2-digit"
@@ -1251,72 +1314,277 @@ function renderMarketPulse(entries) {
   `;
 }
 
-function renderCollectorsPick(entries) {
-  const hot = entries[0];
-
-  const score = hot.hotness?.total_score || 0;
-  const market = hot.hotness?.market_score || 0;
-  const performance = hot.hotness?.performance_score || 0;
-
-  const card = document.querySelector(".collector-pick-card");
-
-  card.innerHTML = `
-    <div class="collector-pick-top">
-      <div>
-        <div class="label">Collector’s Pick</div>
-        <div class="hero-main">${hot.player_name}</div>
-        <div class="hero-sub">${hot.hotness.tag}</div>
-      </div>
-
-      <div class="collector-pick-badge">${formatScore(score)}</div>
-    </div>
-
-    <p class="collector-pick-copy">
-      ${hot.player_name} is today’s strongest collector signal, combining a ${formatScore(performance)}
-      performance score with a ${formatScore(market)} market score.
-    </p>
-
-    <button class="collector-pick-button" type="button" id="collector-pick-button">
-      View Player Report →
-    </button>
-  `;
-
-  document.getElementById("collector-pick-button").onclick = async () => {
-    await selectPlayer(hot);
-
-    document.getElementById("player-detail")?.scrollIntoView({
-      behavior: "smooth",
-      block: "start"
-    });
+function getSignalOfWeekPlaceholderEntry() {
+  return {
+    player_id: null,
+    player_name: "Signal of the Week",
+    position: "—",
+    team: "MLB",
+    mlb_team: "MLB",
+    team_abbrev: "MLB",
+    headshot_url: null,
+    action_photo_url: null,
+    hotness: {
+      total_score: 92.3,
+      market_score: 78,
+      performance_score: 70,
+      collector_score: 80,
+      momentum_score: 68,
+      tag: "HOTNESS JUMP",
+    },
   };
 }
 
+function getSignalOfWeekTopEntry(entries = []) {
+  if (!Array.isArray(entries) || !entries.length) return null;
+
+  // Choose the highest CardSignal total_score currently loaded in the leaderboard.
+  let best = null;
+  let bestScore = -Infinity;
+
+  for (const entry of entries) {
+    const score = entry?.hotness?.total_score;
+    const n = typeof score === "number" ? score : Number(score);
+    if (!Number.isFinite(n)) continue;
+    if (n > bestScore) {
+      bestScore = n;
+      best = entry;
+    }
+  }
+
+  return best || entries[0] || null;
+}
+
+function getSignalOfWeekActionPhotoUrl(entry = {}) {
+  // Prefer future “action photography” fields, but always fall back to the existing headshot.
+  return (
+    entry?.action_photo_url ||
+    entry?.player_action_photo_url ||
+    entry?.action_photo_headshot_url ||
+    entry?.player_action_headshot_url ||
+    entry?.photo_url ||
+    entry?.player_photo_url ||
+    entry?.headshot_url ||
+    null
+  );
+}
+
+function clampToOneSentence(text = "") {
+  const t = String(text || "").trim();
+  if (!t) return "";
+  return t.split(/(?<=[.!?])\s+/)[0] || t;
+}
+
+function getSignalOfWeekStatus(entry = {}) {
+  const tag = String(entry?.hotness?.tag || "").toUpperCase();
+  const score = Number(entry?.hotness?.total_score || 0);
+  const momentum = Number(entry?.hotness?.momentum_score || 50);
+
+  // Map existing backend semantics to the requested pill vocabulary.
+  if (tag.includes("COOL")) return { label: "COOLING", emoji: "❄️", className: "signal-week-status--cooling" };
+  if (score >= 80 || tag.includes("HOT") || tag.includes("JUMP")) return { label: "HOT", emoji: "🔥", className: "signal-week-status--hot" };
+  if (tag.includes("BUY") || tag.includes("RISING") || momentum >= 60) {
+    return { label: "RISING", emoji: "📈", className: "signal-week-status--rising" };
+  }
+  return { label: "RISING", emoji: "📈", className: "signal-week-status--rising" };
+}
+
+function computeSignalOfWeekMovement(entry = {}) {
+  const hotness = entry?.hotness || {};
+  const momentum = Number(hotness.momentum_score ?? NaN);
+  const market = Number(hotness.market_score ?? NaN);
+  const performance = Number(hotness.performance_score ?? NaN);
+
+  let delta = 0;
+
+  // Use momentum_score when available (0..100-ish), convert it to a small week movement.
+  if (Number.isFinite(momentum)) {
+    // momentum 50 => 0; momentum 60 => +2.0-ish; momentum 70 => +4.0-ish.
+    delta = (momentum - 50) / 2.5;
+  } else if (Number.isFinite(market) && Number.isFinite(performance)) {
+    // Derive a direction from market vs performance.
+    delta = (market - performance) / 6;
+  }
+
+  // Keep the UI tidy even if upstream data is noisy.
+  delta = Math.max(-25, Math.min(25, delta));
+
+  const arrow = delta > 0.01 ? "↑" : delta < -0.01 ? "↓" : "→";
+  const signed = delta > 0 ? `+${delta.toFixed(1)}` : delta < 0 ? `${delta.toFixed(1)}` : `+0.0`;
+
+  return { arrow, signed };
+}
+
+function renderSignalOfTheWeek(entries = []) {
+  const card = document.querySelector(".signal-of-week-card");
+  if (!card) return;
+
+  const topEntry = getSignalOfWeekTopEntry(entries);
+  const entry = topEntry || getSignalOfWeekPlaceholderEntry();
+
+  const score = Number(entry?.hotness?.total_score ?? 0);
+  const status = getSignalOfWeekStatus(entry);
+  const movement = computeSignalOfWeekMovement(entry);
+
+  const actionPhotoUrl = getSignalOfWeekActionPhotoUrl(entry);
+  const initials = getPlayerInitials(entry.player_name);
+
+  const placeholderKeyEntry = entry?.player_id
+    ? entry
+    : {
+      player_id: "signal_of_week_placeholder",
+      player_name: entry?.player_name || "Signal of the Week",
+    };
+
+  const placeholders = csIntelGetPlaceholders(placeholderKeyEntry);
+  const aiReason = placeholders?.aiRecommendation?.reason || "Collector demand is accelerating faster than market pricing.";
+  const aiReasonSentence = clampToOneSentence(aiReason) || "Collector demand is accelerating faster than market pricing.";
+
+  const confidenceTier = placeholders?.confidenceTier || "MEDIUM";
+  const aiAction = confidenceTier === "HIGH" ? "BUY" : confidenceTier === "MEDIUM" ? "HOLD" : "SELL";
+
+  const team = getTeamAbbrev(entry);
+  const position = entry.position || "—";
+
+  card.innerHTML = `
+    <div class="signal-week-inner">
+      <div class="signal-week-media">
+        <div class="signal-week-photo-stage">
+          ${
+            actionPhotoUrl
+              ? `<img
+                  src="${actionPhotoUrl}"
+                  alt="${entry.player_name}"
+                  loading="lazy"
+                  class="signal-week-photo-image"
+                  onerror="this.remove();this.parentElement.insertAdjacentHTML('beforeend','<span class=&quot;signal-week-photo-fallback&quot;>${initials}</span>')"
+                />`
+              : `<span class="signal-week-photo-fallback">${initials}</span>`
+          }
+          <div class="signal-week-photo-glass" aria-hidden="true"></div>
+        </div>
+      </div>
+
+      <div class="signal-week-copy">
+        <div class="signal-week-eyebrow">SIGNAL OF THE WEEK</div>
+        <p class="signal-week-opportunity">This player is the biggest opportunity this week.</p>
+
+        <div class="signal-week-name">${entry.player_name || "—"}</div>
+
+        <div class="signal-week-team">
+          <span class="signal-week-team-logo">${renderTeamLogoMarkup(entry)}</span>
+          <span class="signal-week-team-name">${team}</span>
+        </div>
+        <div class="signal-week-position-line">${position}</div>
+
+        <div class="signal-week-score-row">
+          <div class="signal-week-score">
+            <span class="signal-week-score-value">${formatScore(score)}</span>
+            <span class="signal-week-score-label">CardSignal Score</span>
+          </div>
+
+          <div class="signal-week-right-side">
+            <div class="signal-week-status-pill ${status.className}">
+              <span class="signal-week-status-emoji" aria-hidden="true">${status.emoji}</span>
+              <span class="signal-week-status-label">${status.label}</span>
+            </div>
+
+            <div class="signal-week-movement">
+              <span class="signal-week-movement-arrow" aria-hidden="true">${movement.arrow}</span>
+              <strong>${movement.signed}</strong>
+              <span class="signal-week-movement-sub">This Week</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="signal-week-ai">
+          <div class="signal-week-ai-top">
+            <span class="signal-week-ai-label">AI Recommendation</span>
+            <span class="signal-week-ai-pill signal-week-ai-pill--${aiAction.toLowerCase()}">${aiAction}</span>
+          </div>
+          <p class="signal-week-ai-reason">${aiReasonSentence}</p>
+        </div>
+
+        <!-- Future extensions: Signal history, previous winners, sponsor branding, social share -->
+        <div class="signal-week-future" aria-hidden="true">
+          <div class="signal-week-future-slot" data-slot="history"></div>
+          <div class="signal-week-future-slot" data-slot="previous-winners"></div>
+          <div class="signal-week-future-slot" data-slot="sponsor"></div>
+          <div class="signal-week-future-slot" data-slot="social-share"></div>
+        </div>
+
+        <button
+          class="signal-week-cta primary"
+          type="button"
+          id="signal-of-the-week-view-report"
+          aria-label="View full report for ${entry.player_name || "player"}"
+        >
+          View Full Report →
+        </button>
+      </div>
+    </div>
+  `;
+
+  const btn = document.getElementById("signal-of-the-week-view-report");
+  if (btn) {
+    btn.onclick = async () => {
+      await selectPlayer(entry);
+      document.getElementById("player-detail")?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    };
+  }
+}
+
 function renderMiniSignals(entries) {
-  const chased = [...entries].sort(
-    (a, b) => b.hotness.market_score - a.hotness.market_score
-  )[0];
+  const safeEntries = Array.isArray(entries) ? entries : [];
+
+  const miniCards = document.querySelectorAll(".market-mini-card");
+  if (!miniCards || miniCards.length < 2) return;
+
+  if (!safeEntries.length) {
+    miniCards[0].innerHTML = `
+      <div class="label">Most Chased</div>
+      <div class="mini-signal-name">—</div>
+      <div class="mini-signal-score">—</div>
+      <div class="mini-signal-caption">Market Score</div>
+    `;
+
+    miniCards[1].innerHTML = `
+      <div class="label">Buy Low Watch</div>
+      <div class="mini-signal-name">—</div>
+      <div class="mini-signal-score">—</div>
+      <div class="mini-signal-caption">Current Signal</div>
+    `;
+    return;
+  }
+
+  const chased = [...safeEntries].sort(
+    (a, b) => (b.hotness?.market_score || 0) - (a.hotness?.market_score || 0)
+  )[0] || {};
 
   const buyLow =
-    entries.find(player => player.hotness.tag === "BUY LOW") || entries[0];
+    safeEntries.find(player => player.hotness?.tag === "BUY LOW") || safeEntries[0] || {};
 
-  document.querySelectorAll(".market-mini-card")[0].innerHTML = `
+  miniCards[0].innerHTML = `
     <div class="label">Most Chased</div>
-    <div class="mini-signal-name">${chased.player_name}</div>
-    <div class="mini-signal-score">${formatScore(chased.hotness.market_score)}</div>
+    <div class="mini-signal-name">${chased.player_name || "—"}</div>
+    <div class="mini-signal-score">${formatScore(chased.hotness?.market_score || 0)}</div>
     <div class="mini-signal-caption">Market Score</div>
   `;
 
-  document.querySelectorAll(".market-mini-card")[1].innerHTML = `
+  miniCards[1].innerHTML = `
     <div class="label">Buy Low Watch</div>
-    <div class="mini-signal-name">${buyLow.player_name}</div>
-    <div class="mini-signal-score">${buyLow.hotness.tag}</div>
+    <div class="mini-signal-name">${buyLow.player_name || "—"}</div>
+    <div class="mini-signal-score">${buyLow.hotness?.tag || "—"}</div>
     <div class="mini-signal-caption">Current Signal</div>
   `;
 }
 
 function renderDashboardV2(entries) {
   renderMarketPulse(entries);
-  renderCollectorsPick(entries);
+  renderSignalOfTheWeek(entries);
   renderMiniSignals(entries);
 
 }
@@ -1700,27 +1968,29 @@ async function init() {
     latestEntries = entries;
     setupPlayerSearch();
 
-    if (!entries.length) throw new Error('Leaderboard response is empty.');
-
     status.textContent = 'Rendering Market Desk...';
     renderDashboardV2(entries);
 
     const leaderboardRoot = document.getElementById('leaderboard-table');
-    leaderboardRoot.innerHTML = buildLeaderboard(entries);
+    if (entries.length) {
+      leaderboardRoot.innerHTML = buildLeaderboard(entries);
 
-    const leaderRows = [...leaderboardRoot.querySelectorAll('.leader-table-row')];
+      const leaderRows = [...leaderboardRoot.querySelectorAll('.leader-table-row')];
 
-    leaderRows.forEach((row, index) => {
-      row.addEventListener('click', async () => {
-        leaderRows.forEach(r => r.classList.remove('active'));
-        row.classList.add('active');
-        await selectPlayer(entries[index]);
+      leaderRows.forEach((row, index) => {
+        row.addEventListener('click', async () => {
+          leaderRows.forEach(r => r.classList.remove('active'));
+          row.classList.add('active');
+          await selectPlayer(entries[index]);
+        });
       });
-    });
 
-    if (leaderRows[0]) leaderRows[0].classList.add('active');
+      if (leaderRows[0]) leaderRows[0].classList.add('active');
 
-    await selectPlayer(entries[0]);
+      await selectPlayer(entries[0]);
+    } else {
+      leaderboardRoot.innerHTML = `<div class="detail-empty">Leaderboard unavailable.</div>`;
+    }
     await renderLeaderboardHistory();
 
     status.textContent = `Loaded ${entries.length} players from ${payload.data_source || 'api'}`;
@@ -1736,6 +2006,11 @@ async function init() {
 
     status.textContent = `Load failed: ${error.message}`;
     status.style.color = '#9A6656';
+
+    // Graceful fallback: still show the “Signal of the Week” hero.
+    try {
+      renderSignalOfTheWeek([]);
+    } catch (_) {}
 
     const leaderboardRoot = document.getElementById('leaderboard-table');
     if (leaderboardRoot) {
