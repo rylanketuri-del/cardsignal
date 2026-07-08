@@ -167,19 +167,19 @@ function buildLeaderboard(entries) {
   return `
     <section class="market-leaders-module sport-section sport-section--mlb" data-sport="mlb">
       <div class="market-leaders-header">
-        <div>
-          <p class="eyebrow">Live Signals</p>
-          <h2>Today’s Leaders</h2>
-          <p>Real-time player stat correlation — performance, market demand, and collector momentum.</p>
-        </div>
+        <h2 class="leaders-section-title">Today's Leaders</h2>
       </div>
 
       <div class="market-leaders-table">
         <div class="leaders-table-head">
           <span>#</span>
+          <span>Photo</span>
+          <span>Logo</span>
           <span>Player</span>
+          <span>Team</span>
+          <span>Pos</span>
           <span>Signal</span>
-          <span>Performance</span>
+          <span>Perf</span>
           <span>Market</span>
           <span>Trend</span>
           <span>Report</span>
@@ -189,28 +189,23 @@ function buildLeaderboard(entries) {
           const score = entry.hotness?.total_score || 0;
           const performance = entry.hotness?.performance_score || 0;
           const market = entry.hotness?.market_score || 0;
-          const tag = entry.hotness?.tag || getHeatLabel(score);
-          const trend = score >= 60 ? "↑" : "↓";
-          const trendClass = score >= 60 ? "trend-up" : "trend-down";
-          const teamPosition = formatTeamPositionLabel(entry);
+          const movement = computeSignalOfWeekMovement(entry);
+          const moveClass = movement.signed.startsWith("+") ? "metric-up" : movement.signed.startsWith("-") ? "metric-down" : "metric-flat";
+          const team = getTeamAbbrev(entry);
+          const position = entry.position || "—";
 
           return `
             <button class="leader-table-row" type="button" data-player-index="${index}">
               <span class="leader-rank-small">${entry.rank || index + 1}</span>
-
-              <span class="leader-profile">
-                ${renderLeaderHeadshot(entry)}
-
-                <span>
-                  <strong>${entry.player_name} <span>${teamPosition}</span></strong>
-                  <em><span class="team-chip">${renderTeamLogoMarkup(entry)}</span> ${tag}</em>
-                </span>
-              </span>
-
+              <span class="leader-photo-cell">${renderLeaderHeadshot(entry)}</span>
+              <span class="leader-team-logo-cell">${renderTeamLogoMarkup(entry)}</span>
+              <span class="leader-player-name">${entry.player_name}</span>
+              <span class="leader-team-abbr">${team}</span>
+              <span class="leader-position">${position}</span>
               <span class="leader-number">${formatScore(score)}</span>
-              <span>${formatScore(performance)}</span>
-              <span>${formatScore(market)}</span>
-              <span class="${trendClass}">${trend} ${Math.abs(score - performance).toFixed(1)}</span>
+              <span class="leader-metric">${formatScore(performance)}</span>
+              <span class="leader-metric">${formatScore(market)}</span>
+              <span class="leader-trend ${moveClass}">${movement.arrow} ${movement.signed}</span>
               <span class="leader-report-pill">View Report</span>
             </button>
           `;
@@ -380,33 +375,19 @@ function movementClass(movement = "") {
   return "metric-flat";
 }
 
-/* Landing page — compact card intelligence row */
+/* Landing page — Quick Intelligence grid row */
 function renderCardIntelRow(item) {
   const moveClass = movementClass(item.movement);
-  const upsideClass = movementClass(item.upside);
 
   return `
-    <div class="card-intel-row">
-      <div class="card-intel-row-thumb" aria-hidden="true"></div>
-      <div class="card-intel-row-body">
-        <div class="card-intel-row-name">${item.name}</div>
-        <div class="card-intel-row-metrics">
-          <span class="card-intel-metric">
-            <em>price</em>
-            <strong>${csIntelFormatMoney(item.price)}</strong>
-          </span>
-          <span class="card-intel-metric">
-            <em>7-day move</em>
-            <strong class="${moveClass}">${item.movement}</strong>
-          </span>
-          <span class="card-intel-metric">
-            <em>score</em>
-            <strong>${item.score ?? "—"}</strong>
-          </span>
-          <span class="card-intel-metric">
-            <em>upside</em>
-            <strong class="${upsideClass}">${item.upside ?? "—"}</strong>
-          </span>
+    <div class="qi-row">
+      <div class="qi-row-thumb" aria-hidden="true"></div>
+      <div class="qi-row-body">
+        <span class="qi-row-name">${item.name}</span>
+        <div class="qi-row-metrics">
+          <span class="qi-price">${csIntelFormatMoney(item.price)}</span>
+          <span class="qi-move ${moveClass}">${item.movement}</span>
+          <span class="qi-score-pill">${item.score ?? "—"}</span>
         </div>
       </div>
     </div>
@@ -415,9 +396,9 @@ function renderCardIntelRow(item) {
 
 function renderCardIntelBox({ title, modifier, items }) {
   return `
-    <article class="card-intel-box card-intel-box--${modifier}">
-      <h3 class="card-intel-box-title">${title}</h3>
-      <div class="card-intel-box-list">
+    <article class="qi-card qi-card--${modifier}">
+      <h3 class="qi-card-title">${title}</h3>
+      <div class="qi-card-list">
         ${items.slice(0, 3).map((item) => renderCardIntelRow(item)).join("")}
       </div>
     </article>
@@ -429,7 +410,8 @@ function getCardSectionEntry(entries = []) {
 }
 
 function renderCardSection(entries = []) {
-  const root = document.getElementById("card-section-grid");
+  const root = document.getElementById("quick-intelligence-grid")
+    || document.getElementById("card-section-grid");
   if (!root) return;
 
   const entry = getCardSectionEntry(entries);
@@ -442,19 +424,19 @@ function renderCardSection(entries = []) {
       items: intel.trendingCards,
     })}
     ${renderCardIntelBox({
+      title: "Most Chased",
+      modifier: "chased",
+      items: intel.mostChased,
+    })}
+    ${renderCardIntelBox({
       title: "Biggest Movers",
       modifier: "movers",
       items: intel.biggestMovers,
     })}
     ${renderCardIntelBox({
-      title: "Buy Low Opportunities",
+      title: "Buy Low Watch",
       modifier: "buy-low",
       items: intel.buyLowOpportunities,
-    })}
-    ${renderCardIntelBox({
-      title: "Most Chased",
-      modifier: "chased",
-      items: intel.mostChased,
     })}
   `;
 }
@@ -1476,6 +1458,15 @@ function computeSignalOfWeekMovement(entry = {}) {
   return { arrow, signed };
 }
 
+function openSignalOfWeekReport(entry) {
+  selectPlayer(entry).then(() => {
+    document.getElementById("player-detail")?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  });
+}
+
 function renderSignalOfTheWeek(entries = []) {
   const card = document.querySelector(".signal-of-week-card");
   if (!card) return;
@@ -1503,6 +1494,11 @@ function renderSignalOfTheWeek(entries = []) {
   const team = getTeamAbbrev(entry);
   const position = entry.position || "—";
   const moveClass = movement.signed.startsWith("+") ? "metric-up" : movement.signed.startsWith("-") ? "metric-down" : "metric-flat";
+
+  card.classList.add("featured-signal-banner");
+  card.setAttribute("role", "button");
+  card.tabIndex = 0;
+  card.setAttribute("aria-label", `Signal of the Week: ${entry.player_name || "player"}`);
 
   card.innerHTML = `
     <div class="signal-week-banner">
@@ -1537,7 +1533,6 @@ function renderSignalOfTheWeek(entries = []) {
 
         <div class="signal-week-insight">
           <div class="signal-week-ai-row">
-            <span class="signal-week-ai-label">AI Recommendation</span>
             <span class="signal-week-ai-pill signal-week-ai-pill--${aiAction.toLowerCase()}">${aiAction}</span>
           </div>
           <p class="signal-week-reason">${aiReasonSentence}</p>
@@ -1545,28 +1540,22 @@ function renderSignalOfTheWeek(entries = []) {
       </div>
 
       <div class="signal-week-action">
-        <button
-          class="signal-week-cta primary"
-          type="button"
-          id="signal-of-the-week-view-report"
-          aria-label="View report for ${entry.player_name || "player"}"
-        >
+        <span class="signal-week-cta">
           View Report
-        </button>
+          <span class="signal-week-cta-arrow" aria-hidden="true">→</span>
+        </span>
       </div>
     </div>
   `;
 
-  const btn = document.getElementById("signal-of-the-week-view-report");
-  if (btn) {
-    btn.onclick = async () => {
-      await selectPlayer(entry);
-      document.getElementById("player-detail")?.scrollIntoView({
-        behavior: "smooth",
-        block: "start",
-      });
-    };
-  }
+  const handleOpen = (event) => {
+    if (event.type === "keydown" && event.key !== "Enter" && event.key !== " ") return;
+    if (event.type === "keydown") event.preventDefault();
+    openSignalOfWeekReport(entry);
+  };
+
+  card.onclick = handleOpen;
+  card.onkeydown = handleOpen;
 }
 
 /* Signal Center — main dashboard render pipeline */
