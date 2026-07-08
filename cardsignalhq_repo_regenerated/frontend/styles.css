@@ -3944,8 +3944,8 @@ button,
 
 .market-leaders-table .leaders-table-head,
 .market-leaders-table .leader-table-row {
-  grid-template-columns: 36px 52px 44px 1.2fr 56px 48px 72px 72px 72px 80px 96px;
-  gap: 12px;
+  grid-template-columns: 40px minmax(140px, 1.6fr) 64px 72px 72px 76px 92px;
+  gap: 10px;
 }
 
 .market-leaders-table .leader-table-row {
@@ -4024,7 +4024,7 @@ button,
 @media (max-width: 1100px) {
   .market-leaders-table .leaders-table-head,
   .market-leaders-table .leader-table-row {
-    grid-template-columns: 32px 48px 40px 1fr 52px 44px 64px 64px 64px 72px 88px;
+    grid-template-columns: 36px minmax(120px, 1.4fr) 58px 64px 64px 68px 84px;
     gap: 8px;
   }
 }
@@ -4052,19 +4052,24 @@ button,
   }
 
   .market-leaders-table .leader-table-row {
-    grid-template-columns: 36px 1fr auto;
-    gap: 12px;
-    padding: 18px 16px;
+    grid-template-columns: 32px 1fr auto;
+    gap: 10px;
+    padding: 14px 16px;
   }
 
-  .market-leaders-table .leader-table-row > span:nth-child(n+3) {
+  .market-leaders-table .leader-table-row > .leader-number,
+  .market-leaders-table .leader-table-row > .leader-metric,
+  .market-leaders-table .leader-table-row > .leader-trend {
     grid-column: 2;
+    font-size: 12px;
   }
 
   .market-leaders-table .leader-report-pill {
     grid-column: 3;
     grid-row: 1 / span 4;
     align-self: center;
+    font-size: 11px;
+    padding: 7px 10px;
   }
 }
 
@@ -4088,5 +4093,303 @@ button,
   .qi-price,
   .qi-move {
     font-size: 11px;
+  }
+}
+
+/* ===========================
+   Sprint 6.5 — Signal Center Polish Pass
+=========================== */
+
+.global-beta-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: rgba(15, 15, 16, 0.04);
+  border: 1px solid rgba(187, 132, 85, 0.22);
+  color: var(--bronze);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.section-desc {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+  max-width: 560px;
+  font-weight: 500;
+}
+
+.leaders-report-section {
+  gap: 18px;
+  margin-top: 16px;
+  align-items: stretch;
+}
+
+.leaders-report-section #leaderboard-table,
+.leaders-report-section .player-report-shell {
+  min-width: 0;
+}
+
+.charts-section {
+  margin-top: 16px;
+}
+
+.charts-section .panel-header h2 {
+  margin: 0;
+}
+
+.charts-section .panel-header .section-desc {
+  margin-top: 6px;
+}
+
+.market-leaders-header {
+  margin-bottom: 18px;
+}
+
+.market-leaders-scroll {
+  max-height: 480px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  border-radius: 24px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.market-leaders-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.market-leaders-scroll::-webkit-scrollbar-thumb {
+  background: rgba(187, 132, 85, 0.35);
+  border-radius: 999px;
+}
+
+.market-leaders-table .leaders-table-head,
+.market-leaders-table .leader-table-row {
+  grid-template-columns: 40px minmax(140px, 1.6fr) 64px 72px 72px 76px 92px;
+  gap: 10px;
+}
+
+.market-leaders-table .leaders-table-head {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  box-shadow: 0 1px 0 rgba(220, 214, 206, 0.95);
+}
+
+.leader-player-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.leader-player-copy {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.leader-player-meta {
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.leader-photo-cell .leader-photo {
+  width: 42px;
+  height: 42px;
+  border-radius: 13px;
+  flex-shrink: 0;
+}
+
+.leader-team-logo-cell {
+  flex-shrink: 0;
+}
+
+.leader-number {
+  font-weight: 900;
+  color: var(--charcoal);
+  font-size: 14px;
+}
+
+.qi-card-desc {
+  margin: -6px 0 12px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+  font-weight: 500;
+}
+
+.qi-card {
+  min-height: 236px;
+}
+
+.qi-row-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.qi-price {
+  color: var(--bronze);
+}
+
+.qi-move.metric-up {
+  color: var(--signal-green);
+}
+
+.qi-move.metric-down {
+  color: var(--signal-red);
+}
+
+.qi-move.metric-flat {
+  color: var(--muted);
+}
+
+.qi-score-pill {
+  color: var(--charcoal);
+  background: rgba(15, 15, 16, 0.04);
+  border-color: rgba(220, 214, 206, 0.85);
+}
+
+.cs-recommendation-wrap,
+.cs-conviction-wrap {
+  display: grid;
+  justify-items: end;
+  gap: 6px;
+}
+
+.cs-recommendation-wrap--inline {
+  justify-items: start;
+}
+
+.cs-recommendation-badge,
+.cs-conviction-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 72px;
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(220, 214, 206, 0.95);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  line-height: 1;
+}
+
+.cs-recommendation-label,
+.cs-conviction-label {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.cs-recommendation--buy {
+  background: rgba(47, 125, 74, 0.12);
+  border-color: rgba(47, 125, 74, 0.32);
+  color: var(--signal-green);
+}
+
+.cs-recommendation--hold {
+  background: rgba(187, 132, 85, 0.12);
+  border-color: rgba(187, 132, 85, 0.32);
+  color: var(--bronze);
+}
+
+.cs-recommendation--sell {
+  background: rgba(154, 102, 86, 0.12);
+  border-color: rgba(154, 102, 86, 0.32);
+  color: var(--signal-red);
+}
+
+.cs-conviction--high {
+  background: rgba(112, 138, 114, 0.14);
+  border-color: rgba(112, 138, 114, 0.35);
+  color: var(--sage);
+}
+
+.cs-conviction--medium {
+  background: rgba(187, 132, 85, 0.14);
+  border-color: rgba(187, 132, 85, 0.35);
+  color: var(--bronze);
+}
+
+.cs-conviction--low {
+  background: rgba(154, 102, 86, 0.12);
+  border-color: rgba(154, 102, 86, 0.32);
+  color: var(--clay);
+}
+
+.cs-ai-inline {
+  align-items: flex-end;
+}
+
+.player-report-shell .section-header {
+  margin-bottom: 12px;
+}
+
+.quick-intelligence-section {
+  margin-bottom: 18px;
+}
+
+.signal-center-hero {
+  margin-bottom: 16px;
+}
+
+@media (max-width: 980px) {
+  .market-leaders-scroll {
+    max-height: 420px;
+  }
+
+  .status-wrap {
+    justify-content: flex-start;
+  }
+
+  .global-beta-badge {
+    order: -1;
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+@media (max-width: 640px) {
+  .page {
+    overflow-x: hidden;
+  }
+
+  .market-leaders-scroll {
+    max-height: 360px;
+  }
+
+  .market-leaders-module {
+    padding: 22px 18px;
+  }
+
+  .qi-card {
+    min-height: 210px;
+  }
+
+  .leader-player-meta {
+    display: none;
+  }
+
+  .leader-team-logo-cell {
+    display: none;
   }
 }

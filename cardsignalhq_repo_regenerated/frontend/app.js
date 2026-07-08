@@ -167,49 +167,53 @@ function buildLeaderboard(entries) {
   return `
     <section class="market-leaders-module sport-section sport-section--mlb" data-sport="mlb">
       <div class="market-leaders-header">
-        <h2 class="leaders-section-title">Today's Leaders</h2>
+        <div>
+          <h2 class="leaders-section-title">Today's Leaders</h2>
+          <p class="section-desc">${SECTION_DESCRIPTIONS.leaders}</p>
+        </div>
       </div>
 
-      <div class="market-leaders-table">
-        <div class="leaders-table-head">
-          <span>#</span>
-          <span>Photo</span>
-          <span>Logo</span>
-          <span>Player</span>
-          <span>Team</span>
-          <span>Pos</span>
-          <span>Signal</span>
-          <span>Perf</span>
-          <span>Market</span>
-          <span>Trend</span>
-          <span>Report</span>
+      <div class="market-leaders-scroll">
+        <div class="market-leaders-table">
+          <div class="leaders-table-head">
+            <span>Rank</span>
+            <span>Player</span>
+            <span>Signal</span>
+            <span>Performance</span>
+            <span>Market</span>
+            <span>Trend</span>
+            <span>Report</span>
+          </div>
+
+          ${entries.map((entry, index) => {
+            const score = entry.hotness?.total_score || 0;
+            const performance = entry.hotness?.performance_score || 0;
+            const market = entry.hotness?.market_score || 0;
+            const movement = computeSignalOfWeekMovement(entry);
+            const moveClass = movement.signed.startsWith("+") ? "metric-up" : movement.signed.startsWith("-") ? "metric-down" : "metric-flat";
+            const team = getTeamAbbrev(entry);
+            const position = entry.position || "—";
+
+            return `
+              <button class="leader-table-row" type="button" data-player-index="${index}">
+                <span class="leader-rank-small">${entry.rank || index + 1}</span>
+                <span class="leader-player-cell">
+                  <span class="leader-photo-cell">${renderLeaderHeadshot(entry)}</span>
+                  <span class="leader-team-logo-cell">${renderTeamLogoMarkup(entry)}</span>
+                  <span class="leader-player-copy">
+                    <span class="leader-player-name">${entry.player_name}</span>
+                    <span class="leader-player-meta">${team} · ${position}</span>
+                  </span>
+                </span>
+                <span class="leader-number">${formatScore(score)}</span>
+                <span class="leader-metric">${formatScore(performance)}</span>
+                <span class="leader-metric">${formatScore(market)}</span>
+                <span class="leader-trend ${moveClass}">${movement.arrow} ${movement.signed}</span>
+                <span class="leader-report-pill">View Report</span>
+              </button>
+            `;
+          }).join("")}
         </div>
-
-        ${entries.map((entry, index) => {
-          const score = entry.hotness?.total_score || 0;
-          const performance = entry.hotness?.performance_score || 0;
-          const market = entry.hotness?.market_score || 0;
-          const movement = computeSignalOfWeekMovement(entry);
-          const moveClass = movement.signed.startsWith("+") ? "metric-up" : movement.signed.startsWith("-") ? "metric-down" : "metric-flat";
-          const team = getTeamAbbrev(entry);
-          const position = entry.position || "—";
-
-          return `
-            <button class="leader-table-row" type="button" data-player-index="${index}">
-              <span class="leader-rank-small">${entry.rank || index + 1}</span>
-              <span class="leader-photo-cell">${renderLeaderHeadshot(entry)}</span>
-              <span class="leader-team-logo-cell">${renderTeamLogoMarkup(entry)}</span>
-              <span class="leader-player-name">${entry.player_name}</span>
-              <span class="leader-team-abbr">${team}</span>
-              <span class="leader-position">${position}</span>
-              <span class="leader-number">${formatScore(score)}</span>
-              <span class="leader-metric">${formatScore(performance)}</span>
-              <span class="leader-metric">${formatScore(market)}</span>
-              <span class="leader-trend ${moveClass}">${movement.arrow} ${movement.signed}</span>
-              <span class="leader-report-pill">View Report</span>
-            </button>
-          `;
-        }).join("")}
       </div>
     </section>
   `;
@@ -323,10 +327,30 @@ function csIntelMulberry32(seed) {
     return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
   };
 }
-function csIntelPickConfidenceTier(rng) {
+function csIntelPickConvictionTier(rng) {
   if (rng >= 0.66) return "HIGH";
   if (rng >= 0.33) return "MEDIUM";
   return "LOW";
+}
+
+function csIntelRecommendationFromTier(tier) {
+  if (tier === "HIGH") return "BUY";
+  if (tier === "MEDIUM") return "HOLD";
+  return "SELL";
+}
+
+function csIntelRecommendationClass(action = "") {
+  const key = String(action || "").toLowerCase();
+  if (key === "buy") return "cs-recommendation--buy";
+  if (key === "hold") return "cs-recommendation--hold";
+  if (key === "sell") return "cs-recommendation--sell";
+  return "";
+}
+
+function csIntelConvictionClass(tier = "") {
+  if (tier === "HIGH") return "cs-conviction--high";
+  if (tier === "MEDIUM") return "cs-conviction--medium";
+  return "cs-conviction--low";
 }
 function csIntelFormatPercent(value) {
   const n = csIntelSafeToNumber(value);
@@ -339,9 +363,14 @@ function csIntelFormatMoney(value) {
   if (n === null) return "—";
   return `$${n.toFixed(2)}`;
 }
-function csIntelBetaPreviewBadge() {
-  return `<span class="cs-beta-preview" title="Live market intelligence coming soon.">Beta Preview</span>`;
-}
+
+const SECTION_DESCRIPTIONS = {
+  leaders: "The strongest collector signals across tracked players this week.",
+  trending: "Cards gaining the most attention across the market.",
+  movers: "The sharpest weekly price and demand movement.",
+  buyLow: "Potential value spots before the broader market reacts.",
+  chased: "The cards and players collectors are chasing hardest.",
+};
 
 /* Signal Center — unified intelligence row (player report) */
 function renderIntelRow(item, { metricLabel = "7-day", showThumb = true } = {}) {
@@ -394,10 +423,11 @@ function renderCardIntelRow(item) {
   `;
 }
 
-function renderCardIntelBox({ title, modifier, items }) {
+function renderCardIntelBox({ title, modifier, description, items }) {
   return `
     <article class="qi-card qi-card--${modifier}">
       <h3 class="qi-card-title">${title}</h3>
+      <p class="qi-card-desc">${description}</p>
       <div class="qi-card-list">
         ${items.slice(0, 3).map((item) => renderCardIntelRow(item)).join("")}
       </div>
@@ -421,22 +451,26 @@ function renderCardSection(entries = []) {
     ${renderCardIntelBox({
       title: "Trending Cards",
       modifier: "trending",
+      description: SECTION_DESCRIPTIONS.trending,
       items: intel.trendingCards,
-    })}
-    ${renderCardIntelBox({
-      title: "Most Chased",
-      modifier: "chased",
-      items: intel.mostChased,
     })}
     ${renderCardIntelBox({
       title: "Biggest Movers",
       modifier: "movers",
+      description: SECTION_DESCRIPTIONS.movers,
       items: intel.biggestMovers,
     })}
     ${renderCardIntelBox({
       title: "Buy Low Watch",
       modifier: "buy-low",
+      description: SECTION_DESCRIPTIONS.buyLow,
       items: intel.buyLowOpportunities,
+    })}
+    ${renderCardIntelBox({
+      title: "Most Chased",
+      modifier: "chased",
+      description: SECTION_DESCRIPTIONS.chased,
+      items: intel.mostChased,
     })}
   `;
 }
@@ -482,7 +516,10 @@ function csIntelGetPlaceholders(entry) {
     const raw = sessionStorage.getItem(storageKey);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (parsed && parsed.confidenceTier) {
+      if (parsed && (parsed.convictionTier || parsed.confidenceTier)) {
+        if (!parsed.convictionTier && parsed.confidenceTier) {
+          parsed.convictionTier = parsed.confidenceTier;
+        }
         csIntelCache.set(key, parsed);
         return parsed;
       }
@@ -494,7 +531,7 @@ function csIntelGetPlaceholders(entry) {
   const seed = csIntelHashToUint32(key);
   const rng = csIntelMulberry32(seed);
 
-  const confidenceTier = csIntelPickConfidenceTier(rng());
+  const convictionTier = csIntelPickConvictionTier(rng());
 
   // 0-100 "premium" placeholder scales (used when backend fields are missing).
   const performance = csIntelClamp(22 + rng() * 78, 0, 100);
@@ -622,7 +659,7 @@ function csIntelGetPlaceholders(entry) {
   const aiReason = aiReasonPool[Math.floor(rng() * aiReasonPool.length)] || aiReasonPool[0];
 
   const placeholders = {
-    confidenceTier,
+    convictionTier,
     performance: csIntelClamp(performance, 0, 100),
     market: csIntelClamp(market, 0, 100),
     collector: csIntelClamp(collector, 0, 100),
@@ -633,8 +670,8 @@ function csIntelGetPlaceholders(entry) {
     buyLowOpportunities,
     mostChased,
     aiRecommendation: {
-      action: "BUY",
-      confidence: confidenceTier,
+      action: csIntelRecommendationFromTier(convictionTier),
+      conviction: convictionTier,
       reason: aiReason,
     },
   };
@@ -663,18 +700,18 @@ function renderPlayerDetail(entry) {
     collector: csIntelSafeToNumber(hotness.collector_score) ?? placeholders.collector,
     momentum: csIntelSafeToNumber(hotness.momentum_score) ?? placeholders.momentum,
     score: csIntelSafeToNumber(hotness.total_score) ?? placeholders.score,
-    confidenceTier: placeholders.confidenceTier,
+    convictionTier: placeholders.convictionTier || placeholders.confidenceTier,
   };
 
-  const confidenceTier = intel.confidenceTier;
+  const convictionTier = intel.convictionTier;
+  const recommendation = csIntelRecommendationFromTier(convictionTier);
   const team = getTeamAbbrev(entry);
   const position = entry.position || "—";
 
   const ai = intel.aiRecommendation;
 
-  // Keep layout resilient: never assume backend provides optional arrays/fields.
-  const scoreConfidenceClass =
-    confidenceTier === "HIGH" ? "cs-confidence--high" : confidenceTier === "MEDIUM" ? "cs-confidence--medium" : "cs-confidence--low";
+  const recommendationClass = csIntelRecommendationClass(recommendation);
+  const convictionClass = csIntelConvictionClass(convictionTier);
 
   const progressRow = (label, value, colorClass) => {
     const v = csIntelClamp(Number(value) || 0, 0, 100);
@@ -691,7 +728,8 @@ function renderPlayerDetail(entry) {
     `;
   };
 
-  const confidenceBadge = `<div class="cs-confidence-badge ${scoreConfidenceClass}">${confidenceTier}</div>`;
+  const recommendationBadge = `<div class="cs-recommendation-badge ${recommendationClass}">${recommendation}</div>`;
+  const convictionBadge = `<div class="cs-conviction-badge ${convictionClass}">${convictionTier}</div>`;
 
   return `
     <article class="player-report player-report--cardsignal-intel">
@@ -724,10 +762,9 @@ function renderPlayerDetail(entry) {
             <p class="eyebrow">CardSignal Score</p>
           </div>
           <div class="cs-section-head-right">
-            ${csIntelBetaPreviewBadge()}
-            <div class="cs-confidence-wrap">
-              ${confidenceBadge}
-              <small class="cs-confidence-label">Confidence</small>
+            <div class="cs-recommendation-wrap">
+              ${recommendationBadge}
+              <small class="cs-recommendation-label">Recommendation</small>
             </div>
           </div>
         </div>
@@ -740,7 +777,6 @@ function renderPlayerDetail(entry) {
       <section class="cs-intel-breakdown">
         <div class="cs-section-head">
           <h3 class="cs-section-title">Signal Breakdown</h3>
-          <div class="cs-section-head-right">${csIntelBetaPreviewBadge()}</div>
         </div>
 
         <div class="cs-progress-list">
@@ -754,13 +790,18 @@ function renderPlayerDetail(entry) {
       <section class="cs-premium-card cs-premium-card--ai">
         <div class="cs-premium-head">
           <h3 class="cs-premium-title">AI Recommendation</h3>
-          ${csIntelBetaPreviewBadge()}
         </div>
 
         <div class="cs-ai-block cs-ai-block--compact">
           <div class="cs-ai-inline">
-            <span class="cs-ai-action-compact cs-ai-action-compact--${ai.action.toLowerCase()}">${ai.action}</span>
-            <div class="cs-confidence-badge ${scoreConfidenceClass}">${ai.confidence}</div>
+            <div class="cs-recommendation-wrap cs-recommendation-wrap--inline">
+              <span class="cs-ai-action-compact cs-ai-action-compact--${ai.action.toLowerCase()}">${ai.action}</span>
+              <small class="cs-recommendation-label">Recommendation</small>
+            </div>
+            <div class="cs-conviction-wrap">
+              ${convictionBadge}
+              <small class="cs-conviction-label">Conviction</small>
+            </div>
           </div>
           <div class="cs-ai-reason cs-ai-reason--compact">
             <p>${ai.reason}</p>
@@ -1000,7 +1041,7 @@ async function renderScoreHistory(playerId) {
           },
         ],
       },
-      options: getChartOptions("Selected Player Signal History"),
+      options: getChartOptions("Selected Player Signal Timeline"),
     });
   } catch (error) {
     console.error("Score history chart error:", error);
@@ -1044,7 +1085,7 @@ async function renderLeaderboardHistory() {
           },
         ],
       },
-      options: getChartOptions("Market Trend"),
+      options: getChartOptions("Market Activity"),
     });
   } catch (error) {
     console.error("Leaderboard history chart error:", error);
@@ -1488,8 +1529,8 @@ function renderSignalOfTheWeek(entries = []) {
   const aiReason = placeholders?.aiRecommendation?.reason || "Collector demand is accelerating faster than market pricing.";
   const aiReasonSentence = clampToOneSentence(aiReason) || "Collector demand is accelerating faster than market pricing.";
 
-  const confidenceTier = placeholders?.confidenceTier || "MEDIUM";
-  const aiAction = confidenceTier === "HIGH" ? "BUY" : confidenceTier === "MEDIUM" ? "HOLD" : "SELL";
+  const convictionTier = placeholders?.convictionTier || placeholders?.confidenceTier || "MEDIUM";
+  const aiAction = csIntelRecommendationFromTier(convictionTier);
 
   const team = getTeamAbbrev(entry);
   const position = entry.position || "—";
