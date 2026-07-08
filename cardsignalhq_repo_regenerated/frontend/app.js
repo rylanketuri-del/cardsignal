@@ -172,7 +172,6 @@ function buildLeaderboard(entries) {
           <h2>Today’s Leaders</h2>
           <p>The strongest collector signals across performance, demand, and card-market movement.</p>
         </div>
-        <div class="leaders-count">${entries.length}<span>Tracked</span></div>
       </div>
 
       <div class="market-leaders-table">
@@ -347,6 +346,59 @@ function csIntelFormatMoney(value) {
 }
 function csIntelBetaPreviewBadge() {
   return `<span class="cs-beta-preview" title="Live market intelligence coming soon.">Beta Preview</span>`;
+}
+
+/* Signal Center — unified intelligence row component */
+function renderIntelRow(item, { metricLabel = "7-day", showThumb = true } = {}) {
+  const thumb = showThumb
+    ? `<div class="cs-intel-row-thumb" aria-hidden="true"></div>`
+    : "";
+  return `
+    <div class="cs-intel-row">
+      ${thumb}
+      <div class="cs-intel-row-copy">
+        <div class="cs-intel-row-title">${item.name}</div>
+        <div class="cs-intel-row-sub">${csIntelFormatMoney(item.price)}</div>
+      </div>
+      <div class="cs-intel-row-metric">
+        <strong>${item.movement}</strong>
+        <span>${metricLabel}</span>
+      </div>
+    </div>
+  `;
+}
+
+/* Signal Center — player identity row with headshot for featured sections */
+function renderFeaturedSignalCard(entry, { label, metricValue, metricCaption }) {
+  const initials = getPlayerInitials(entry.player_name);
+  const photo = entry.headshot_url
+    ? `<img src="${entry.headshot_url}" alt="" loading="lazy" class="player-headshot-image" onerror="this.remove();this.parentElement.insertAdjacentHTML('beforeend','<span>${initials}</span>')" />`
+    : `<span>${initials}</span>`;
+
+  return `
+    <div class="featured-signal-inner">
+      <div class="featured-signal-photo">${photo}</div>
+      <div class="featured-signal-copy">
+        <div class="featured-signal-label">${label}</div>
+        <div class="featured-signal-name">${entry.player_name || "—"}</div>
+        <div class="featured-signal-team">
+          <span class="team-logo-placeholder">${renderTeamLogoMarkup(entry)}</span>
+          ${getTeamAbbrev(entry)}
+        </div>
+      </div>
+      <div class="featured-signal-metric">
+        <strong>${metricValue}</strong>
+        <span>${metricCaption}</span>
+      </div>
+    </div>
+  `;
+}
+
+function showChartPlaceholder(canvasId, placeholderId, show) {
+  const canvas = document.getElementById(canvasId);
+  const placeholder = document.getElementById(placeholderId);
+  if (canvas) canvas.classList.toggle("hidden", show);
+  if (placeholder) placeholder.classList.toggle("hidden", !show);
 }
 function csIntelGetPlaceholders(entry) {
   const key = String(entry?.player_id ?? entry?.player_name ?? "unknown");
@@ -624,93 +676,59 @@ function renderPlayerDetail(entry) {
         </div>
       </section>
 
-      <section class="cs-premium-grid" aria-label="Premium market intelligence">
+      <section class="cs-premium-grid" aria-label="Signal Center intelligence">
         <section class="cs-premium-card cs-premium-card--trending">
           <div class="cs-premium-head">
-            <h3 class="cs-premium-title">🔥 Trending Cards</h3>
+            <h3 class="cs-premium-title">Trending Cards</h3>
             ${csIntelBetaPreviewBadge()}
           </div>
-          <div class="cs-premium-card-list cs-premium-card-list--cards">
-            ${intel.trendingCards.map((c) => `
-              <div class="cs-trending-item">
-                <div class="cs-card-image-placeholder" aria-hidden="true"></div>
-                <div class="cs-trending-copy">
-                  <div class="cs-card-name">${c.name}</div>
-                  <div class="cs-card-price">${csIntelFormatMoney(c.price)}</div>
-                </div>
-                <div class="cs-card-move">
-                  <strong>${c.movement}</strong>
-                  <span class="cs-card-move-label">7-day movement</span>
-                </div>
-              </div>
-            `).join("")}
+          <div class="cs-premium-card-list cs-premium-card-list--unified">
+            ${intel.trendingCards.slice(0, 3).map((c) => renderIntelRow(c, { metricLabel: "7-day" })).join("")}
           </div>
         </section>
 
         <section class="cs-premium-card cs-premium-card--movers">
           <div class="cs-premium-head">
-            <h3 class="cs-premium-title">📈 Biggest Movers</h3>
+            <h3 class="cs-premium-title">Biggest Movers</h3>
             ${csIntelBetaPreviewBadge()}
           </div>
-          <div class="cs-premium-card-list cs-premium-card-list--entries">
-            ${intel.biggestMovers.map((c) => `
-              <div class="cs-entry-row">
-                <span class="cs-entry-name">${c.name}</span>
-                <span class="cs-entry-price">${csIntelFormatMoney(c.price)}</span>
-                <span class="cs-entry-move">${c.movement}</span>
-              </div>
-            `).join("")}
+          <div class="cs-premium-card-list cs-premium-card-list--unified">
+            ${intel.biggestMovers.slice(0, 3).map((c) => renderIntelRow(c, { metricLabel: "score" })).join("")}
           </div>
         </section>
 
         <section class="cs-premium-card cs-premium-card--buy-low">
           <div class="cs-premium-head">
-            <h3 class="cs-premium-title">💎 Buy Low Opportunities</h3>
+            <h3 class="cs-premium-title">Buy Low Opportunities</h3>
             ${csIntelBetaPreviewBadge()}
           </div>
-          <div class="cs-premium-card-list cs-premium-card-list--entries">
-            ${intel.buyLowOpportunities.map((c) => `
-              <div class="cs-entry-row">
-                <span class="cs-entry-name">${c.name}</span>
-                <span class="cs-entry-price">${csIntelFormatMoney(c.price)}</span>
-                <span class="cs-entry-move">${c.movement}</span>
-              </div>
-            `).join("")}
+          <div class="cs-premium-card-list cs-premium-card-list--unified">
+            ${intel.buyLowOpportunities.slice(0, 3).map((c) => renderIntelRow(c, { metricLabel: "upside" })).join("")}
           </div>
         </section>
 
         <section class="cs-premium-card cs-premium-card--chased">
           <div class="cs-premium-head">
-            <h3 class="cs-premium-title">⭐ Most Chased</h3>
+            <h3 class="cs-premium-title">Most Chased</h3>
             ${csIntelBetaPreviewBadge()}
           </div>
-          <div class="cs-premium-card-list cs-premium-card-list--entries">
-            ${intel.mostChased.map((c) => `
-              <div class="cs-entry-row">
-                <span class="cs-entry-name">${c.name}</span>
-                <span class="cs-entry-price">${csIntelFormatMoney(c.price)}</span>
-                <span class="cs-entry-move">${c.movement}</span>
-              </div>
-            `).join("")}
+          <div class="cs-premium-card-list cs-premium-card-list--unified">
+            ${intel.mostChased.slice(0, 3).map((c) => renderIntelRow(c, { metricLabel: "score" })).join("")}
           </div>
         </section>
 
         <section class="cs-premium-card cs-premium-card--ai">
           <div class="cs-premium-head">
-            <h3 class="cs-premium-title">🤖 AI Recommendation</h3>
+            <h3 class="cs-premium-title">AI Recommendation</h3>
             ${csIntelBetaPreviewBadge()}
           </div>
 
-          <div class="cs-ai-block">
-            <div class="cs-ai-left">
-              <div class="cs-ai-action">${ai.action}</div>
-              <div class="cs-ai-confidence">
-                <div class="cs-confidence-badge ${scoreConfidenceClass}">${ai.confidence}</div>
-                <div class="cs-confidence-label">Confidence</div>
-              </div>
+          <div class="cs-ai-block cs-ai-block--compact">
+            <div class="cs-ai-inline">
+              <span class="cs-ai-action-compact cs-ai-action-compact--${ai.action.toLowerCase()}">${ai.action}</span>
+              <div class="cs-confidence-badge ${scoreConfidenceClass}">${ai.confidence}</div>
             </div>
-            <div class="cs-ai-reason">
-              <div class="cs-ai-reason-label">Reason</div>
+            <div class="cs-ai-reason cs-ai-reason--compact">
               <p>${ai.reason}</p>
             </div>
           </div>
@@ -898,10 +916,11 @@ async function renderScoreHistory(playerId) {
     destroyChart(scoreChart);
 
     if (!items.length) {
-      const ctx = canvas.getContext("2d");
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      showChartPlaceholder("score-history-chart", "score-history-placeholder", true);
       return;
     }
+
+    showChartPlaceholder("score-history-chart", "score-history-placeholder", false);
 
     scoreChart = new Chart(canvas, {
       type: "line",
@@ -966,10 +985,11 @@ async function renderLeaderboardHistory() {
     destroyChart(leaderboardHistoryChart);
 
     if (!items.length) {
-      const ctx = canvas.getContext("2d");
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      showChartPlaceholder("leaderboard-history-chart", "leaderboard-history-placeholder", true);
       return;
     }
+
+    showChartPlaceholder("leaderboard-history-chart", "leaderboard-history-placeholder", false);
 
     leaderboardHistoryChart = new Chart(canvas, {
       type: "bar",
@@ -1164,7 +1184,8 @@ async function loadAdmin() {
   } catch (error) { setAdminStatus(error.message, true); }
 }
 /* ==========================================================
-   CardSignal UI Render Helpers
+   Signal Center — UI Render Helpers
+   (Dashboard nav label retained; page structured as Signal Center)
    ========================================================== */
 
 function calculateMarketPulse(entries) {
@@ -1178,76 +1199,57 @@ function calculateMarketPulse(entries) {
   return Math.round(total / entries.length);
 }
 
-function getTopMovers(entries) {
-  return entries.slice(0, 3);
+function getTopMovers(entries, limit = 10) {
+  return [...entries]
+    .sort((a, b) => (b.hotness?.total_score || 0) - (a.hotness?.total_score || 0))
+    .slice(0, limit);
 }
 
 function renderMarketPulse(entries) {
   const safeEntries = Array.isArray(entries) ? entries : [];
+  const pulseCard = document.querySelector(".market-pulse-card");
+  if (!pulseCard) return;
+
+  const generatedAt = new Date().toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+  });
 
   if (!safeEntries.length) {
-    const pulseCard = document.querySelector(".market-pulse-card");
-    if (!pulseCard) return;
-
-    const generatedAt = new Date().toLocaleTimeString([], {
-      hour: "numeric",
-      minute: "2-digit",
-    });
-
     pulseCard.innerHTML = `
       <div class="market-pulse-top">
-        <div>
-          <div class="label">Market Pulse</div>
-          <h2>Today’s Card Market</h2>
+        <div class="market-pulse-title-group">
+          <div>
+            <div class="label">Market Pulse</div>
+            <h2>Today\'s Card Market</h2>
+          </div>
+          <span class="market-pulse-updated-pill">Updated ${generatedAt}</span>
         </div>
         <span class="market-status">Active</span>
       </div>
 
-      <div class="live-market-body">
-        <div class="live-pulse-score">
+      <div class="market-pulse-body--compact">
+        <div class="market-pulse-score-compact">
           <span>—</span>
           <small>CardSignal Pulse</small>
         </div>
-
-        <div class="market-health-grid">
-          <div>
-            <strong>—</strong>
-            <span>Performance</span>
-          </div>
-          <div>
-            <strong>—</strong>
-            <span>Demand</span>
-          </div>
-          <div>
-            <strong>—</strong>
-            <span>Top Signal</span>
-          </div>
+        <div class="market-pulse-metrics-inline">
+          <div class="market-pulse-metric-chip"><strong>—</strong><span>Performance</span></div>
+          <div class="market-pulse-metric-chip"><strong>—</strong><span>Demand</span></div>
+          <div class="market-pulse-metric-chip"><strong>—</strong><span>Top Signal</span></div>
         </div>
       </div>
 
-      <div class="market-pulse-lower">
-        <div>
-          <div class="label">Top Movers</div>
-          <div class="pulse-movers compact">
-            <div class="pulse-mover-row">
-              <span>—</span>
-              <strong>—</strong>
-            </div>
-          </div>
-        </div>
-
-        <div class="pipeline-card">
-          <span>Updated</span>
-          <strong>${generatedAt}</strong>
-        </div>
+      <div class="pulse-movers pulse-movers--top10">
+        <div class="label">Top 10 Movers</div>
+        <div class="pulse-mover-row"><span>—</span><strong>—</strong></div>
       </div>
     `;
-
     return;
   }
 
   const pulse = calculateMarketPulse(safeEntries);
-  const topMovers = getTopMovers(safeEntries);
+  const topMovers = getTopMovers(safeEntries, 10);
   const avgPerformance = Math.round(
     safeEntries.reduce((sum, p) => sum + (p.hotness?.performance_score || 0), 0) / safeEntries.length
   );
@@ -1255,61 +1257,39 @@ function renderMarketPulse(entries) {
     safeEntries.reduce((sum, p) => sum + (p.hotness?.market_score || 0), 0) / safeEntries.length
   );
   const strongest = safeEntries[0] || {};
-  const generatedAt = new Date().toLocaleTimeString([], {
-    hour: "numeric",
-    minute: "2-digit"
-  });
-
-  const pulseCard = document.querySelector(".market-pulse-card");
 
   pulseCard.innerHTML = `
     <div class="market-pulse-top">
-      <div>
-        <div class="label">Market Pulse</div>
-        <h2>Today’s Card Market</h2>
+      <div class="market-pulse-title-group">
+        <div>
+          <div class="label">Market Pulse</div>
+          <h2>Today\'s Card Market</h2>
+        </div>
+        <span class="market-pulse-updated-pill">Updated ${generatedAt}</span>
       </div>
       <span class="market-status">Active</span>
     </div>
 
-    <div class="live-market-body">
-      <div class="live-pulse-score">
+    <div class="market-pulse-body--compact">
+      <div class="market-pulse-score-compact">
         <span>${pulse}</span>
         <small>CardSignal Pulse</small>
       </div>
-
-      <div class="market-health-grid">
-        <div>
-          <strong>${avgPerformance}</strong>
-          <span>Performance</span>
-        </div>
-        <div>
-          <strong>${avgMarket}</strong>
-          <span>Demand</span>
-        </div>
-        <div>
-          <strong>${formatScore(strongest.hotness?.total_score)}</strong>
-          <span>Top Signal</span>
-        </div>
+      <div class="market-pulse-metrics-inline">
+        <div class="market-pulse-metric-chip"><strong>${avgPerformance}</strong><span>Performance</span></div>
+        <div class="market-pulse-metric-chip"><strong>${avgMarket}</strong><span>Demand</span></div>
+        <div class="market-pulse-metric-chip"><strong>${formatScore(strongest.hotness?.total_score)}</strong><span>Top Signal</span></div>
       </div>
     </div>
 
-    <div class="market-pulse-lower">
-      <div>
-        <div class="label">Top Movers</div>
-        <div class="pulse-movers compact">
-          ${topMovers.map(player => `
-            <div class="pulse-mover-row">
-              <span>↑ ${player.player_name}</span>
-              <strong>${formatScore(player.hotness?.total_score)}</strong>
-            </div>
-          `).join("")}
+    <div class="pulse-movers pulse-movers--top10">
+      <div class="label">Top 10 Movers</div>
+      ${topMovers.map(player => `
+        <div class="pulse-mover-row">
+          <span>${player.player_name}</span>
+          <strong>${formatScore(player.hotness?.total_score)}</strong>
         </div>
-      </div>
-
-      <div class="pipeline-card">
-        <span>Updated</span>
-        <strong>${generatedAt}</strong>
-      </div>
+      `).join("")}
     </div>
   `;
 }
@@ -1416,6 +1396,7 @@ function computeSignalOfWeekMovement(entry = {}) {
 }
 
 function renderSignalOfTheWeek(entries = []) {
+  // Signal Center hero — featured cover story
   const card = document.querySelector(".signal-of-week-card");
   if (!card) return;
 
@@ -1467,7 +1448,6 @@ function renderSignalOfTheWeek(entries = []) {
 
       <div class="signal-week-copy">
         <div class="signal-week-eyebrow">SIGNAL OF THE WEEK</div>
-        <p class="signal-week-opportunity">This player is the biggest opportunity this week.</p>
 
         <div class="signal-week-name">${entry.player_name || "—"}</div>
 
@@ -1537,26 +1517,17 @@ function renderSignalOfTheWeek(entries = []) {
   }
 }
 
-function renderMiniSignals(entries) {
+/* Signal Center — Featured signals (Most Chased / Buy Low Watch) */
+function renderFeaturedSignals(entries) {
   const safeEntries = Array.isArray(entries) ? entries : [];
-
-  const miniCards = document.querySelectorAll(".market-mini-card");
-  if (!miniCards || miniCards.length < 2) return;
+  const mostChasedCard = document.getElementById("featured-most-chased");
+  const buyLowCard = document.getElementById("featured-buy-low");
+  if (!mostChasedCard || !buyLowCard) return;
 
   if (!safeEntries.length) {
-    miniCards[0].innerHTML = `
-      <div class="label">Most Chased</div>
-      <div class="mini-signal-name">—</div>
-      <div class="mini-signal-score">—</div>
-      <div class="mini-signal-caption">Market Score</div>
-    `;
-
-    miniCards[1].innerHTML = `
-      <div class="label">Buy Low Watch</div>
-      <div class="mini-signal-name">—</div>
-      <div class="mini-signal-score">—</div>
-      <div class="mini-signal-caption">Current Signal</div>
-    `;
+    const empty = { player_name: "—", team: "MLB" };
+    mostChasedCard.innerHTML = renderFeaturedSignalCard(empty, { label: "Most Chased", metricValue: "—", metricCaption: "Market Score" });
+    buyLowCard.innerHTML = renderFeaturedSignalCard(empty, { label: "Buy Low Watch", metricValue: "—", metricCaption: "Current Signal" });
     return;
   }
 
@@ -1564,29 +1535,31 @@ function renderMiniSignals(entries) {
     (a, b) => (b.hotness?.market_score || 0) - (a.hotness?.market_score || 0)
   )[0] || {};
 
-  const buyLow =
-    safeEntries.find(player => player.hotness?.tag === "BUY LOW") || safeEntries[0] || {};
+  const buyLow = safeEntries.find(p => p.hotness?.tag === "BUY LOW") || safeEntries[safeEntries.length - 1] || {};
 
-  miniCards[0].innerHTML = `
-    <div class="label">Most Chased</div>
-    <div class="mini-signal-name">${chased.player_name || "—"}</div>
-    <div class="mini-signal-score">${formatScore(chased.hotness?.market_score || 0)}</div>
-    <div class="mini-signal-caption">Market Score</div>
-  `;
+  mostChasedCard.innerHTML = renderFeaturedSignalCard(chased, {
+    label: "Most Chased",
+    metricValue: formatScore(chased.hotness?.market_score || 0),
+    metricCaption: "Market Score",
+  });
 
-  miniCards[1].innerHTML = `
-    <div class="label">Buy Low Watch</div>
-    <div class="mini-signal-name">${buyLow.player_name || "—"}</div>
-    <div class="mini-signal-score">${buyLow.hotness?.tag || "—"}</div>
-    <div class="mini-signal-caption">Current Signal</div>
-  `;
+  buyLowCard.innerHTML = renderFeaturedSignalCard(buyLow, {
+    label: "Buy Low Watch",
+    metricValue: buyLow.hotness?.tag || formatScore(buyLow.hotness?.total_score || 0),
+    metricCaption: "Current Signal",
+  });
 }
 
-function renderDashboardV2(entries) {
-  renderMarketPulse(entries);
+/* Signal Center — main dashboard render pipeline */
+function renderSignalCenter(entries) {
   renderSignalOfTheWeek(entries);
-  renderMiniSignals(entries);
+  renderMarketPulse(entries);
+  renderFeaturedSignals(entries);
+}
 
+/** @deprecated Use renderSignalCenter — kept as alias for compatibility */
+function renderDashboardV2(entries) {
+  renderSignalCenter(entries);
 }
 
 /* ==========================================================
@@ -1809,6 +1782,7 @@ async function handleBackendOnlyPlayerSelect(entry) {
   wirePlayerActions();
 
   destroyChart(scoreChart);
+  showChartPlaceholder("score-history-chart", "score-history-placeholder", true);
   const canvas = document.getElementById("score-history-chart");
   if (canvas) {
     const ctx = canvas.getContext("2d");
@@ -1968,8 +1942,8 @@ async function init() {
     latestEntries = entries;
     setupPlayerSearch();
 
-    status.textContent = 'Rendering Market Desk...';
-    renderDashboardV2(entries);
+    status.textContent = 'Rendering Signal Center...';
+    renderSignalCenter(entries);
 
     const leaderboardRoot = document.getElementById('leaderboard-table');
     if (entries.length) {
