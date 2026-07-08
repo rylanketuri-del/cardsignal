@@ -4,6 +4,7 @@
   --panel: #FCFBF8;
   --stone: #DCD6CE;
   --sand: #CDB79E;
+  --cream: #F7F5F2;
 
   --copper: #BB8455;
   --bronze: #8A6747;
@@ -11,6 +12,8 @@
   --text: #1D1D1F;
   --muted: #7D7873;
   --sage: #708A72;
+  --signal-green: #2F7D4A;
+  --signal-red: #9A6656;
   --clay: #9A6656;
   --white: #FFFFFF;
 
@@ -189,6 +192,11 @@ body {
 
 .signal-center-hero {
   margin-top: 4px;
+  margin-bottom: 18px;
+}
+
+.card-intelligence-section {
+  margin-bottom: 22px;
 }
 
 .signal-center-featured {
@@ -1300,14 +1308,21 @@ canvas {
   font-weight: 900;
 }
 
-.trend-up {
-  color: #2F7D4A;
+.trend-up,
+.metric-up {
+  color: var(--signal-green);
   font-weight: 900;
 }
 
-.trend-down {
-  color: var(--clay);
+.trend-down,
+.metric-down {
+  color: var(--signal-red);
   font-weight: 900;
+}
+
+.metric-flat {
+  color: var(--cream);
+  font-weight: 800;
 }
 
 .leader-report-pill {
@@ -2772,11 +2787,7 @@ button,
    Sprint 6.2 — Signal Center Polish
 =========================== */
 
-/* Signal of the Week hero — premium cream/gold tint */
-.signal-of-week-card {
-  background: linear-gradient(135deg, #FBF7F0 0%, #F5EDE0 45%, #F0E8D8 100%);
-  border-color: rgba(187, 132, 85, 0.22);
-}
+/* Signal of the Week hero — overridden by Sprint 6.3 compact banner below */
 
 .signal-week-ai-reason {
   margin: 6px 0 0;
@@ -3217,7 +3228,483 @@ button,
     font-size: 38px;
   }
 
-  .market-pulse-top h2 {
+/* ===========================
+   Sprint 6.3 — Signal Center Landing Cleanup
+=========================== */
+
+/* Compact premium Signal of the Week banner */
+.signal-of-week-card {
+  min-height: 160px;
+  max-height: 180px;
+  background: linear-gradient(135deg, #0F0F10 0%, #1A1714 48%, #221C17 100%);
+  border-color: rgba(187, 132, 85, 0.28);
+  border-radius: 24px;
+  overflow: hidden;
+}
+
+.signal-of-week-card::after {
+  display: none;
+}
+
+.signal-week-banner {
+  display: grid;
+  grid-template-columns: 148px 1fr auto;
+  align-items: stretch;
+  width: 100%;
+  min-height: 160px;
+  max-height: 180px;
+}
+
+.signal-week-media {
+  flex-shrink: 0;
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(180deg, #1A1714 0%, #2A2219 100%);
+}
+
+.player-image-stage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.player-image-backdrop {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 28% 18%, rgba(187, 132, 85, 0.34), transparent 52%),
+    linear-gradient(180deg, rgba(15, 15, 16, 0.15), rgba(15, 15, 16, 0.72));
+  z-index: 1;
+  pointer-events: none;
+}
+
+.player-image,
+.signal-week-photo-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 22%;
+  display: block;
+  position: relative;
+  z-index: 2;
+}
+
+.player-image--headshot {
+  object-position: center 18%;
+}
+
+.player-image--action {
+  object-position: center 35%;
+}
+
+.player-image-fallback,
+.signal-week-photo-fallback {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  font-size: 32px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  color: var(--sand);
+  font-family: Cormorant, Georgia, serif;
+}
+
+.player-image-glass,
+.signal-week-photo-glass {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(15, 15, 16, 0.55), transparent 55%);
+  z-index: 3;
+  pointer-events: none;
+}
+
+.signal-week-content {
+  min-width: 0;
+  padding: 18px 22px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 10px;
+  color: var(--cream);
+}
+
+.signal-week-label {
+  color: var(--copper);
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.signal-week-primary {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+
+.signal-week-name {
+  font-family: Cormorant, Georgia, serif;
+  font-size: 28px;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  font-weight: 700;
+  color: var(--cream);
+}
+
+.signal-week-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+  font-size: 12px;
+  font-weight: 800;
+  color: rgba(247, 245, 242, 0.72);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.signal-week-team-logo {
+  display: inline-flex;
+  align-items: center;
+}
+
+.signal-week-meta-sep {
+  opacity: 0.45;
+}
+
+.signal-week-stats {
+  display: flex;
+  gap: 20px;
+  flex-shrink: 0;
+}
+
+.signal-week-stat {
+  display: grid;
+  gap: 4px;
+  text-align: right;
+}
+
+.signal-week-stat-value {
+  font-family: Cormorant, Georgia, serif;
+  font-size: 26px;
+  line-height: 0.95;
+  font-weight: 700;
+  color: var(--cream);
+}
+
+.signal-week-stat-label {
+  font-size: 9px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: rgba(247, 245, 242, 0.55);
+}
+
+.signal-week-insight {
+  border-top: 1px solid rgba(187, 132, 85, 0.22);
+  padding-top: 10px;
+  min-width: 0;
+}
+
+.signal-week-ai-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.signal-week-ai-label {
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: rgba(247, 245, 242, 0.55);
+}
+
+.signal-week-ai-pill {
+  border-radius: 999px;
+  padding: 4px 9px;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  border: 1px solid rgba(187, 132, 85, 0.35);
+}
+
+.signal-week-ai-pill--buy {
+  background: rgba(47, 125, 74, 0.18);
+  border-color: rgba(47, 125, 74, 0.42);
+  color: #7BC995;
+}
+
+.signal-week-ai-pill--hold {
+  background: rgba(187, 132, 85, 0.14);
+  border-color: rgba(187, 132, 85, 0.35);
+  color: var(--copper);
+}
+
+.signal-week-ai-pill--sell {
+  background: rgba(154, 102, 86, 0.16);
+  border-color: rgba(154, 102, 86, 0.38);
+  color: #D4A08E;
+}
+
+.signal-week-reason {
+  margin: 6px 0 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: rgba(247, 245, 242, 0.82);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.signal-week-action {
+  display: flex;
+  align-items: center;
+  padding: 18px 20px 18px 0;
+}
+
+.signal-week-cta.primary {
+  border-radius: 999px;
+  background: var(--copper);
+  color: var(--charcoal);
+  padding: 11px 18px;
+  font-size: 12px;
+  font-weight: 900;
+  white-space: nowrap;
+  border: 1px solid rgba(187, 132, 85, 0.55);
+}
+
+.signal-week-cta.primary:hover {
+  background: #C99563;
+  transform: translateY(-1px);
+}
+
+/* Card Intelligence landing section */
+.card-intelligence-section {
+  margin-bottom: 22px;
+}
+
+.card-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.card-section-title {
+  margin: 6px 0 0;
+  font-family: Cormorant, Georgia, serif;
+  font-size: 36px;
+  line-height: 0.95;
+  letter-spacing: -0.03em;
+  color: var(--charcoal);
+}
+
+.card-section-sub {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+  max-width: 640px;
+}
+
+.cs-beta-preview--section {
+  flex-shrink: 0;
+  font-size: 9px;
+  padding: 5px 8px;
+  letter-spacing: 0.12em;
+}
+
+.card-section-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.card-intel-box {
+  background: var(--panel);
+  border: 1px solid rgba(220, 214, 206, 0.9);
+  border-radius: 22px;
+  padding: 16px;
+  box-shadow: var(--shadow-soft);
+  min-width: 0;
+  overflow: hidden;
+}
+
+.card-intel-box-title {
+  margin: 0 0 12px;
+  font-size: 15px;
+  font-weight: 900;
+  color: var(--charcoal);
+  line-height: 1.15;
+}
+
+.card-intel-box-list {
+  display: grid;
+  gap: 8px;
+}
+
+.card-intel-row {
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  gap: 10px;
+  align-items: start;
+  padding: 8px 10px;
+  border-radius: 14px;
+  border: 1px solid rgba(220, 214, 206, 0.75);
+  background: rgba(255, 255, 255, 0.55);
+  min-width: 0;
+  overflow: hidden;
+}
+
+.card-intel-row-thumb {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(15, 15, 16, 0.9), rgba(42, 36, 31, 0.95));
+  box-shadow: inset 0 0 0 1px rgba(187, 132, 85, 0.18);
+  flex-shrink: 0;
+}
+
+.card-intel-row-body {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.card-intel-row-name {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--charcoal);
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+}
+
+.card-intel-row-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin-top: 6px;
+}
+
+.card-intel-metric {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+}
+
+.card-intel-metric em {
+  font-style: normal;
+  font-size: 8px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.card-intel-metric strong {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--bronze);
+  line-height: 1;
+}
+
+.sport-section {
+  /* Shared hook for future NBA/NFL/NHL sections */
+}
+
+.sport-section--mlb {
+  /* Active sport — structure ready for additional modifiers */
+}
+
+.cs-ai-action-compact--buy {
+  color: var(--signal-green);
+}
+
+@media (max-width: 980px) {
+  .signal-of-week-card {
+    min-height: auto;
+    max-height: none;
+  }
+
+  .signal-week-banner {
+    grid-template-columns: 1fr;
+    max-height: none;
+  }
+
+  .signal-week-media {
+    height: 160px;
+  }
+
+  .signal-week-content {
+    padding: 16px 18px;
+  }
+
+  .signal-week-primary {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .signal-week-stats {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .signal-week-stat {
+    text-align: left;
+  }
+
+  .signal-week-action {
+    padding: 0 18px 18px;
+  }
+
+  .card-section-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .card-section-header {
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 640px) {
+  .signal-week-media {
+    height: 140px;
+  }
+
+  .signal-week-name {
     font-size: 24px;
+  }
+
+  .signal-week-stat-value {
+    font-size: 22px;
+  }
+
+  .card-intel-row-metrics {
+    gap: 5px 10px;
+  }
+
+  .card-intel-metric strong {
+    font-size: 10px;
+  }
+
+  .page {
+    overflow-x: hidden;
   }
 }
