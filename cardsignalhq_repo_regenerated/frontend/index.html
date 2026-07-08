@@ -14,13 +14,13 @@
         <div>
           <div class="brand-kicker">
             <span>CardSignal</span>
-            <strong>Beta</strong>
           </div>
           <h1>CardSignal</h1>
           <p class="subhead">Market intelligence for modern collectors.</p>
         </div>
 
         <div class="status-wrap">
+          <span class="global-beta-badge" aria-label="Beta early access">BETA Early Access</span>
           <div class="status-pill" id="load-status">Loading leaderboard</div>
           <div class="status-pill muted-pill" id="api-hint">API: —</div>
           <div class="status-pill muted-pill" id="notif-summary">Notifications: —</div>
@@ -95,26 +95,30 @@
       <section class="grid two-up charts-section">
         <div class="panel light-panel">
           <div class="panel-header">
-            <h2>Signal History</h2>
-            <span class="muted">Selected player trend</span>
+            <div>
+              <h2>Signal Timeline</h2>
+              <p class="section-desc">Selected player signal over recent weekly snapshots.</p>
+            </div>
           </div>
           <div class="chart-canvas-wrap" id="score-history-wrap">
             <canvas id="score-history-chart" height="160"></canvas>
             <div class="chart-placeholder hidden" id="score-history-placeholder">
-              Signal History will appear after weekly snapshots.
+              Signal timeline will populate after weekly snapshots.
             </div>
           </div>
         </div>
 
         <div class="panel light-panel">
           <div class="panel-header">
-            <h2>Market Trend</h2>
-            <span class="muted">Top score by run</span>
+            <div>
+              <h2>Market Activity</h2>
+              <p class="section-desc">Top leaderboard signal across recent pricing runs.</p>
+            </div>
           </div>
           <div class="chart-canvas-wrap" id="leaderboard-history-wrap">
             <canvas id="leaderboard-history-chart" height="160"></canvas>
             <div class="chart-placeholder hidden" id="leaderboard-history-placeholder">
-              Market Trend will appear after card pricing snapshots.
+              Market activity will populate after card pricing snapshots.
             </div>
           </div>
         </div>
