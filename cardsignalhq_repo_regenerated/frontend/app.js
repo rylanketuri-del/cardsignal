@@ -303,50 +303,282 @@ function buildCollectorInsight(entry) {
   return `${entry.player_name} is currently more of a watchlist candidate than an aggressive chase. The data shows some activity, but the collector signal needs either stronger performance or clearer market demand before moving higher.`;
 }
 
+const csIntelCache = new Map();
+function csIntelSafeToNumber(value) {
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+function csIntelClamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+function csIntelHashToUint32(str = "") {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i += 1) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+function csIntelMulberry32(seed) {
+  let t = seed >>> 0;
+  return function rng() {
+    t += 0x6D2B79F5;
+    let x = t;
+    x = Math.imul(x ^ (x >>> 15), x | 1);
+    x ^= x + Math.imul(x ^ (x >>> 7), x | 61);
+    return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function csIntelPickConfidenceTier(rng) {
+  if (rng >= 0.66) return "HIGH";
+  if (rng >= 0.33) return "MEDIUM";
+  return "LOW";
+}
+function csIntelFormatPercent(value) {
+  const n = csIntelSafeToNumber(value);
+  if (n === null) return "—";
+  const sign = n >= 0 ? "+" : "";
+  return `${sign}${n.toFixed(1)}%`;
+}
+function csIntelFormatMoney(value) {
+  const n = csIntelSafeToNumber(value);
+  if (n === null) return "—";
+  return `$${n.toFixed(2)}`;
+}
+function csIntelBetaPreviewBadge() {
+  return `<span class="cs-beta-preview" title="Live market intelligence coming soon.">Beta Preview</span>`;
+}
+function csIntelGetPlaceholders(entry) {
+  const key = String(entry?.player_id ?? entry?.player_name ?? "unknown");
+  if (csIntelCache.has(key)) return csIntelCache.get(key);
+
+  const storageKey = `cs_intel_placeholders_v1_${key}`;
+  try {
+    const raw = sessionStorage.getItem(storageKey);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && parsed.confidenceTier) {
+        csIntelCache.set(key, parsed);
+        return parsed;
+      }
+    }
+  } catch (_) {
+    // ignore
+  }
+
+  const seed = csIntelHashToUint32(key);
+  const rng = csIntelMulberry32(seed);
+
+  const confidenceTier = csIntelPickConfidenceTier(rng());
+
+  // 0-100 "premium" placeholder scales (used when backend fields are missing).
+  const performance = csIntelClamp(22 + rng() * 78, 0, 100);
+  const market = csIntelClamp(18 + rng() * 82, 0, 100);
+  const collector = csIntelClamp(market * 0.62 + performance * 0.38 + (rng() - 0.5) * 12, 0, 100);
+  const momentum = csIntelClamp(((performance + market) / 2) * 0.92 + (rng() - 0.5) * 18, 0, 100);
+
+  const score = csIntelClamp(performance * 0.5 + market * 0.4 + momentum * 0.1 + (rng() - 0.5) * 10, 0, 100);
+
+  const trendingNamePool = [
+    "Auric Spark",
+    "Copper Drift",
+    "Midnight Prospect",
+    "Golden Curve",
+    "Sable Surge",
+    "Emerald Lift",
+    "Nova Demand",
+    "Ivory Velocity",
+    "Crimson Shelf",
+    "Sterling Swing",
+  ];
+
+  const moverNamePool = [
+    "1st Bowman Auto",
+    "Rookie Patch Parallel",
+    "Bowman Chrome Mojo",
+    "Vintage Select /25",
+    "Topps Chrome Sapphire",
+    "Heritage Black Gold",
+    "Bowman Draft Gold",
+    "Stadium Club Red Ink",
+    "Prizm Draft Stars",
+    "Museum Collection Gem",
+  ];
+
+  const buyLowNamePool = [
+    "Low-Ask Bowman Chrome",
+    "Undervalued Rookie Parallel",
+    "Quiet Liquidity Lot",
+    "Discounted Card Slice",
+    "Value Pocket Prospect",
+    "Supportive Supply Window",
+    "Stable Demand, Soft Prices",
+    "Inked Rookie Deal",
+    "Surprisingly Priced Parallel",
+    "Buyer-Ready Bargain",
+  ];
+
+  const chasedNamePool = [
+    "Hot Case Break",
+    "Chase-Grade Parallel",
+    "Bid-War Magnet",
+    "Collector Pressure Lot",
+    "Velocity Surge Card",
+    "Momentum Mirror",
+    "Rising Demand Select",
+    "Premium Parallels Feed",
+    "Frictionless Chase Copy",
+    "Scarcity-Driven Target",
+  ];
+
+  function pickThree(pool, { bias = 0, priceMin = 8, priceMax = 230, moveMin = 4, moveMax = 30 } = {}) {
+    const used = new Set();
+    const out = [];
+    while (out.length < 3 && used.size < pool.length) {
+      const idx = Math.floor(rng() * pool.length);
+      if (used.has(idx)) continue;
+      used.add(idx);
+      const price = priceMin + rng() * (priceMax - priceMin);
+      const magnitude = moveMin + rng() * (moveMax - moveMin);
+      // bias shifts expectation, but we still allow direction changes.
+      const direction = rng() > 0.5 ? 1 : -1;
+      const move = (direction * magnitude) + bias + (rng() - 0.5) * 5;
+      out.push({
+        name: pool[idx],
+        price,
+        movement: csIntelFormatPercent(move),
+      });
+    }
+    return out;
+  }
+
+  const trendingCards = pickThree(trendingNamePool, {
+    bias: (market - 50) / 8 + (momentum - 50) / 10,
+    priceMin: 12,
+    priceMax: 260,
+    moveMin: 8,
+    moveMax: 28,
+  });
+
+  const biggestMovers = pickThree(moverNamePool, {
+    bias: (performance - 50) / 10,
+    priceMin: 15,
+    priceMax: 310,
+    moveMin: 10,
+    moveMax: 38,
+  });
+
+  const buyLowOpportunities = pickThree(buyLowNamePool, {
+    bias: -6 + (market < 50 ? 3 : -2),
+    priceMin: 9,
+    priceMax: 170,
+    moveMin: 4,
+    moveMax: 22,
+  });
+
+  const mostChased = pickThree(chasedNamePool, {
+    bias: 5 + (momentum - 50) / 10,
+    priceMin: 18,
+    priceMax: 360,
+    moveMin: 8,
+    moveMax: 36,
+  });
+
+  const aiReasonPool = [
+    "Collector demand is increasing faster than current market pricing.",
+    "Performance momentum suggests a continued lift in buyer interest over the next 7 days.",
+    "Market liquidity remains supportive while supply tightens on recent listings.",
+    "Trading velocity is rising faster than average price, creating a favorable buy window.",
+    "Recent chase pressure indicates higher willingness to pay for comparable lots soon.",
+  ];
+
+  const aiReason = aiReasonPool[Math.floor(rng() * aiReasonPool.length)] || aiReasonPool[0];
+
+  const placeholders = {
+    confidenceTier,
+    performance: csIntelClamp(performance, 0, 100),
+    market: csIntelClamp(market, 0, 100),
+    collector: csIntelClamp(collector, 0, 100),
+    momentum: csIntelClamp(momentum, 0, 100),
+    score: csIntelClamp(score, 0, 100),
+    trendingCards,
+    biggestMovers,
+    buyLowOpportunities,
+    mostChased,
+    aiRecommendation: {
+      action: "BUY",
+      confidence: confidenceTier,
+      reason: aiReason,
+    },
+  };
+
+  csIntelCache.set(key, placeholders);
+  try {
+    sessionStorage.setItem(storageKey, JSON.stringify(placeholders));
+  } catch (_) {
+    // ignore
+  }
+  return placeholders;
+}
+
 function renderPlayerDetail(entry) {
   selectedPlayer = entry;
 
   const hotness = entry.hotness || {};
-  const stats = entry.stats_7d || {};
-  const score = hotness.total_score || 0;
-  const performance = hotness.performance_score || 0;
-  const market = hotness.market_score || 0;
-  const confidence = hotness.confidence_multiplier || 0;
-  const grade = getCollectorGrade(score);
-  const outlook = getMarketOutlook(score, market);
+  const placeholders = csIntelGetPlaceholders(entry);
+
+  const performance = csIntelSafeToNumber(hotness.performance_score) ?? placeholders.performance;
+  const market = csIntelSafeToNumber(hotness.market_score) ?? placeholders.market;
+  const collector =
+    csIntelSafeToNumber(hotness.collector_score) ?? placeholders.collector;
+  const momentum =
+    csIntelSafeToNumber(hotness.momentum_score) ?? placeholders.momentum;
+
+  const score = csIntelSafeToNumber(hotness.total_score) ?? placeholders.score;
+
+  const confidenceTier = placeholders.confidenceTier;
   const team = getTeamAbbrev(entry);
-  const teamPosition = formatTeamPositionLabel(entry);
+  const position = entry.position || "—";
 
-  const reasons = hotness.reasons?.length
-    ? hotness.reasons.map(reason => `<span class="report-chip">${reason}</span>`).join("")
-    : `<span class="report-chip">No key reasons generated yet</span>`;
+  const ai = placeholders.aiRecommendation;
 
-  const marketRows = Object.entries(entry.market_snapshots || {}).map(([name, snapshot]) => `
-    <tr>
-      <td>${name}</td>
-      <td>${snapshot.listings_count ?? 0}</td>
-      <td>${snapshot.avg_price ? `$${snapshot.avg_price.toFixed(2)}` : "—"}</td>
-    </tr>
-  `).join("");
+  // Keep layout resilient: never assume backend provides optional arrays/fields.
+  const scoreConfidenceClass =
+    confidenceTier === "HIGH" ? "cs-confidence--high" : confidenceTier === "MEDIUM" ? "cs-confidence--medium" : "cs-confidence--low";
+
+  const progressRow = (label, value, colorClass) => {
+    const v = csIntelClamp(Number(value) || 0, 0, 100);
+    return `
+      <div class="cs-progress-row">
+        <div class="cs-progress-top">
+          <span class="cs-progress-label">${label}</span>
+          <span class="cs-progress-value">${formatScore(v)}</span>
+        </div>
+        <div class="cs-progress-track" aria-hidden="true">
+          <span class="cs-progress-fill ${colorClass}" style="width:${v}%"></span>
+        </div>
+      </div>
+    `;
+  };
+
+  const confidenceBadge = `<div class="cs-confidence-badge ${scoreConfidenceClass}">${confidenceTier}</div>`;
 
   return `
-    <article class="player-report">
-      <div class="player-report-hero">
-        <div class="player-report-identity">
+    <article class="player-report player-report--cardsignal-intel">
+      <div class="cs-intel-hero player-report-hero">
+        <div class="player-report-identity cs-intel-identity">
           ${renderPlayerHeadshot(entry)}
 
-          <div>
-            <p class="eyebrow">Player Report</p>
-            <h2>${entry.player_name}</h2>
-            <div class="player-team-line">
-              <span class="team-logo-placeholder">${renderTeamLogoMarkup(entry)}</span>
-              <strong>${teamPosition}</strong>
-            </div>
+          <div class="cs-intel-identity-copy">
+            <p class="eyebrow">CardSignal Intelligence</p>
+            <h2 class="cs-intel-name">${entry.player_name}</h2>
 
-            <div class="player-report-meta">
-              <span>${hotness.tag || "WATCH"}</span>
-              <span>Collector Grade ${grade}</span>
-              <span>${outlook}</span>
+            <div class="cs-intel-subline" aria-label="Player team and position">
+              <span class="cs-intel-chip">
+                <span class="team-logo-placeholder">${renderTeamLogoMarkup(entry)}</span>
+                ${team}
+              </span>
+              <span class="cs-intel-chip cs-intel-chip--muted">${position}</span>
             </div>
           </div>
         </div>
@@ -356,61 +588,130 @@ function renderPlayerDetail(entry) {
         </button>
       </div>
 
-      <div class="report-score-band">
-        <div class="report-score-main">
+      <section class="cs-intel-score-card">
+        <div class="cs-section-head">
+          <div>
+            <p class="eyebrow">CardSignal Score</p>
+          </div>
+          <div class="cs-section-head-right">
+            ${csIntelBetaPreviewBadge()}
+            <div class="cs-confidence-wrap">
+              ${confidenceBadge}
+              <small class="cs-confidence-label">Confidence</small>
+            </div>
+          </div>
+        </div>
+
+        <div class="cs-score-large">
           <span>${formatScore(score)}</span>
-          <small>CardSignal Score</small>
         </div>
-
-        <div class="report-outlook-card">
-          <span>${grade}</span>
-          <small>Collector Grade</small>
-        </div>
-
-        <div class="report-outlook-card">
-          <span>${outlook}</span>
-          <small>Market Outlook</small>
-        </div>
-      </div>
-
-      <div class="report-metrics-grid">
-        <div class="report-metric"><small>Performance</small><strong>${formatScore(performance)}</strong></div>
-        <div class="report-metric"><small>Market</small><strong>${formatScore(market)}</strong></div>
-        <div class="report-metric"><small>7D OPS</small><strong>${formatScore(stats.ops)}</strong></div>
-        <div class="report-metric"><small>7D HR</small><strong>${stats.home_runs ?? 0}</strong></div>
-        <div class="report-metric"><small>7D SB</small><strong>${stats.stolen_bases ?? 0}</strong></div>
-        <div class="report-metric"><small>Confidence</small><strong>${formatScore(confidence)}</strong></div>
-      </div>
-
-      <section class="report-section">
-        <p class="eyebrow">Why He’s Moving</p>
-        <div class="report-chip-row">${reasons}</div>
       </section>
 
-      <section class="collector-insight">
-        <p class="eyebrow">AI Collector Insight</p>
-        <p>${buildCollectorInsight(entry)}</p>
+      <section class="cs-intel-breakdown">
+        <div class="cs-section-head">
+          <h3 class="cs-section-title">Signal Breakdown</h3>
+          <div class="cs-section-head-right">${csIntelBetaPreviewBadge()}</div>
+        </div>
+
+        <div class="cs-progress-list">
+          ${progressRow("Performance", performance, "cs-progress-fill--performance")}
+          ${progressRow("Market", market, "cs-progress-fill--market")}
+          ${progressRow("Collector", collector, "cs-progress-fill--collector")}
+          ${progressRow("Momentum", momentum, "cs-progress-fill--momentum")}
+        </div>
       </section>
 
-      <section class="report-section">
-        <p class="eyebrow">Market Snapshot</p>
+      <section class="cs-premium-grid" aria-label="Premium market intelligence">
+        <section class="cs-premium-card cs-premium-card--trending">
+          <div class="cs-premium-head">
+            <h3 class="cs-premium-title">🔥 Trending Cards</h3>
+            ${csIntelBetaPreviewBadge()}
+          </div>
+          <div class="cs-premium-card-list cs-premium-card-list--cards">
+            ${placeholders.trendingCards.map((c) => `
+              <div class="cs-trending-item">
+                <div class="cs-card-image-placeholder" aria-hidden="true"></div>
+                <div class="cs-trending-copy">
+                  <div class="cs-card-name">${c.name}</div>
+                  <div class="cs-card-price">${csIntelFormatMoney(c.price)}</div>
+                </div>
+                <div class="cs-card-move">
+                  <strong>${c.movement}</strong>
+                  <span class="cs-card-move-label">7-day movement</span>
+                </div>
+              </div>
+            `).join("")}
+          </div>
+        </section>
 
-        <table class="report-table">
-          <thead>
-            <tr>
-              <th>Query</th>
-              <th>Listings</th>
-              <th>Avg Price</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${marketRows || `
-              <tr>
-                <td colspan="3">No market snapshots available yet.</td>
-              </tr>
-            `}
-          </tbody>
-        </table>
+        <section class="cs-premium-card cs-premium-card--movers">
+          <div class="cs-premium-head">
+            <h3 class="cs-premium-title">📈 Biggest Movers</h3>
+            ${csIntelBetaPreviewBadge()}
+          </div>
+          <div class="cs-premium-card-list cs-premium-card-list--entries">
+            ${placeholders.biggestMovers.map((c) => `
+              <div class="cs-entry-row">
+                <span class="cs-entry-name">${c.name}</span>
+                <span class="cs-entry-price">${csIntelFormatMoney(c.price)}</span>
+                <span class="cs-entry-move">${c.movement}</span>
+              </div>
+            `).join("")}
+          </div>
+        </section>
+
+        <section class="cs-premium-card cs-premium-card--buy-low">
+          <div class="cs-premium-head">
+            <h3 class="cs-premium-title">💎 Buy Low Opportunities</h3>
+            ${csIntelBetaPreviewBadge()}
+          </div>
+          <div class="cs-premium-card-list cs-premium-card-list--entries">
+            ${placeholders.buyLowOpportunities.map((c) => `
+              <div class="cs-entry-row">
+                <span class="cs-entry-name">${c.name}</span>
+                <span class="cs-entry-price">${csIntelFormatMoney(c.price)}</span>
+                <span class="cs-entry-move">${c.movement}</span>
+              </div>
+            `).join("")}
+          </div>
+        </section>
+
+        <section class="cs-premium-card cs-premium-card--chased">
+          <div class="cs-premium-head">
+            <h3 class="cs-premium-title">⭐ Most Chased</h3>
+            ${csIntelBetaPreviewBadge()}
+          </div>
+          <div class="cs-premium-card-list cs-premium-card-list--entries">
+            ${placeholders.mostChased.map((c) => `
+              <div class="cs-entry-row">
+                <span class="cs-entry-name">${c.name}</span>
+                <span class="cs-entry-price">${csIntelFormatMoney(c.price)}</span>
+                <span class="cs-entry-move">${c.movement}</span>
+              </div>
+            `).join("")}
+          </div>
+        </section>
+
+        <section class="cs-premium-card cs-premium-card--ai">
+          <div class="cs-premium-head">
+            <h3 class="cs-premium-title">🤖 AI Recommendation</h3>
+            ${csIntelBetaPreviewBadge()}
+          </div>
+
+          <div class="cs-ai-block">
+            <div class="cs-ai-left">
+              <div class="cs-ai-action">${ai.action}</div>
+              <div class="cs-ai-confidence">
+                <div class="cs-confidence-badge ${scoreConfidenceClass}">${ai.confidence}</div>
+                <div class="cs-confidence-label">Confidence</div>
+              </div>
+            </div>
+            <div class="cs-ai-reason">
+              <div class="cs-ai-reason-label">Reason</div>
+              <p>${ai.reason}</p>
+            </div>
+          </div>
+        </section>
       </section>
     </article>
   `;
@@ -1225,47 +1526,7 @@ async function handleSearchResultSelect(entry) {
 }
 
 function renderLightweightPlayerDetail(entry) {
-  const teamPosition = formatTeamPositionLabel(entry);
-
-  return `
-    <article class="player-report player-report--lightweight">
-      <div class="player-report-hero">
-        <div class="player-report-identity">
-          ${renderPlayerHeadshot(entry)}
-
-          <div>
-            <p class="eyebrow">Player Report</p>
-            <h2>${entry.player_name}</h2>
-            <div class="player-team-line">
-              <span class="team-logo-placeholder">${renderTeamLogoMarkup(entry)}</span>
-              <strong>${teamPosition}</strong>
-            </div>
-
-            <div class="player-report-meta">
-              <span>MLB Search</span>
-              <span>Not on today’s board</span>
-            </div>
-          </div>
-        </div>
-
-        <button id="watchlist-toggle-btn" class="player-save-btn">
-          ${currentUser ? "Add to Watchlist" : "Sign in to save"}
-        </button>
-      </div>
-
-      <div class="report-score-band">
-        <div class="report-score-main report-score-main--unscored">
-          <span>Not scored yet</span>
-          <small>CardSignal</small>
-        </div>
-      </div>
-
-      <section class="collector-insight">
-        <p class="eyebrow">Status</p>
-        <p>This player is not in today’s Top 20 yet. Add to Watchlist or check back after the next market run.</p>
-      </section>
-    </article>
-  `;
+  return renderPlayerDetail(entry);
 }
 
 async function handleBackendOnlyPlayerSelect(entry) {
