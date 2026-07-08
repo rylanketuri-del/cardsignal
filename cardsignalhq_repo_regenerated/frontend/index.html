@@ -51,7 +51,7 @@
             <input
               id="player-search-input"
               type="search"
-              placeholder="Search MLB players..."
+              placeholder="Search players..."
               autocomplete="off"
               spellcheck="false"
             />
@@ -70,13 +70,16 @@
         <div class="signal-of-week-card"></div>
       </section>
 
-      <section class="signal-center-pulse" id="signal-center-pulse" aria-label="Market Pulse">
-        <div class="market-pulse-card"></div>
-      </section>
-
-      <section class="signal-center-featured" id="signal-center-featured" aria-label="Featured signals">
-        <div class="featured-signal-card market-mini-card" id="featured-most-chased"></div>
-        <div class="featured-signal-card market-mini-card" id="featured-buy-low"></div>
+      <section class="card-intelligence-section sport-section sport-section--mlb" id="card-intelligence-section" aria-label="Card intelligence" data-sport="mlb">
+        <div class="card-section-header">
+          <div>
+            <p class="eyebrow">Card Intelligence</p>
+            <h2 class="card-section-title">What collectors are watching</h2>
+            <p class="card-section-sub">Trending cards, movers, buy-low windows, and chase pressure across the market.</p>
+          </div>
+          <span class="cs-beta-preview cs-beta-preview--section" title="Live market intelligence coming soon.">Beta Preview</span>
+        </div>
+        <div class="card-section-grid" id="card-section-grid"></div>
       </section>
 
       <section class="product-section leaders-report-section">
@@ -92,7 +95,7 @@
           </div>
 
           <div id="player-detail" class="detail-empty">
-            Select a player from Market Leaders.
+            Select a player from Today’s Leaders.
           </div>
         </div>
       </section>
