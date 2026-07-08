@@ -13,6 +13,16 @@ let notifications = [];
 let adminToken = localStorage.getItem('cardchase_admin_token') || '';
 let scoreChart = null;
 let leaderboardHistoryChart = null;
+let piActiveTab = "overview";
+let piModalKeydownHandler = null;
+const PI_TABS = [
+  { id: "overview", label: "Overview" },
+  { id: "cards", label: "Cards" },
+  { id: "market", label: "Market" },
+  { id: "performance", label: "Performance" },
+  { id: "history", label: "History" },
+  { id: "ai", label: "AI" },
+];
 
 function tagClass(tag) {
   if (tag === 'BUY LOW') return 'tag buylow';
@@ -685,15 +695,11 @@ function csIntelGetPlaceholders(entry) {
   return placeholders;
 }
 
-function renderPlayerDetail(entry) {
-  selectedPlayer = entry;
-
+function buildPlayerIntel(entry) {
   const hotness = entry.hotness || {};
   const placeholders = csIntelGetPlaceholders(entry);
 
-  // Keep all placeholder intelligence data centralized in one object.
-  // If backend values exist, we overwrite the corresponding fields.
-  const intel = {
+  return {
     ...placeholders,
     performance: csIntelSafeToNumber(hotness.performance_score) ?? placeholders.performance,
     market: csIntelSafeToNumber(hotness.market_score) ?? placeholders.market,
@@ -702,60 +708,48 @@ function renderPlayerDetail(entry) {
     score: csIntelSafeToNumber(hotness.total_score) ?? placeholders.score,
     convictionTier: placeholders.convictionTier || placeholders.confidenceTier,
   };
+}
 
+function renderProgressRow(label, value, colorClass) {
+  const v = csIntelClamp(Number(value) || 0, 0, 100);
+  return `
+    <div class="cs-progress-row">
+      <div class="cs-progress-top">
+        <span class="cs-progress-label">${label}</span>
+        <span class="cs-progress-value">${formatScore(v)}</span>
+      </div>
+      <div class="cs-progress-track" aria-hidden="true">
+        <span class="cs-progress-fill ${colorClass}" style="width:${v}%"></span>
+      </div>
+    </div>
+  `;
+}
+
+function renderPiPlayerSection(playerName, title, items, { metricLabel = "7-day" } = {}) {
+  return `
+    <section class="cs-premium-card pi-intel-section">
+      <div class="cs-premium-head">
+        <h3 class="cs-premium-title">${playerName} ${title}</h3>
+      </div>
+      <div class="cs-premium-card-list cs-premium-card-list--unified">
+        ${items.slice(0, 3).map((item) => renderIntelRow(item, { metricLabel })).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderPiOverviewTab(entry, intel) {
+  const playerName = entry.player_name || "Player";
   const convictionTier = intel.convictionTier;
   const recommendation = csIntelRecommendationFromTier(convictionTier);
-  const team = getTeamAbbrev(entry);
-  const position = entry.position || "—";
-
-  const ai = intel.aiRecommendation;
-
   const recommendationClass = csIntelRecommendationClass(recommendation);
   const convictionClass = csIntelConvictionClass(convictionTier);
-
-  const progressRow = (label, value, colorClass) => {
-    const v = csIntelClamp(Number(value) || 0, 0, 100);
-    return `
-      <div class="cs-progress-row">
-        <div class="cs-progress-top">
-          <span class="cs-progress-label">${label}</span>
-          <span class="cs-progress-value">${formatScore(v)}</span>
-        </div>
-        <div class="cs-progress-track" aria-hidden="true">
-          <span class="cs-progress-fill ${colorClass}" style="width:${v}%"></span>
-        </div>
-      </div>
-    `;
-  };
-
+  const ai = intel.aiRecommendation;
   const recommendationBadge = `<div class="cs-recommendation-badge ${recommendationClass}">${recommendation}</div>`;
   const convictionBadge = `<div class="cs-conviction-badge ${convictionClass}">${convictionTier}</div>`;
 
   return `
-    <article class="player-report player-report--cardsignal-intel">
-      <div class="cs-intel-hero player-report-hero">
-        <div class="player-report-identity cs-intel-identity">
-          ${renderPlayerHeadshot(entry)}
-
-          <div class="cs-intel-identity-copy">
-            <p class="eyebrow">CardSignal Intelligence</p>
-            <h2 class="cs-intel-name">${entry.player_name}</h2>
-
-            <div class="cs-intel-subline" aria-label="Player team and position">
-              <span class="cs-intel-chip">
-                <span class="team-logo-placeholder">${renderTeamLogoMarkup(entry)}</span>
-                ${team}
-              </span>
-              <span class="cs-intel-chip cs-intel-chip--muted">${position}</span>
-            </div>
-          </div>
-        </div>
-
-        <button id="watchlist-toggle-btn" class="player-save-btn">
-          ${currentUser ? "Save to watchlist" : "Sign in to save"}
-        </button>
-      </div>
-
+    <div class="pi-tab-panel pi-tab-panel--overview" data-tab-panel="overview">
       <section class="cs-intel-score-card">
         <div class="cs-section-head">
           <div>
@@ -766,9 +760,12 @@ function renderPlayerDetail(entry) {
               ${recommendationBadge}
               <small class="cs-recommendation-label">Recommendation</small>
             </div>
+            <div class="cs-conviction-wrap">
+              ${convictionBadge}
+              <small class="cs-conviction-label">Conviction</small>
+            </div>
           </div>
         </div>
-
         <div class="cs-score-large">
           <span>${formatScore(intel.score)}</span>
         </div>
@@ -778,20 +775,25 @@ function renderPlayerDetail(entry) {
         <div class="cs-section-head">
           <h3 class="cs-section-title">Signal Breakdown</h3>
         </div>
-
         <div class="cs-progress-list">
-          ${progressRow("Performance", intel.performance, "cs-progress-fill--performance")}
-          ${progressRow("Market", intel.market, "cs-progress-fill--market")}
-          ${progressRow("Collector", intel.collector, "cs-progress-fill--collector")}
-          ${progressRow("Momentum", intel.momentum, "cs-progress-fill--momentum")}
+          ${renderProgressRow("Performance", intel.performance, "cs-progress-fill--performance")}
+          ${renderProgressRow("Market", intel.market, "cs-progress-fill--market")}
+          ${renderProgressRow("Collector", intel.collector, "cs-progress-fill--collector")}
+          ${renderProgressRow("Momentum", intel.momentum, "cs-progress-fill--momentum")}
         </div>
       </section>
 
+      <div class="pi-overview-grid">
+        ${renderPiPlayerSection(playerName, "Trending Cards", intel.trendingCards)}
+        ${renderPiPlayerSection(playerName, "Biggest Movers", intel.biggestMovers, { metricLabel: "weekly" })}
+        ${renderPiPlayerSection(playerName, "Buy Low Watch", intel.buyLowOpportunities)}
+        ${renderPiPlayerSection(playerName, "Most Chased", intel.mostChased)}
+      </div>
+
       <section class="cs-premium-card cs-premium-card--ai">
         <div class="cs-premium-head">
-          <h3 class="cs-premium-title">AI Recommendation</h3>
+          <h3 class="cs-premium-title">${playerName} AI Recommendation</h3>
         </div>
-
         <div class="cs-ai-block cs-ai-block--compact">
           <div class="cs-ai-inline">
             <div class="cs-recommendation-wrap cs-recommendation-wrap--inline">
@@ -808,8 +810,206 @@ function renderPlayerDetail(entry) {
           </div>
         </div>
       </section>
-    </article>
+    </div>
   `;
+}
+
+function renderPiPlaceholderTab(tabId) {
+  const tab = PI_TABS.find((item) => item.id === tabId);
+  const label = tab?.label || tabId;
+  return `
+    <div class="pi-tab-panel pi-tab-panel--placeholder" data-tab-panel="${tabId}">
+      <div class="pi-tab-placeholder">
+        <p class="eyebrow">Coming Soon</p>
+        <h3>${label}</h3>
+        <p class="pi-tab-placeholder-copy">Deeper ${label.toLowerCase()} intelligence for this player will appear here in a future sprint.</p>
+      </div>
+    </div>
+  `;
+}
+
+function renderPiModalTabs(activeTab) {
+  return PI_TABS.map((tab) => `
+    <button
+      type="button"
+      class="pi-modal-tab${tab.id === activeTab ? " pi-modal-tab--active" : ""}"
+      data-pi-tab="${tab.id}"
+      role="tab"
+      aria-selected="${tab.id === activeTab ? "true" : "false"}"
+      aria-controls="pi-tab-panel-${tab.id}"
+    >${tab.label}</button>
+  `).join("");
+}
+
+function renderPiModalHeader(entry, intel) {
+  const team = getTeamAbbrev(entry);
+  const position = entry.position || "—";
+  const recommendation = csIntelRecommendationFromTier(intel.convictionTier);
+  const recommendationClass = csIntelRecommendationClass(recommendation);
+  const status = getSignalOfWeekStatus(entry);
+
+  return `
+    <div class="pi-modal-header-main">
+      <div class="pi-modal-identity">
+        <div class="pi-modal-headshot">${renderPlayerHeadshot(entry)}</div>
+        <div class="pi-modal-identity-copy">
+          <p class="eyebrow pi-modal-kicker">Player Intelligence</p>
+          <h2 class="pi-modal-title" id="pi-modal-title">${entry.player_name}</h2>
+          <div class="pi-modal-meta">
+            <span class="pi-modal-meta-chip">
+              <span class="team-logo-placeholder">${renderTeamLogoMarkup(entry)}</span>
+              ${team}
+            </span>
+            <span class="pi-modal-meta-chip pi-modal-meta-chip--muted">${position}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="pi-modal-header-stats">
+        <div class="pi-modal-stat">
+          <span class="pi-modal-stat-value">${formatScore(intel.score)}</span>
+          <span class="pi-modal-stat-label">CardSignal Score</span>
+        </div>
+        <div class="pi-modal-stat">
+          <span class="pi-modal-stat-value cs-recommendation-badge ${recommendationClass} pi-modal-rec-badge">${recommendation}</span>
+          <span class="pi-modal-stat-label">Recommendation</span>
+        </div>
+        <div class="pi-modal-stat">
+          <span class="pi-modal-stat-value pi-status-pill ${status.className}">${status.label}</span>
+          <span class="pi-modal-stat-label">Status</span>
+        </div>
+      </div>
+
+      <div class="pi-modal-header-actions">
+        <button type="button" id="watchlist-toggle-btn" class="player-save-btn pi-modal-save-btn">
+          ${currentUser ? "Save to watchlist" : "Sign in to save"}
+        </button>
+        <button type="button" class="pi-modal-close" data-pi-close aria-label="Close player intelligence report">✕</button>
+      </div>
+    </div>
+  `;
+}
+
+function renderPiModalBody(entry, intel, activeTab) {
+  if (activeTab === "overview") return renderPiOverviewTab(entry, intel);
+  return renderPiPlaceholderTab(activeTab);
+}
+
+function isPlayerIntelligenceModalOpen() {
+  const modal = document.getElementById("player-intelligence-modal");
+  return modal && !modal.classList.contains("hidden");
+}
+
+function lockBodyScrollForModal() {
+  document.body.classList.add("pi-modal-open");
+}
+
+function unlockBodyScrollForModal() {
+  document.body.classList.remove("pi-modal-open");
+}
+
+function bindPiModalKeydown() {
+  if (piModalKeydownHandler) return;
+  piModalKeydownHandler = (event) => {
+    if (event.key === "Escape" && isPlayerIntelligenceModalOpen()) {
+      event.preventDefault();
+      closePlayerIntelligenceModal();
+    }
+  };
+  document.addEventListener("keydown", piModalKeydownHandler);
+}
+
+function wirePiTabNavigation(entry, intel) {
+  const tabsRoot = document.getElementById("pi-modal-tabs");
+  if (!tabsRoot) return;
+
+  tabsRoot.querySelectorAll("[data-pi-tab]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const tabId = button.dataset.piTab;
+      if (!tabId || tabId === piActiveTab) return;
+      piActiveTab = tabId;
+      tabsRoot.innerHTML = renderPiModalTabs(piActiveTab);
+      const body = document.getElementById("pi-modal-body");
+      if (body) body.innerHTML = renderPiModalBody(entry, intel, piActiveTab);
+      wirePiTabNavigation(entry, intel);
+    });
+  });
+}
+
+function wirePiModalCloseTargets() {
+  // Close targets are wired once via setupPlayerIntelligenceModal delegation.
+}
+
+function setupPlayerIntelligenceModal() {
+  const modal = document.getElementById("player-intelligence-modal");
+  if (!modal || modal.dataset.piBound === "1") return;
+  modal.dataset.piBound = "1";
+
+  modal.addEventListener("click", (event) => {
+    const closeTarget = event.target.closest("[data-pi-close]");
+    if (closeTarget) {
+      event.preventDefault();
+      closePlayerIntelligenceModal();
+    }
+  });
+
+  bindPiModalKeydown();
+}
+
+function closePlayerIntelligenceModal() {
+  const modal = document.getElementById("player-intelligence-modal");
+  if (!modal) return;
+
+  modal.classList.add("hidden");
+  modal.setAttribute("aria-hidden", "true");
+  unlockBodyScrollForModal();
+  piActiveTab = "overview";
+}
+
+async function openPlayerIntelligenceModal(entry) {
+  const modal = document.getElementById("player-intelligence-modal");
+  const header = document.getElementById("pi-modal-header");
+  const tabs = document.getElementById("pi-modal-tabs");
+  const body = document.getElementById("pi-modal-body");
+  if (!modal || !header || !tabs || !body) return;
+
+  selectedPlayer = entry;
+
+  try {
+    const player = entry.player_id ? await fetchPlayer(entry.player_id) : entry;
+    selectedPlayer = player;
+    const intel = buildPlayerIntel(player);
+
+    piActiveTab = "overview";
+    header.innerHTML = renderPiModalHeader(player, intel);
+    tabs.innerHTML = renderPiModalTabs(piActiveTab);
+    body.innerHTML = renderPiModalBody(player, intel, piActiveTab);
+
+    wirePlayerActions();
+    wirePiTabNavigation(player, intel);
+    wirePiModalCloseTargets();
+
+    modal.classList.remove("hidden");
+    modal.setAttribute("aria-hidden", "false");
+    lockBodyScrollForModal();
+
+    requestAnimationFrame(() => {
+      modal.querySelector(".pi-modal-close")?.focus();
+    });
+
+    if (player.player_id) {
+      await renderScoreHistory(player.player_id);
+    } else {
+      destroyChart(scoreChart);
+      showChartPlaceholder("score-history-chart", "score-history-placeholder", true);
+    }
+  } catch (error) {
+    body.innerHTML = `<div class="pi-tab-placeholder"><p class="pi-tab-placeholder-copy">${error.message}</p></div>`;
+    modal.classList.remove("hidden");
+    modal.setAttribute("aria-hidden", "false");
+    lockBodyScrollForModal();
+    wirePiModalCloseTargets();
+  }
 }
 
 function renderNotifications(items, summary) {
@@ -1108,15 +1308,7 @@ function wirePlayerActions() {
 }
 
 async function selectPlayer(entry) {
-  const detailRoot = document.getElementById('player-detail');
-  try {
-    const player = entry.player_id ? await fetchPlayer(entry.player_id) : entry;
-    detailRoot.innerHTML = renderPlayerDetail(player);
-    wirePlayerActions();
-    await renderScoreHistory(player.player_id);
-  } catch (error) {
-    detailRoot.innerHTML = `<div class="detail-empty">${error.message}</div>`;
-  }
+  await openPlayerIntelligenceModal(entry);
 }
 
 async function bootstrapSupabase() {
@@ -1500,12 +1692,7 @@ function computeSignalOfWeekMovement(entry = {}) {
 }
 
 function openSignalOfWeekReport(entry) {
-  selectPlayer(entry).then(() => {
-    document.getElementById("player-detail")?.scrollIntoView({
-      behavior: "smooth",
-      block: "start",
-    });
-  });
+  selectPlayer(entry);
 }
 
 function renderSignalOfTheWeek(entries = []) {
@@ -1537,9 +1724,9 @@ function renderSignalOfTheWeek(entries = []) {
   const moveClass = movement.signed.startsWith("+") ? "metric-up" : movement.signed.startsWith("-") ? "metric-down" : "metric-flat";
 
   card.classList.add("featured-signal-banner");
-  card.setAttribute("role", "button");
-  card.tabIndex = 0;
-  card.setAttribute("aria-label", `Signal of the Week: ${entry.player_name || "player"}`);
+  card.removeAttribute("role");
+  card.removeAttribute("tabindex");
+  card.removeAttribute("aria-label");
 
   card.innerHTML = `
     <div class="signal-week-banner">
@@ -1581,22 +1768,24 @@ function renderSignalOfTheWeek(entries = []) {
       </div>
 
       <div class="signal-week-action">
-        <span class="signal-week-cta">
+        <button type="button" class="signal-week-cta" id="signal-week-view-report">
           View Report
           <span class="signal-week-cta-arrow" aria-hidden="true">→</span>
-        </span>
+        </button>
       </div>
     </div>
   `;
 
-  const handleOpen = (event) => {
-    if (event.type === "keydown" && event.key !== "Enter" && event.key !== " ") return;
-    if (event.type === "keydown") event.preventDefault();
-    openSignalOfWeekReport(entry);
-  };
+  const cta = card.querySelector("#signal-week-view-report");
+  if (cta) {
+    cta.addEventListener("click", (event) => {
+      event.stopPropagation();
+      openSignalOfWeekReport(entry);
+    });
+  }
 
-  card.onclick = handleOpen;
-  card.onkeydown = handleOpen;
+  card.onclick = null;
+  card.onkeydown = null;
 }
 
 /* Signal Center — main dashboard render pipeline */
@@ -1793,11 +1982,6 @@ function closePlayerSearch() {
   }
 }
 
-function scrollToPlayerReport() {
-  const target = document.querySelector(".player-report-shell") || document.getElementById("player-detail");
-  target?.scrollIntoView({ behavior: "smooth", block: "start" });
-}
-
 function highlightLeaderboardPlayer(entry) {
   const index = latestEntries.indexOf(entry);
   if (index < 0) return;
@@ -1814,33 +1998,16 @@ async function handleSearchResultSelect(entry) {
   closePlayerSearch();
   highlightLeaderboardPlayer(entry);
   await selectPlayer(entry);
-  scrollToPlayerReport();
-}
-
-function renderLightweightPlayerDetail(entry) {
-  return renderPlayerDetail(entry);
 }
 
 async function handleBackendOnlyPlayerSelect(entry) {
   closePlayerSearch();
   selectedPlayer = entry;
 
-  const detailRoot = document.getElementById("player-detail");
-  detailRoot.innerHTML = renderLightweightPlayerDetail(entry);
-  wirePlayerActions();
-
-  destroyChart(scoreChart);
-  showChartPlaceholder("score-history-chart", "score-history-placeholder", true);
-  const canvas = document.getElementById("score-history-chart");
-  if (canvas) {
-    const ctx = canvas.getContext("2d");
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-  }
-
   const leaderboardRoot = document.getElementById("leaderboard-table");
   leaderboardRoot?.querySelectorAll(".leader-table-row.active").forEach((row) => row.classList.remove("active"));
 
-  scrollToPlayerReport();
+  await openPlayerIntelligenceModal(entry);
 }
 
 async function handleSearchResultPick(entry) {
@@ -1918,6 +2085,7 @@ function setupPlayerSearch() {
 
   input.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
+      if (isPlayerIntelligenceModalOpen()) return;
       closePlayerSearch();
       return;
     }
@@ -1989,6 +2157,7 @@ async function init() {
     const entries = payload.items || [];
     latestEntries = entries;
     setupPlayerSearch();
+    setupPlayerIntelligenceModal();
 
     status.textContent = 'Rendering Signal Center...';
     renderSignalCenter(entries);
@@ -2006,10 +2175,6 @@ async function init() {
           await selectPlayer(entries[index]);
         });
       });
-
-      if (leaderRows[0]) leaderRows[0].classList.add('active');
-
-      await selectPlayer(entries[0]);
     } else {
       leaderboardRoot.innerHTML = `<div class="detail-empty">Leaderboard unavailable.</div>`;
     }
