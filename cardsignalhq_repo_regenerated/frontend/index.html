@@ -77,17 +77,16 @@
       <section class="product-section leaders-report-section">
         <div id="leaderboard-table"></div>
 
-        <div class="player-report-shell">
+        <div class="player-report-shell player-intel-placeholder-shell">
           <div class="section-header">
             <div>
-              <p class="eyebrow">Player Report</p>
-              <h2>Selected Player</h2>
+              <p class="eyebrow">Player Intelligence</p>
+              <h2>Deep Dive</h2>
             </div>
-            <span class="muted">Click a leader</span>
           </div>
 
-          <div id="player-detail" class="detail-empty">
-            Select a player from Today’s Leaders.
+          <div id="player-detail" class="detail-empty player-intel-placeholder">
+            Select a player to open their Intelligence Report.
           </div>
         </div>
       </section>
@@ -226,6 +225,22 @@
         <input id="admin-player-active" type="checkbox" checked />
         <div id="admin-status"></div>
       </section>
+    </div>
+
+    <div
+      id="player-intelligence-modal"
+      class="pi-modal hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="pi-modal-title"
+      aria-hidden="true"
+    >
+      <div class="pi-modal-backdrop" data-pi-close tabindex="-1"></div>
+      <div class="pi-modal-panel" role="document">
+        <header class="pi-modal-header" id="pi-modal-header"></header>
+        <nav class="pi-modal-tabs" id="pi-modal-tabs" aria-label="Player intelligence sections"></nav>
+        <div class="pi-modal-body" id="pi-modal-body"></div>
+      </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
