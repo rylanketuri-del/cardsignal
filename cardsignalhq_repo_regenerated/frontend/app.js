@@ -527,20 +527,23 @@ function renderPlayerDetail(entry) {
   const hotness = entry.hotness || {};
   const placeholders = csIntelGetPlaceholders(entry);
 
-  const performance = csIntelSafeToNumber(hotness.performance_score) ?? placeholders.performance;
-  const market = csIntelSafeToNumber(hotness.market_score) ?? placeholders.market;
-  const collector =
-    csIntelSafeToNumber(hotness.collector_score) ?? placeholders.collector;
-  const momentum =
-    csIntelSafeToNumber(hotness.momentum_score) ?? placeholders.momentum;
+  // Keep all placeholder intelligence data centralized in one object.
+  // If backend values exist, we overwrite the corresponding fields.
+  const intel = {
+    ...placeholders,
+    performance: csIntelSafeToNumber(hotness.performance_score) ?? placeholders.performance,
+    market: csIntelSafeToNumber(hotness.market_score) ?? placeholders.market,
+    collector: csIntelSafeToNumber(hotness.collector_score) ?? placeholders.collector,
+    momentum: csIntelSafeToNumber(hotness.momentum_score) ?? placeholders.momentum,
+    score: csIntelSafeToNumber(hotness.total_score) ?? placeholders.score,
+    confidenceTier: placeholders.confidenceTier,
+  };
 
-  const score = csIntelSafeToNumber(hotness.total_score) ?? placeholders.score;
-
-  const confidenceTier = placeholders.confidenceTier;
+  const confidenceTier = intel.confidenceTier;
   const team = getTeamAbbrev(entry);
   const position = entry.position || "—";
 
-  const ai = placeholders.aiRecommendation;
+  const ai = intel.aiRecommendation;
 
   // Keep layout resilient: never assume backend provides optional arrays/fields.
   const scoreConfidenceClass =
@@ -603,7 +606,7 @@ function renderPlayerDetail(entry) {
         </div>
 
         <div class="cs-score-large">
-          <span>${formatScore(score)}</span>
+          <span>${formatScore(intel.score)}</span>
         </div>
       </section>
 
@@ -614,10 +617,10 @@ function renderPlayerDetail(entry) {
         </div>
 
         <div class="cs-progress-list">
-          ${progressRow("Performance", performance, "cs-progress-fill--performance")}
-          ${progressRow("Market", market, "cs-progress-fill--market")}
-          ${progressRow("Collector", collector, "cs-progress-fill--collector")}
-          ${progressRow("Momentum", momentum, "cs-progress-fill--momentum")}
+          ${progressRow("Performance", intel.performance, "cs-progress-fill--performance")}
+          ${progressRow("Market", intel.market, "cs-progress-fill--market")}
+          ${progressRow("Collector", intel.collector, "cs-progress-fill--collector")}
+          ${progressRow("Momentum", intel.momentum, "cs-progress-fill--momentum")}
         </div>
       </section>
 
@@ -628,7 +631,7 @@ function renderPlayerDetail(entry) {
             ${csIntelBetaPreviewBadge()}
           </div>
           <div class="cs-premium-card-list cs-premium-card-list--cards">
-            ${placeholders.trendingCards.map((c) => `
+            ${intel.trendingCards.map((c) => `
               <div class="cs-trending-item">
                 <div class="cs-card-image-placeholder" aria-hidden="true"></div>
                 <div class="cs-trending-copy">
@@ -650,7 +653,7 @@ function renderPlayerDetail(entry) {
             ${csIntelBetaPreviewBadge()}
           </div>
           <div class="cs-premium-card-list cs-premium-card-list--entries">
-            ${placeholders.biggestMovers.map((c) => `
+            ${intel.biggestMovers.map((c) => `
               <div class="cs-entry-row">
                 <span class="cs-entry-name">${c.name}</span>
                 <span class="cs-entry-price">${csIntelFormatMoney(c.price)}</span>
@@ -666,7 +669,7 @@ function renderPlayerDetail(entry) {
             ${csIntelBetaPreviewBadge()}
           </div>
           <div class="cs-premium-card-list cs-premium-card-list--entries">
-            ${placeholders.buyLowOpportunities.map((c) => `
+            ${intel.buyLowOpportunities.map((c) => `
               <div class="cs-entry-row">
                 <span class="cs-entry-name">${c.name}</span>
                 <span class="cs-entry-price">${csIntelFormatMoney(c.price)}</span>
@@ -682,7 +685,7 @@ function renderPlayerDetail(entry) {
             ${csIntelBetaPreviewBadge()}
           </div>
           <div class="cs-premium-card-list cs-premium-card-list--entries">
-            ${placeholders.mostChased.map((c) => `
+            ${intel.mostChased.map((c) => `
               <div class="cs-entry-row">
                 <span class="cs-entry-name">${c.name}</span>
                 <span class="cs-entry-price">${csIntelFormatMoney(c.price)}</span>
