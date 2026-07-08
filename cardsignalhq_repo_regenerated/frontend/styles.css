@@ -179,16 +179,28 @@ body {
 
 /* Market Desk */
 
-.market-desk-hero {
+/* Market Desk → Signal Center layout */
+
+.signal-center-hero,
+.signal-center-pulse,
+.signal-center-featured {
+  margin-bottom: 20px;
+}
+
+.signal-center-hero {
+  margin-top: 4px;
+}
+
+.signal-center-featured {
   display: grid;
-  grid-template-columns: 1.4fr .8fr;
-  gap: 18px;
-  margin: 28px 0 24px;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
 }
 
 .market-pulse-card,
 .signal-of-week-card,
-.market-mini-card {
+.market-mini-card,
+.featured-signal-card {
   background: var(--panel);
   border: 1px solid rgba(220, 214, 206, 0.9);
   border-radius: 32px;
@@ -196,36 +208,59 @@ body {
   padding: 28px;
 }
 
+/* Signal of the Week — full-width hero */
+.signal-of-week-card {
+  position: relative;
+  overflow: hidden;
+  padding: 0;
+  display: flex;
+  min-height: 280px;
+  background: linear-gradient(135deg, #FBF7F0 0%, #F5EDE0 45%, #F0E8D8 100%);
+  border-color: rgba(187, 132, 85, 0.22);
+}
+
 .market-pulse-card {
-  grid-row: span 2;
-  min-height: 370px;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  gap: 18px;
+  padding: 22px 26px;
 }
 
 .market-pulse-top {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 18px;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.market-pulse-title-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.market-pulse-updated-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: var(--paper);
+  border: 1px solid rgba(220, 214, 206, 0.85);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
 }
 
 .market-pulse-top h2 {
-  margin: 10px 0 0;
+  margin: 6px 0 0;
   font-family: Cormorant, Georgia, serif;
-  font-size: 46px;
-  line-height: .95;
-  letter-spacing: -0.035em;
-}
-
-.market-status {
-  padding: 9px 13px;
-  border-radius: 999px;
-  background: var(--paper);
-  color: var(--bronze);
-  font-size: 13px;
-  font-weight: 800;
+  font-size: 28px;
+  line-height: 1;
+  letter-spacing: -0.03em;
 }
 
 .market-pulse-body {
@@ -294,7 +329,7 @@ body {
   overflow: hidden;
   padding: 0;
   display: flex;
-  min-height: 370px;
+  min-height: 280px;
 }
 
 .signal-week-inner {
@@ -305,7 +340,8 @@ body {
 }
 
 .signal-week-media {
-  flex: 0 0 46%;
+  flex: 0 0 34%;
+  max-width: 380px;
   position: relative;
   background: linear-gradient(180deg, rgba(15, 15, 16, 0.86), rgba(42, 36, 31, 0.92));
 }
@@ -352,10 +388,11 @@ body {
 
 .signal-week-copy {
   flex: 1;
-  padding: 26px 22px;
+  min-width: 0;
+  padding: 24px 28px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 10px;
 }
 
 .signal-week-eyebrow {
@@ -369,13 +406,13 @@ body {
 .signal-week-opportunity {
   margin: 0;
   color: var(--muted);
-  font-size: 14px;
-  line-height: 1.55;
+  font-size: 13px;
+  line-height: 1.45;
 }
 
 .signal-week-name {
   font-family: Cormorant, Georgia, serif;
-  font-size: 42px;
+  font-size: 34px;
   line-height: .95;
   letter-spacing: -0.04em;
   font-weight: 700;
@@ -438,9 +475,9 @@ body {
 
 .signal-week-score-value {
   font-family: Cormorant, Georgia, serif;
-  font-size: 78px;
-  line-height: 0.75;
-  letter-spacing: -0.06em;
+  font-size: 48px;
+  line-height: 0.8;
+  letter-spacing: -0.05em;
   font-weight: 700;
   color: var(--charcoal);
 }
@@ -508,7 +545,7 @@ body {
 
 .signal-week-movement strong {
   font-family: Cormorant, Georgia, serif;
-  font-size: 26px;
+  font-size: 20px;
   line-height: 0.95;
   font-weight: 700;
   color: var(--bronze);
@@ -523,11 +560,11 @@ body {
 }
 
 .signal-week-ai {
-  margin-top: 4px;
-  border-radius: 24px;
-  border: 1px solid rgba(220, 214, 206, 0.95);
-  background: rgba(252, 251, 248, 0.65);
-  padding: 14px 14px;
+  margin-top: 2px;
+  border-radius: 16px;
+  border: 1px solid rgba(220, 214, 206, 0.85);
+  background: rgba(252, 251, 248, 0.55);
+  padding: 10px 12px;
 }
 
 .signal-week-ai-top {
@@ -547,11 +584,11 @@ body {
 
 .signal-week-ai-pill {
   border-radius: 999px;
-  padding: 10px 14px;
+  padding: 6px 10px;
   font-weight: 900;
-  letter-spacing: .14em;
+  letter-spacing: .12em;
   text-transform: uppercase;
-  font-size: 12px;
+  font-size: 11px;
   border: 1px solid rgba(220, 214, 206, 0.95);
   background: rgba(255, 255, 255, 0.55);
   color: var(--charcoal);
@@ -1100,7 +1137,6 @@ canvas {
 
 @media (max-width: 980px) {
   .topbar,
-  .market-desk-hero,
   .two-up,
   .four-up {
     grid-template-columns: 1fr;
@@ -2729,5 +2765,459 @@ button,
     grid-column: 1 / -1;
     justify-items: start;
     text-align: left;
+  }
+}
+
+/* ===========================
+   Sprint 6.2 — Signal Center Polish
+=========================== */
+
+/* Signal of the Week hero — premium cream/gold tint */
+.signal-of-week-card {
+  background: linear-gradient(135deg, #FBF7F0 0%, #F5EDE0 45%, #F0E8D8 100%);
+  border-color: rgba(187, 132, 85, 0.22);
+}
+
+.signal-week-ai-reason {
+  margin: 6px 0 0;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+/* Simplified Market Pulse */
+.market-pulse-body--compact {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.market-pulse-score-compact span {
+  display: block;
+  font-family: Cormorant, Georgia, serif;
+  font-size: 56px;
+  line-height: 0.85;
+  letter-spacing: -0.05em;
+  font-weight: 700;
+  color: var(--charcoal);
+}
+
+.market-pulse-score-compact small {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .12em;
+  font-weight: 800;
+}
+
+.market-pulse-metrics-inline {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.market-pulse-metric-chip {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
+  border-radius: 14px;
+  background: var(--paper);
+  border: 1px solid rgba(220, 214, 206, 0.8);
+  min-width: 72px;
+}
+
+.market-pulse-metric-chip strong {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--charcoal);
+  line-height: 1;
+}
+
+.market-pulse-metric-chip span {
+  font-size: 10px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  font-weight: 800;
+}
+
+.pulse-movers--top10 {
+  margin-top: 0;
+  border-top: 1px solid var(--stone);
+  padding-top: 14px;
+}
+
+.pulse-movers--top10 .pulse-mover-row {
+  padding: 5px 0;
+  font-size: 13px;
+}
+
+.pulse-movers--top10 .pulse-mover-row span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 70%;
+}
+
+.market-status {
+  padding: 6px 11px;
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--bronze);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+/* Featured signal cards (Most Chased / Buy Low) */
+.featured-signal-card {
+  padding: 18px 20px;
+  min-height: auto;
+  overflow: hidden;
+}
+
+.featured-signal-card::after {
+  display: none;
+}
+
+.featured-signal-inner {
+  display: grid;
+  grid-template-columns: 48px 1fr auto;
+  gap: 12px;
+  align-items: center;
+  min-width: 0;
+}
+
+.featured-signal-photo {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, var(--charcoal), #2A241F);
+  color: var(--sand);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  font-weight: 900;
+  font-size: 13px;
+  flex-shrink: 0;
+  border: 2px solid rgba(255, 255, 255, 0.88);
+}
+
+.featured-signal-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 20%;
+}
+
+.featured-signal-copy {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.featured-signal-label {
+  color: var(--bronze);
+  text-transform: uppercase;
+  letter-spacing: .14em;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.featured-signal-name {
+  margin-top: 4px;
+  font-size: 15px;
+  font-weight: 900;
+  color: var(--charcoal);
+  line-height: 1.2;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.featured-signal-team {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.featured-signal-metric {
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.featured-signal-metric strong {
+  display: block;
+  font-family: Cormorant, Georgia, serif;
+  font-size: 24px;
+  line-height: 0.9;
+  font-weight: 700;
+  color: var(--bronze);
+}
+
+.featured-signal-metric span {
+  display: block;
+  margin-top: 3px;
+  font-size: 9px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .12em;
+  font-weight: 800;
+}
+
+/* Unified intelligence row layout */
+.cs-intel-row {
+  display: grid;
+  grid-template-columns: 40px 1fr auto;
+  gap: 10px;
+  align-items: center;
+  padding: 9px 10px;
+  border-radius: 14px;
+  border: 1px solid rgba(220, 214, 206, 0.75);
+  background: rgba(255, 255, 255, 0.5);
+  min-width: 0;
+  overflow: hidden;
+}
+
+.cs-intel-row-thumb {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(15, 15, 16, 0.86), rgba(42, 36, 31, 0.9));
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 900;
+  color: var(--sand);
+}
+
+.cs-intel-row-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 20%;
+}
+
+.cs-intel-row-copy {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.cs-intel-row-title {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--charcoal);
+  line-height: 1.25;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+}
+
+.cs-intel-row-sub {
+  margin-top: 3px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cs-intel-row-metric {
+  text-align: right;
+  flex-shrink: 0;
+  min-width: 52px;
+}
+
+.cs-intel-row-metric strong {
+  display: block;
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--bronze);
+  line-height: 1;
+}
+
+.cs-intel-row-metric span {
+  display: block;
+  margin-top: 2px;
+  font-size: 9px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  font-weight: 800;
+}
+
+.cs-premium-card-list--unified {
+  display: grid;
+  gap: 8px;
+}
+
+.cs-premium-card {
+  padding: 16px;
+  overflow: hidden;
+}
+
+.cs-premium-title {
+  font-size: 15px;
+}
+
+/* Compact AI recommendation */
+.cs-ai-block--compact {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 14px;
+  align-items: start;
+}
+
+.cs-ai-inline {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.cs-ai-action-compact {
+  font-size: 18px;
+  font-weight: 900;
+  letter-spacing: .06em;
+  color: var(--charcoal);
+  text-transform: uppercase;
+}
+
+.cs-ai-action-compact--buy { color: var(--bronze); }
+.cs-ai-action-compact--hold { color: var(--sage); }
+.cs-ai-action-compact--sell { color: var(--clay); }
+
+.cs-ai-reason--compact p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.cs-premium-card--ai {
+  padding: 16px 18px;
+}
+
+/* Chart placeholders */
+.chart-canvas-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 280px;
+}
+
+.chart-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 280px;
+  padding: 32px 24px;
+  border-radius: 18px;
+  background: var(--paper);
+  border: 1px dashed rgba(220, 214, 206, 0.95);
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 600;
+  text-align: center;
+  line-height: 1.5;
+}
+
+.chart-placeholder.hidden,
+.chart-canvas-wrap canvas.hidden {
+  display: none;
+}
+
+/* Remove hover lift on hero to keep it grounded */
+.signal-of-week-card:hover {
+  transform: none;
+}
+
+.market-desk-hero {
+  display: none;
+}
+
+@media (max-width: 980px) {
+  .signal-center-featured {
+    grid-template-columns: 1fr;
+  }
+
+  .signal-week-media {
+    flex: 0 0 auto;
+    max-width: none;
+    height: 220px;
+  }
+
+  .signal-week-name {
+    font-size: 30px;
+  }
+
+  .signal-week-score-value {
+    font-size: 42px;
+  }
+
+  .market-pulse-body--compact {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .market-pulse-score-compact span {
+    font-size: 48px;
+  }
+
+  .featured-signal-inner {
+    grid-template-columns: 44px 1fr auto;
+  }
+
+  .cs-intel-row {
+    grid-template-columns: 36px 1fr auto;
+  }
+
+  .cs-ai-block--compact {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .signal-of-week-card,
+  .market-pulse-card,
+  .featured-signal-card {
+    border-radius: 24px;
+    padding: 0;
+  }
+
+  .market-pulse-card {
+    padding: 18px;
+  }
+
+  .featured-signal-card {
+    padding: 16px;
+  }
+
+  .signal-week-media {
+    height: 180px;
+  }
+
+  .signal-week-copy {
+    padding: 18px 16px;
+  }
+
+  .signal-week-score-value {
+    font-size: 38px;
+  }
+
+  .market-pulse-top h2 {
+    font-size: 24px;
   }
 }

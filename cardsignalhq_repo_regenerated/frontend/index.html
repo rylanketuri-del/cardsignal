@@ -65,11 +65,18 @@
         </div>
       </section>
 
-      <section class="market-desk-hero">
-        <div class="market-pulse-card"></div>
+      <!-- Signal Center: primary dashboard sections -->
+      <section class="signal-center-hero" id="signal-center-hero" aria-label="Signal of the Week">
         <div class="signal-of-week-card"></div>
-        <div class="market-mini-card"></div>
-        <div class="market-mini-card"></div>
+      </section>
+
+      <section class="signal-center-pulse" id="signal-center-pulse" aria-label="Market Pulse">
+        <div class="market-pulse-card"></div>
+      </section>
+
+      <section class="signal-center-featured" id="signal-center-featured" aria-label="Featured signals">
+        <div class="featured-signal-card market-mini-card" id="featured-most-chased"></div>
+        <div class="featured-signal-card market-mini-card" id="featured-buy-low"></div>
       </section>
 
       <section class="product-section leaders-report-section">
@@ -96,7 +103,12 @@
             <h2>Signal History</h2>
             <span class="muted">Selected player trend</span>
           </div>
-          <canvas id="score-history-chart" height="160"></canvas>
+          <div class="chart-canvas-wrap" id="score-history-wrap">
+            <canvas id="score-history-chart" height="160"></canvas>
+            <div class="chart-placeholder hidden" id="score-history-placeholder">
+              Signal history will populate after weekly snapshots.
+            </div>
+          </div>
         </div>
 
         <div class="panel light-panel">
@@ -104,7 +116,12 @@
             <h2>Market Trend</h2>
             <span class="muted">Top score by run</span>
           </div>
-          <canvas id="leaderboard-history-chart" height="160"></canvas>
+          <div class="chart-canvas-wrap" id="leaderboard-history-wrap">
+            <canvas id="leaderboard-history-chart" height="160"></canvas>
+            <div class="chart-placeholder hidden" id="leaderboard-history-placeholder">
+              Market trend will populate after card pricing snapshots.
+            </div>
+          </div>
         </div>
       </section>
 
