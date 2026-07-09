@@ -4825,3 +4825,434 @@ body.pi-modal-open {
     font-size: 30px;
   }
 }
+
+/* ===========================
+   Sprint 7.2 / v0.8.0 — Player Intelligence Report Tabs
+=========================== */
+
+.pi-overview-stats {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.pi-overview-stat {
+  flex: 1;
+  min-width: 140px;
+  display: grid;
+  gap: 6px;
+  padding: 16px 18px;
+  border-radius: 20px;
+  border: 1px solid rgba(220, 214, 206, 0.9);
+  background: linear-gradient(180deg, #fffdfa, var(--paper));
+}
+
+.pi-overview-stat-value {
+  font-family: Cormorant, Georgia, serif;
+  font-size: 28px;
+  line-height: 0.9;
+  font-weight: 700;
+  color: var(--charcoal);
+}
+
+.pi-overview-stat-label {
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+}
+
+.pi-status-pill--inline {
+  width: fit-content;
+  font-family: Inter, sans-serif;
+  font-size: 11px;
+}
+
+.pi-why-matters {
+  padding: 18px 20px;
+}
+
+.pi-why-matters-copy {
+  margin: 0;
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.pi-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.pi-card-row {
+  display: grid;
+  grid-template-columns: 44px 1fr auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(220, 214, 206, 0.75);
+  background: rgba(255, 255, 255, 0.55);
+  min-width: 0;
+  overflow: hidden;
+}
+
+.pi-card-row-thumb {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(15, 15, 16, 0.9), rgba(42, 36, 31, 0.95));
+  box-shadow: inset 0 0 0 1px rgba(187, 132, 85, 0.18);
+  flex-shrink: 0;
+}
+
+.pi-card-row-copy {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.pi-card-row-name {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--charcoal);
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pi-card-row-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+
+.pi-card-row-price {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--bronze);
+  flex-shrink: 0;
+}
+
+.pi-card-row-move {
+  font-size: 12px;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+
+.pi-signal-label {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  flex-shrink: 0;
+  border: 1px solid rgba(220, 214, 206, 0.85);
+  background: var(--paper);
+  color: var(--muted);
+}
+
+.pi-signal-label--hot {
+  background: rgba(154, 102, 86, 0.14);
+  border-color: rgba(154, 102, 86, 0.32);
+  color: var(--clay);
+}
+
+.pi-signal-label--rising {
+  background: rgba(47, 125, 74, 0.12);
+  border-color: rgba(47, 125, 74, 0.28);
+  color: var(--signal-green);
+}
+
+.pi-signal-label--watch {
+  background: rgba(187, 132, 85, 0.12);
+  border-color: rgba(187, 132, 85, 0.28);
+  color: var(--bronze);
+}
+
+.pi-signal-label--quiet {
+  background: rgba(125, 120, 115, 0.10);
+  border-color: rgba(125, 120, 115, 0.22);
+  color: var(--muted);
+}
+
+.pi-market-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.pi-market-stat {
+  display: grid;
+  gap: 6px;
+  padding: 16px;
+  border-radius: 20px;
+  border: 1px solid rgba(220, 214, 206, 0.9);
+  background: linear-gradient(180deg, #fffdfa, var(--paper));
+  min-width: 0;
+}
+
+.pi-market-stat-value {
+  font-family: Cormorant, Georgia, serif;
+  font-size: 28px;
+  line-height: 0.9;
+  font-weight: 700;
+  color: var(--charcoal);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pi-market-stat-label {
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+}
+
+.pi-market-liquidity {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 18px;
+  border-radius: 18px;
+  border: 1px solid rgba(220, 214, 206, 0.9);
+  background: var(--paper);
+}
+
+.pi-market-liquidity-label {
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+}
+
+.pi-market-liquidity-value {
+  font-size: 15px;
+  font-weight: 900;
+  color: var(--charcoal);
+}
+
+.pi-market-summary {
+  padding: 18px 20px;
+}
+
+.pi-market-summary-copy {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--text);
+}
+
+.pi-market-placeholder-note {
+  padding: 16px 18px;
+  border-radius: 18px;
+  border: 1px dashed rgba(220, 214, 206, 0.95);
+  background: linear-gradient(180deg, var(--paper), var(--panel));
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+  line-height: 1.5;
+}
+
+.pi-signals-intro {
+  display: grid;
+  gap: 6px;
+}
+
+.pi-signals-heading {
+  margin: 0;
+  font-family: Cormorant, Georgia, serif;
+  font-size: 28px;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  color: var(--charcoal);
+}
+
+.pi-signals-list {
+  display: grid;
+  gap: 12px;
+}
+
+.pi-signal-detail {
+  padding: 16px 18px;
+}
+
+.pi-signal-detail-score {
+  font-family: Cormorant, Georgia, serif;
+  font-size: 24px;
+  line-height: 0.9;
+  font-weight: 700;
+  color: var(--bronze);
+}
+
+.pi-signal-detail-bar {
+  margin-top: 10px;
+}
+
+.pi-signal-detail-copy {
+  margin: 12px 0 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--text);
+}
+
+.pi-forecast-hero {
+  padding: 18px 20px;
+}
+
+.pi-forecast-top {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  align-items: flex-end;
+}
+
+.pi-forecast-rec,
+.pi-forecast-conviction,
+.pi-forecast-horizon,
+.pi-forecast-risk {
+  display: grid;
+  gap: 6px;
+}
+
+.pi-forecast-rec-badge {
+  min-width: 80px;
+  height: 36px;
+}
+
+.pi-forecast-horizon-value {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 80px;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(220, 214, 206, 0.95);
+  background: var(--paper);
+  font-size: 13px;
+  font-weight: 900;
+  color: var(--charcoal);
+}
+
+.pi-forecast-horizon-label,
+.pi-forecast-risk-label {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.pi-risk-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 80px;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(220, 214, 206, 0.95);
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.pi-risk--low {
+  background: rgba(47, 125, 74, 0.12);
+  border-color: rgba(47, 125, 74, 0.32);
+  color: var(--signal-green);
+}
+
+.pi-risk--medium {
+  background: rgba(187, 132, 85, 0.12);
+  border-color: rgba(187, 132, 85, 0.32);
+  color: var(--bronze);
+}
+
+.pi-risk--high {
+  background: rgba(154, 102, 86, 0.12);
+  border-color: rgba(154, 102, 86, 0.32);
+  color: var(--signal-red);
+}
+
+.pi-forecast-summary,
+.pi-forecast-reasons {
+  padding: 18px 20px;
+}
+
+.pi-forecast-summary-copy {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--text);
+}
+
+.pi-forecast-reasons-list {
+  margin: 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 10px;
+}
+
+.pi-forecast-reasons-list li {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.pi-forecast-disclaimer {
+  margin: 16px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+  font-style: italic;
+}
+
+@media (max-width: 980px) {
+  .pi-cards-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .pi-market-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .pi-forecast-top {
+    gap: 14px;
+  }
+}
+
+@media (max-width: 640px) {
+  .pi-market-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .pi-card-row {
+    grid-template-columns: 40px 1fr;
+  }
+
+  .pi-signal-label {
+    grid-column: 2;
+    justify-self: start;
+    margin-top: 4px;
+  }
+
+  .pi-overview-stats {
+    flex-direction: column;
+  }
+}
