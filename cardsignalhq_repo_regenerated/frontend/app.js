@@ -173,6 +173,41 @@ function renderPlayerHeadshot(entry = {}) {
   return `<div class="player-headshot-placeholder"><span>${initials}</span></div>`;
 }
 
+function getTeamName(entry = {}) {
+  return entry.team_name || entry.team_full_name || entry.team || entry.team_abbrev || entry.mlb_team || "MLB";
+}
+
+function formatConvictionLabel(tier = "") {
+  const map = { HIGH: "High", MEDIUM: "Medium", LOW: "Low" };
+  return map[String(tier || "").toUpperCase()] || tier || "—";
+}
+
+function renderPiModalHeadshot(entry = {}) {
+  const initials = getPlayerInitials(entry.player_name);
+  const actionUrl = getSignalOfWeekActionPhotoUrl(entry);
+  const headshotUrl = entry.headshot_url || entry.photo_url || null;
+  const imageUrl = actionUrl || headshotUrl;
+  const imageKind = actionUrl ? "action" : "headshot";
+
+  if (imageUrl) {
+    return `
+      <div class="pi-modal-photo pi-modal-photo--${imageKind}">
+        <img
+          src="${imageUrl}"
+          alt="${entry.player_name}"
+          loading="lazy"
+          class="player-headshot-image pi-modal-photo-image"
+          onerror="this.remove();this.parentElement.insertAdjacentHTML('beforeend','<span class=&quot;pi-modal-photo-fallback&quot;>${initials}</span>')"
+        />
+      </div>`;
+  }
+
+  return `
+    <div class="pi-modal-photo pi-modal-photo--placeholder">
+      <span class="pi-modal-photo-fallback">${initials}</span>
+    </div>`;
+}
+
 function buildLeaderboard(entries) {
   return `
     <section class="market-leaders-module sport-section sport-section--mlb" data-sport="mlb">
@@ -842,23 +877,25 @@ function renderPiModalTabs(activeTab) {
 }
 
 function renderPiModalHeader(entry, intel) {
-  const team = getTeamAbbrev(entry);
+  const teamName = getTeamName(entry);
   const position = entry.position || "—";
   const recommendation = csIntelRecommendationFromTier(intel.convictionTier);
   const recommendationClass = csIntelRecommendationClass(recommendation);
-  const status = getSignalOfWeekStatus(entry);
+  const convictionTier = intel.convictionTier || "MEDIUM";
+  const convictionClass = csIntelConvictionClass(convictionTier);
+  const convictionLabel = formatConvictionLabel(convictionTier);
 
   return `
     <div class="pi-modal-header-main">
       <div class="pi-modal-identity">
-        <div class="pi-modal-headshot">${renderPlayerHeadshot(entry)}</div>
+        <div class="pi-modal-headshot">${renderPiModalHeadshot(entry)}</div>
         <div class="pi-modal-identity-copy">
           <p class="eyebrow pi-modal-kicker">Player Intelligence</p>
           <h2 class="pi-modal-title" id="pi-modal-title">${entry.player_name}</h2>
           <div class="pi-modal-meta">
             <span class="pi-modal-meta-chip">
               <span class="team-logo-placeholder">${renderTeamLogoMarkup(entry)}</span>
-              ${team}
+              ${teamName}
             </span>
             <span class="pi-modal-meta-chip pi-modal-meta-chip--muted">${position}</span>
           </div>
@@ -875,8 +912,8 @@ function renderPiModalHeader(entry, intel) {
           <span class="pi-modal-stat-label">Recommendation</span>
         </div>
         <div class="pi-modal-stat">
-          <span class="pi-modal-stat-value pi-status-pill ${status.className}">${status.label}</span>
-          <span class="pi-modal-stat-label">Status</span>
+          <span class="pi-modal-stat-value cs-conviction-badge ${convictionClass} pi-modal-conviction-badge">${convictionLabel}</span>
+          <span class="pi-modal-stat-label">Conviction</span>
         </div>
       </div>
 
