@@ -7,6 +7,7 @@
 
   const cache = new Map();
   const movementCache = new Map();
+  const historyCache = new Map();
   const activityCache = new Map();
   const inflight = new Map();
 
@@ -289,6 +290,28 @@
     return Boolean(payload?.aggregate?.cards_observed || payload?.cards?.some((card) => card.market_snapshot));
   }
 
+  async function fetchCardMarketHistory(csCardId, limit = 12, { force = false } = {}) {
+    const key = `${csCardId}:${limit}`;
+    if (!force && historyCache.has(key)) {
+      return { status: "success", data: historyCache.get(key) };
+    }
+
+    try {
+      const apiBase = (global.APP_CONFIG && global.APP_CONFIG.API_BASE_URL) || "https://cardsignal-api.onrender.com";
+      const response = await fetch(
+        `${apiBase}/api/cards/${encodeURIComponent(csCardId)}/market/history?limit=${encodeURIComponent(limit)}`
+      );
+      if (!response.ok) {
+        throw new Error(`History request failed (${response.status})`);
+      }
+      const data = await response.json();
+      historyCache.set(key, data);
+      return { status: "success", data };
+    } catch (error) {
+      return { status: "error", error: error.message || "Card history is temporarily unavailable." };
+    }
+  }
+
   async function fetchPlayerCardMarketMovement(playerId, window = "7d", { force = false } = {}) {
     const key = `${playerId}:${window}`;
     if (!force && movementCache.has(key)) {
@@ -393,6 +416,14 @@
     }
   }
 
+  function clearHistoryCacheForCard(csCardId) {
+    for (const key of historyCache.keys()) {
+      if (key.startsWith(`${csCardId}:`)) {
+        historyCache.delete(key);
+      }
+    }
+  }
+
   function buildRegistryFallbackSections(entry = {}) {
     const registry = CardRegistry.getPlayerCardRegistry(entry);
     const baseRows = registry.slice(0, 6).map((card) => {
@@ -435,10 +466,12 @@
     buildBuyLowInputs,
     hasSnapshots,
     fetchPlayerCardMarket,
+    fetchCardMarketHistory,
     fetchPlayerCardMarketMovement,
     fetchPlayerCardMarketActivity,
     fetchPlayerCardMarketBundle,
     clearCacheForPlayer,
+    clearHistoryCacheForCard,
     enrichCardRow,
     cardDisplayName,
     buildRegistryFallbackSections,
