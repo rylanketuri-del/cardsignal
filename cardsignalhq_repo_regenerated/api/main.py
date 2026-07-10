@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from cardchase_ai.identity import enrich_player_entry
 from cardchase_ai.clients.mlb import MLBClient
 from cardchase_ai.config import get_settings
 from cardchase_ai.pipeline import run_pipeline
@@ -224,7 +225,8 @@ def get_public_config() -> JSONResponse:
 @app.get("/api/leaderboard/latest")
 def get_latest_leaderboard() -> JSONResponse:
     payload, source = _load_latest()
-    return JSONResponse({"data_source": source, "items": payload})
+    enriched = [enrich_player_entry(entry) for entry in payload]
+    return JSONResponse({"data_source": source, "items": enriched})
 
 
 @app.get("/api/runs/latest")
@@ -246,7 +248,8 @@ def search_players(q: str = "") -> JSONResponse:
 
     try:
         results = MLBClient().search_players(query, limit=10)
-        return JSONResponse(results)
+        enriched = [enrich_player_entry(result.model_dump()) for result in results]
+        return JSONResponse(enriched)
     except Exception:
         return JSONResponse([])
 
@@ -255,6 +258,7 @@ def search_players(q: str = "") -> JSONResponse:
 def get_player(player_id: str) -> JSONResponse:
     payload, source = _load_player(player_id)
     if isinstance(payload, dict):
+        payload = enrich_player_entry(payload)
         payload["data_source"] = source
     return JSONResponse(payload)
 

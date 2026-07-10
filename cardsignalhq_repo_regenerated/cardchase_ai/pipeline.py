@@ -12,6 +12,7 @@ from cardchase_ai.clients.ebay import EbayClient
 from cardchase_ai.clients.mlb import MLBClient
 from cardchase_ai.config import get_settings
 from cardchase_ai.delivery import AlertDeliveryClient, DeliverySettings, build_notification_email
+from cardchase_ai.identity import enrich_player_entry
 from cardchase_ai.models.schemas import HitterHotnessBreakdown, MarketSnapshot, RollingHitterStats
 from cardchase_ai.score import build_hotness_breakdown
 from cardchase_ai.storage import SupabaseStorage
@@ -418,7 +419,7 @@ def run_pipeline() -> PipelineResult:
     settings = get_settings()
 
     outputs = _build_outputs()
-    serialized = [json.loads(output.model_dump_json()) for output in outputs]
+    serialized = [enrich_player_entry(json.loads(output.model_dump_json())) for output in outputs]
 
     file_path = _write_outputs(serialized, settings.output_dir)
 

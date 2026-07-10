@@ -86,3 +86,50 @@ Placeholder intelligence (card rows, market metrics, forecast reasons) uses stab
 - Frontend-only releases must not modify backend files unless explicitly scoped
 - No new dependencies without approval
 - Preserve existing homepage sections during modal and report releases
+
+## CardSignal Identity Model
+
+CardSignal uses deterministic, sport/league-aware IDs so players, cards, signals, and forecasts can be linked across pipeline runs, pricing sources, and future assets without relying on leaderboard rank or random page-render values.
+
+### ID Formats
+
+| Entity | Format | Example |
+|--------|--------|---------|
+| Player | `CS-{LEAGUE}-P-{STABLE_ID}` | `CS-MLB-P-660271` |
+| Card | `CS-{LEAGUE}-C-{STABLE_CARD_ID}` | `CS-MLB-C-a1b2c3d4e5f6` |
+| Weekly Signal | `CS-{LEAGUE}-S-{YEAR}W{WEEK}-{STABLE_ID}` | `CS-MLB-S-2026W28-660271` |
+| Forecast | `CS-{LEAGUE}-F-{YEAR}W{WEEK}-{STABLE_ID}` | `CS-MLB-F-2026W28-660271` |
+
+`STABLE_ID` is the official league/player ID when available (MLB player ID for MLB). Card `STABLE_CARD_ID` is a deterministic hash of normalized card identity fields (year, manufacturer, set, card name, parallel, grade, grading company, and player source ID). Price and movement are never used in ID generation.
+
+### Supported Namespaces
+
+League namespaces are reserved for: **MLB**, **NFL**, **NBA**, **NHL**, **SOCCER**, **F1**, **UFC**, **POKEMON**, **TCG**. Only MLB is active in production; other namespaces are prepared for future expansion.
+
+### Deterministic ID Requirement
+
+The same player or card identity must always resolve to the same CardSignal ID. IDs are computed from stable source identifiers and normalized identity fields — never from list position, leaderboard rank, or random runtime values.
+
+### Relationships
+
+```
+Player → many Cards
+Player → many Weekly Signals
+Player → many Forecasts
+Card → many Market Snapshots (future)
+Card → many Population Snapshots (future)
+```
+
+Sprint 8.2 establishes these relationships in shared identity helpers and lightweight models. Market and population snapshot rows are not persisted yet.
+
+### Player Fields
+
+Player records expose (in addition to legacy `player_id`):
+
+- `cs_player_id`
+- `source_player_id`
+- `league`
+- `sport`
+- `player_name`
+
+Legacy `player_id` remains the primary API lookup key for MLB players.
