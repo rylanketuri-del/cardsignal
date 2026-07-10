@@ -334,6 +334,16 @@ function csIntelFormatMoney(value) {
   return `$${n.toFixed(2)}`;
 }
 
+function enrichPlayerEntryIdentity(entry = {}) {
+  if (typeof CardSignalIdentity === "undefined") return entry;
+  if (entry.cs_player_id) return entry;
+  return CardSignalIdentity.enrichPlayerEntry(entry);
+}
+
+function enrichPlayerEntries(entries = []) {
+  return (entries || []).map((entry) => enrichPlayerEntryIdentity(entry));
+}
+
 function formatConvictionTier(tier = "") {
   const key = String(tier || "").toUpperCase();
   if (key === "HIGH") return "High";
@@ -650,15 +660,16 @@ function showChartPlaceholder(canvasId, placeholderId, show) {
   if (placeholder) placeholder.classList.toggle("hidden", !show);
 }
 function csIntelGetPlaceholders(entry) {
-  const key = String(entry?.player_id ?? entry?.player_name ?? "unknown");
+  const identityEntry = enrichPlayerEntryIdentity(entry);
+  const key = String(identityEntry?.source_player_id ?? identityEntry?.player_id ?? identityEntry?.player_name ?? "unknown");
   if (csIntelCache.has(key)) return csIntelCache.get(key);
 
-  const storageKey = `cs_intel_placeholders_v2_${key}`;
+  const storageKey = `cs_intel_placeholders_v3_${key}`;
   try {
     const raw = sessionStorage.getItem(storageKey);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (parsed && (parsed.convictionTier || parsed.confidenceTier) && parsed.cardRegistryVersion === 1) {
+      if (parsed && (parsed.convictionTier || parsed.confidenceTier) && parsed.identityVersion === 1) {
         if (!parsed.convictionTier && parsed.confidenceTier) {
           parsed.convictionTier = parsed.confidenceTier;
         }
@@ -683,7 +694,7 @@ function csIntelGetPlaceholders(entry) {
 
   const score = csIntelClamp(performance * 0.5 + market * 0.4 + momentum * 0.1 + (rng() - 0.5) * 10, 0, 100);
 
-  const cardRegistry = CardRegistry.getPlayerCardRegistry(entry);
+  const cardRegistry = CardRegistry.getPlayerCardRegistry(identityEntry);
   const sectionOptions = {
     count: 3,
     formatPercent: csIntelFormatPercent,
@@ -744,6 +755,14 @@ function csIntelGetPlaceholders(entry) {
     score: csIntelClamp(score, 0, 100),
     cardRegistry,
     cardRegistryVersion: 1,
+    identityVersion: 1,
+    cs_player_id: identityEntry.cs_player_id,
+    source_player_id: identityEntry.source_player_id,
+    league: identityEntry.league,
+    sport: identityEntry.sport,
+    player_name: identityEntry.player_name,
+    cs_signal_id: identityEntry.cs_signal_id,
+    cs_forecast_id: identityEntry.cs_forecast_id,
     trendingCards,
     biggestMovers,
     buyLowOpportunities,
@@ -765,8 +784,9 @@ function csIntelGetPlaceholders(entry) {
 }
 
 function buildPlayerIntel(entry) {
-  const hotness = entry.hotness || {};
-  const placeholders = csIntelGetPlaceholders(entry);
+  const identityEntry = enrichPlayerEntryIdentity(entry);
+  const hotness = identityEntry.hotness || {};
+  const placeholders = csIntelGetPlaceholders(identityEntry);
 
   return {
     ...placeholders,
@@ -776,6 +796,13 @@ function buildPlayerIntel(entry) {
     momentum: csIntelSafeToNumber(hotness.momentum_score) ?? placeholders.momentum,
     score: csIntelSafeToNumber(hotness.total_score) ?? placeholders.score,
     convictionTier: placeholders.convictionTier || placeholders.confidenceTier,
+    cs_player_id: placeholders.cs_player_id,
+    source_player_id: placeholders.source_player_id,
+    league: placeholders.league,
+    sport: placeholders.sport,
+    player_name: placeholders.player_name,
+    cs_signal_id: placeholders.cs_signal_id,
+    cs_forecast_id: placeholders.cs_forecast_id,
   };
 }
 
@@ -2418,7 +2445,7 @@ async function init() {
       return res.json();
     });
 
-    const entries = payload.items || [];
+    const entries = enrichPlayerEntries(payload.items || []);
     latestEntries = entries;
     setupPlayerSearch();
     setupPlayerIntelligenceModal();

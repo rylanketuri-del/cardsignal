@@ -284,14 +284,32 @@
   }
 
   function getPlayerCardRegistry(entry = {}) {
+    const identityApi = global.CardSignalIdentity;
+    const playerIdentity = identityApi
+      ? identityApi.buildPlayerIdentity(entry)
+      : null;
+
     const name = normalizePlayerName(entry.player_name);
     const known = PLAYER_CARD_REGISTRIES[name];
+    let cards;
+
     if (known && known.cards.length) {
-      return known.cards.map((card) => ({ ...card }));
+      cards = known.cards.map((card) => ({ ...card }));
+    } else {
+      const profile = detectPlayerProfile(entry);
+      cards = PROFILE_CARD_TEMPLATES[profile].map((card) => ({ ...card }));
     }
 
-    const profile = detectPlayerProfile(entry);
-    return PROFILE_CARD_TEMPLATES[profile].map((card) => ({ ...card }));
+    if (!playerIdentity || !identityApi) {
+      return cards;
+    }
+
+    return cards.map((card) => identityApi.enrichCardRegistryEntry(card, {
+      league: playerIdentity.league,
+      sourcePlayerId: playerIdentity.source_player_id,
+      csPlayerId: playerIdentity.cs_player_id,
+      playerName: playerIdentity.player_name,
+    }));
   }
 
   function pickRegistryCards(registry, section, count, rng) {
@@ -337,8 +355,8 @@
   }
 
   function buildCardDisplayItem(card, { price, movement, score } = {}) {
-    const year = extractCardYear(card.set);
-    const setName = extractSetName(card.set);
+    const year = card.year || extractCardYear(card.set);
+    const setName = card.set_name || extractSetName(card.set);
     const name = formatCardDisplayName(card);
 
     return {

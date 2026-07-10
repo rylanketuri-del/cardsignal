@@ -43,18 +43,29 @@
   - [x] Cards tab displays year, set, parallel, estimated price, movement, CardSignal mini-score
   - [x] Homepage intelligence rows use real card product names
 
+- **Sprint 8.2** — CardSignal Identity Foundation (Release v0.9.0):
+  - [x] Deterministic CardSignal IDs for players, cards, weekly signals, and forecasts
+  - [x] Shared identity helpers in backend and frontend
+  - [x] Player model fields: `cs_player_id`, `source_player_id`, `league`, `sport`, `player_name`
+  - [x] Card registry extended with `cs_card_id` and normalized identity fields
+  - [x] Relationship model documented for future market and population snapshots
+
 ## Current Milestone
 
 ### Sprint 8 — Real Card Intelligence
 
-- **Sprint 8.1** — Player Card Registry (Release v0.9.0):
-  - [x] Per-player card registry with realistic product entries (set, card, parallel, grade)
-  - [x] Reusable helpers for future eBay/PSA pricing enrichment
-  - [x] Cards tab and homepage intelligence rows show real card names
-  - [x] Year, set, parallel, estimated price, 7-day movement, CardSignal mini-score on card rows
+- **Sprint 8.1** — Player Card Registry (Release v0.9.0) — complete
+- **Sprint 8.2** — Foundation & Identity (Release v0.9.0) — complete
 - Wire Market tab to live pricing snapshots
 - Populate Signal Timeline and Market Activity from live runs
 - Backend card-market endpoints for player-specific intelligence
+
+### Future Sprint 8+ Work
+
+- Market snapshots (live pricing per card identity)
+- PSA population snapshots
+- Signal Accuracy tracking
+- Algorithm versioning
 
 ## Up Next
 
