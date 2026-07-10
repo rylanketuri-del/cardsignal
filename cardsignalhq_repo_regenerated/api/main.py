@@ -14,6 +14,7 @@ from cardchase_ai.clients.mlb import MLBClient
 from cardchase_ai.config import get_settings
 from cardchase_ai.pipeline import run_pipeline
 from cardchase_ai.storage import SupabaseError, SupabaseStorage
+from cardchase_ai.weekly_intelligence import build_latest_weekly_api_payload, build_weekly_storage, run_weekly_intelligence
 
 
 class ApiStatus(BaseModel):
@@ -60,6 +61,14 @@ class AdminTrackedPlayerRequest(BaseModel):
     player_name: str
     notes: str = ""
     active: bool = True
+
+
+class WeeklyRunRequest(BaseModel):
+    league: str = "MLB"
+    force: bool = False
+    player_limit: int | None = None
+    market_enabled: bool | None = None
+    population_enabled: bool | None = None
 
 app = FastAPI(title="CardChase AI API", version="0.6.0")
 app.add_middleware(
@@ -342,6 +351,53 @@ def trigger_pipeline(authorization: str | None = Header(default=None)) -> dict[s
     _authorize_pipeline_trigger(authorization)
     result = run_pipeline()
     return {"status": "ok", "output_path": result.leaderboard_path, "run_id": result.run_id or 0, "alerts_created": result.alerts_created, "deliveries_attempted": result.deliveries_attempted}
+
+
+@app.get("/api/weekly/latest")
+def get_weekly_latest(league: str = "MLB") -> JSONResponse:
+    """Return latest completed official weekly run — read-only, no provider calls."""
+    settings = _settings()
+    storage = build_weekly_storage(settings)
+    payload = build_latest_weekly_api_payload(league.upper(), storage, settings)
+    return JSONResponse(payload)
+
+
+@app.get("/api/players/{player_id}/signals/weekly")
+def get_player_weekly_signals(player_id: str, limit: int = 12) -> JSONResponse:
+    """Player weekly signal history — read-only."""
+    settings = _settings()
+    storage = build_weekly_storage(settings)
+    cs_id = player_id if ":" in player_id else f"mlb:{player_id}"
+    items = storage.fetch_player_weekly_history(cs_id, max(2, min(limit, 52)))
+    return JSONResponse({"items": items})
+
+
+@app.get("/api/cards/{cs_card_id}/intelligence/weekly")
+def get_card_weekly_intelligence(cs_card_id: str, limit: int = 12) -> JSONResponse:
+    """Card weekly intelligence history — read-only."""
+    settings = _settings()
+    storage = build_weekly_storage(settings)
+    items = storage.fetch_card_weekly_history(cs_card_id, max(2, min(limit, 52)))
+    return JSONResponse({"items": items})
+
+
+@app.post("/api/weekly/run")
+def trigger_weekly_run(
+    payload: WeeklyRunRequest,
+    admin=Depends(_require_admin),
+) -> JSONResponse:
+    """Admin-only manual weekly intelligence run."""
+    settings = _settings()
+    summary = run_weekly_intelligence(
+        league=payload.league.upper(),
+        force=payload.force,
+        triggered_by="admin",
+        player_limit=payload.player_limit,
+        market_enabled=payload.market_enabled,
+        population_enabled=payload.population_enabled,
+        settings=settings,
+    )
+    return JSONResponse(summary.model_dump(mode="json"))
 
 
 @app.get("/api/notifications")

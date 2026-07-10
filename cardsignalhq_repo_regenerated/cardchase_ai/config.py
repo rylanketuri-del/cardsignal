@@ -33,6 +33,13 @@ class Settings:
     daily_digest_cooldown_hours: int
     notification_limit: int
     admin_api_token: str
+    weekly_player_limit: int
+    weekly_card_limit_per_player: int
+    weekly_market_enabled: bool
+    weekly_population_enabled: bool
+    weekly_timezone: str
+    weekly_refresh_day: int
+    weekly_refresh_hour: int
 
 
 def get_settings() -> Settings:
@@ -64,4 +71,11 @@ def get_settings() -> Settings:
         daily_digest_cooldown_hours=int(os.getenv("DAILY_DIGEST_COOLDOWN_HOURS", "20")),
         notification_limit=int(os.getenv("NOTIFICATION_LIMIT", "50")),
         admin_api_token=os.getenv("ADMIN_API_TOKEN", ""),
+        weekly_player_limit=int(os.getenv("WEEKLY_PLAYER_LIMIT", "100")),
+        weekly_card_limit_per_player=int(os.getenv("WEEKLY_CARD_LIMIT_PER_PLAYER", "4")),
+        weekly_market_enabled=os.getenv("WEEKLY_MARKET_ENABLED", "true").lower() in {"1", "true", "yes"},
+        weekly_population_enabled=os.getenv("WEEKLY_POPULATION_ENABLED", "false").lower() in {"1", "true", "yes"},
+        weekly_timezone=os.getenv("WEEKLY_TIMEZONE", "America/New_York"),
+        weekly_refresh_day=int(os.getenv("WEEKLY_REFRESH_DAY", "1")),
+        weekly_refresh_hour=int(os.getenv("WEEKLY_REFRESH_HOUR", "6")),
     )

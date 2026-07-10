@@ -3804,6 +3804,22 @@ button,
   margin-bottom: 24px;
 }
 
+.weekly-refresh-note {
+  margin: 0.5rem 0 0;
+  color: #7d7873;
+  font-size: 0.875rem;
+}
+
+.signal-week-banner--empty {
+  padding: 2rem;
+  text-align: center;
+}
+
+.signal-week-banner--empty .signal-week-reason {
+  margin: 0.75rem 0 0;
+  color: #7d7873;
+}
+
 .quick-intelligence-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

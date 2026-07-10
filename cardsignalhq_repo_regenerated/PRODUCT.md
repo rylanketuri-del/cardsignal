@@ -73,6 +73,21 @@ Current production scope:
 
 Placeholder intelligence (card rows, market metrics, forecast reasons) uses stable seeded values when backend fields are missing. Live card-market snapshots will replace placeholders in a future release.
 
+## Weekly Intelligence Principles
+
+CardSignal refreshes market-wide intelligence **weekly on Tuesdays at 6:00 AM America/New_York** (beta schedule).
+
+- **Reporting period (MLB/NBA beta):** Monday 12:00 AM through Sunday 11:59 PM in the league timezone
+- **NFL (future):** Thursday through Monday — period rules are configurable per league
+- **Append-only snapshots:** player weekly signals and card weekly intelligence are never overwritten
+- **Latest completed run:** remains available if a new run fails or is skipped
+- **Signal of the Week:** selected only from players with sufficient real evidence — no random recommendations
+- **No fabricated weekly data:** null scores stay null; WATCH fallback is valid when evidence is insufficient
+- **Algorithm versioning:** `WEEKLY_INTELLIGENCE_V1` is stored on every run, snapshot, and Signal of the Week record
+- **Beta scope:** Top 100 MLB players from dynamic candidate logic; universal search remains available for players outside the universe
+
+GET routes serve stored weekly intelligence only — they never trigger provider work.
+
 ## User Layers
 
 - **Anonymous** — browse Signal Center, search players, open Intelligence Reports

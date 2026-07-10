@@ -35,16 +35,34 @@
   - [x] **Signals** — performance, market, collector demand, momentum explanations
   - [x] **Forecast** — recommendation, conviction, horizon, risk, summary, bullet reasons
 
+### Real Card Intelligence (Sprint 8.x)
+
+- **Sprint 8.7** — Card registry, eBay market snapshots, PSA population, card intelligence synthesis, market movement *(complete)*
+- **Sprint 8.8 — Weekly Intelligence Pipeline** *(complete — pending final verification)*
+  - Weekly orchestration layer for Tuesday refresh
+  - Top 100 MLB beta universe
+  - Append-only player/card weekly snapshots
+  - Signal of the Week selection with evidence requirements
+  - Today's Leaders from latest completed official run
+  - `GET /api/weekly/latest`, weekly history endpoints
+  - Admin `POST /api/weekly/run` with duplicate guard and force option
+  - Local JSON fallback when Supabase is unavailable
+
 ## Current Milestone
 
-### Sprint 8 — Real Card Intelligence
+### Release v0.9.0 — Weekly Intelligence Pipeline
 
-- Wire Market tab to live pricing snapshots
-- Replace placeholder card rows with player-linked listing data
-- Populate Signal Timeline and Market Activity from live runs
-- Backend card-market endpoints for player-specific intelligence
+Ready for final verification. Do not merge or deploy until QA pass.
+
+**Beta schedule (documented, idempotent guard):** Tuesday 6:00 AM America/New_York via external scheduler calling `POST /api/weekly/run` with admin token.
 
 ## Up Next
+
+### v0.9.1 — Production QA and Data Seeding
+
+- End-to-end weekly run verification in staging
+- Seed historical weekly snapshots for chart coverage
+- Supabase migration apply + rollback test
 
 ### v1.0.0 — Multi-Sport Expansion
 
@@ -58,8 +76,14 @@
 - Push notification delivery improvements
 - Email template polish and digest scheduling
 
-### Future
+## Future
 
+- **Tuesday email report** — weekly digest from stored homepage intelligence
+- **Signal Vault** — searchable archive of weekly signals and card intelligence
+- **Weekly push notifications** — Signal of the Week and mover alerts
+- **NFL weekly period support** — Thursday–Monday reporting windows
+- **NBA weekly period support** — league-specific period rules
+- **Signal Accuracy tracking** — compare weekly forecasts to outcomes
 - Sold-comps integration beyond active eBay listings
 - Portfolio tracking and cost-basis views
 - Mobile-native app or PWA

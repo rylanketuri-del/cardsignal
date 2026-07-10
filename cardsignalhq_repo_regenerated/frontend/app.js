@@ -17,6 +17,7 @@ let piActiveTab = "overview";
 let piModalEntry = null;
 let piModalIntel = null;
 let piModalKeydownHandler = null;
+let weeklyIntelligence = null;
 const PI_TABS = [
   { id: "overview", label: "Overview" },
   { id: "cards", label: "Cards" },
@@ -69,6 +70,14 @@ async function adminFetch(path, options = {}) {
 async function fetchPlayer(playerId) { return apiFetch(`/api/players/${playerId}`); }
 async function fetchPlayerHistory(playerId) { return apiFetch(`/api/players/${playerId}/history?limit=14`); }
 async function fetchLeaderboardHistory() { return apiFetch('/api/history/leaderboard?limit=10'); }
+async function fetchWeeklyLatest(league = 'MLB') {
+  const response = await fetch(`${API_BASE_URL}/api/weekly/latest?league=${encodeURIComponent(league)}`);
+  if (!response.ok) return null;
+  return response.json();
+}
+async function fetchPlayerWeeklySignals(playerId) {
+  return apiFetch(`/api/players/${playerId}/signals/weekly?limit=12`);
+}
 async function fetchPlayerSearch(query) {
   const response = await fetch(`${API_BASE_URL}/api/players/search?q=${encodeURIComponent(query)}`);
   if (!response.ok) return [];
@@ -174,6 +183,87 @@ function renderPlayerHeadshot(entry = {}) {
   return `<div class="player-headshot-placeholder"><span>${initials}</span></div>`;
 }
 
+function weeklyLeaderToEntry(leader = {}) {
+  return {
+    player_id: leader.source_player_id || leader.cs_player_id,
+    player_name: leader.player_name,
+    rank: leader.rank,
+    team: leader.team,
+    position: leader.position,
+    headshot_url: leader.headshot_url,
+    team_logo_url: leader.team_logo_url,
+    weekly_change: leader.weekly_change,
+    hotness: {
+      total_score: leader.score,
+      performance_score: leader.performance,
+      market_score: leader.market,
+      momentum_score: leader.momentum,
+      collector_score: leader.collector,
+      confidence_multiplier: 1,
+      tag: leader.status || leader.recommendation || 'WATCH',
+      reasons: [],
+    },
+    recommendation: leader.recommendation,
+    conviction: leader.conviction,
+  };
+}
+
+function signalOfWeekToEntry(signal = {}) {
+  if (!signal || !signal.player_name) return null;
+  return {
+    player_id: signal.source_player_id || signal.cs_player_id,
+    player_name: signal.player_name,
+    rank: signal.rank,
+    team: signal.team,
+    position: signal.position,
+    headshot_url: signal.headshot_url,
+    team_logo_url: signal.team_logo_url,
+    hotness: {
+      total_score: signal.score,
+      performance_score: signal.evidence?.performance_score,
+      market_score: signal.evidence?.market_score,
+      momentum_score: signal.evidence?.momentum_score,
+      confidence_multiplier: 1,
+      tag: signal.status || 'RISING',
+      reasons: [],
+    },
+    weekly_change: signal.weekly_change,
+    recommendation: signal.recommendation,
+    conviction: signal.conviction,
+    signal_of_week_reason: signal.reason,
+  };
+}
+
+function weeklyCardRowToIntelItem(row = {}) {
+  const label = row.card_label || 'Card';
+  const player = row.player_name || 'Player';
+  return {
+    name: `${player} · ${label}`,
+    price: row.evidence?.avg_price ?? null,
+    movement: row.demand_score != null ? `${row.demand_score > 0 ? '+' : ''}${Number(row.demand_score).toFixed(1)}%` : '—',
+    score: row.score != null ? Number(row.score).toFixed(1) : '—',
+  };
+}
+
+function renderWeeklyRefreshNote() {
+  const hero = document.getElementById('signal-center-hero');
+  if (!hero) return;
+  let note = document.getElementById('weekly-refresh-note');
+  if (!note) {
+    note = document.createElement('p');
+    note.id = 'weekly-refresh-note';
+    note.className = 'weekly-refresh-note section-desc';
+    hero.appendChild(note);
+  }
+  const nextRefresh = weeklyIntelligence?.next_refresh;
+  const nextLabel = nextRefresh
+    ? new Date(nextRefresh).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+    : null;
+  note.textContent = nextLabel
+    ? `Updated weekly on Tuesdays · Next refresh ${nextLabel}`
+    : 'Updated weekly on Tuesdays';
+}
+
 function buildLeaderboard(entries) {
   return `
     <section class="market-leaders-module sport-section sport-section--mlb" data-sport="mlb">
@@ -200,7 +290,14 @@ function buildLeaderboard(entries) {
             const score = entry.hotness?.total_score || 0;
             const performance = entry.hotness?.performance_score || 0;
             const market = entry.hotness?.market_score || 0;
-            const movement = computeSignalOfWeekMovement(entry);
+            const movement = entry.weekly_change != null && Number.isFinite(Number(entry.weekly_change))
+              ? (() => {
+                const delta = Number(entry.weekly_change);
+                const arrow = delta > 0.01 ? "↑" : delta < -0.01 ? "↓" : "→";
+                const signed = delta > 0 ? `+${delta.toFixed(1)}` : delta < 0 ? `${delta.toFixed(1)}` : `+0.0`;
+                return { arrow, signed };
+              })()
+              : computeSignalOfWeekMovement(entry);
             const moveClass = movement.signed.startsWith("+") ? "metric-up" : movement.signed.startsWith("-") ? "metric-down" : "metric-flat";
             const team = getTeamAbbrev(entry);
             const position = entry.position || "—";
@@ -575,10 +672,41 @@ function getCardSectionEntry(entries = []) {
   return getSignalOfWeekTopEntry(entries) || entries[0] || getSignalOfWeekPlaceholderEntry();
 }
 
-function renderCardSection(entries = []) {
+function renderCardSection(entries = [], cardIntel = null) {
   const root = document.getElementById("quick-intelligence-grid")
     || document.getElementById("card-section-grid");
   if (!root) return;
+
+  const stored = cardIntel || weeklyIntelligence?.card_intelligence;
+  if (stored && (stored.trending_cards?.length || stored.biggest_movers?.length)) {
+    root.innerHTML = `
+      ${renderCardIntelBox({
+        title: "Trending Cards",
+        modifier: "trending",
+        description: SECTION_DESCRIPTIONS.trending,
+        items: (stored.trending_cards || []).map(weeklyCardRowToIntelItem),
+      })}
+      ${renderCardIntelBox({
+        title: "Biggest Movers",
+        modifier: "movers",
+        description: SECTION_DESCRIPTIONS.movers,
+        items: (stored.biggest_movers || []).map(weeklyCardRowToIntelItem),
+      })}
+      ${renderCardIntelBox({
+        title: "Buy Low Watch",
+        modifier: "buy-low",
+        description: SECTION_DESCRIPTIONS.buyLow,
+        items: (stored.buy_low_watch || []).map(weeklyCardRowToIntelItem),
+      })}
+      ${renderCardIntelBox({
+        title: "Most Chased",
+        modifier: "chased",
+        description: SECTION_DESCRIPTIONS.chased,
+        items: (stored.most_chased || []).map(weeklyCardRowToIntelItem),
+      })}
+    `;
+    return;
+  }
 
   const entry = getCardSectionEntry(entries);
   const intel = csIntelGetPlaceholders(entry);
@@ -1494,17 +1622,40 @@ function getChartOptions(title = "") {
   };
 }
 
+function getIsoWeek(date) {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+}
+
 async function renderScoreHistory(playerId) {
   const canvas = document.getElementById("score-history-chart");
   if (!canvas || !playerId) return;
 
   try {
-    const payload = await fetchPlayerHistory(playerId);
-    const items = payload.items || [];
+    let items = [];
+    try {
+      const weeklyPayload = await fetchPlayerWeeklySignals(playerId);
+      items = (weeklyPayload.items || []).map((item) => ({
+        created_at: item.captured_at || item.period_start,
+        total_score: item.card_signal_score,
+        performance_score: item.performance_score,
+        market_score: item.market_score,
+        week_label: item.period_start,
+      }));
+    } catch (_) {
+      items = [];
+    }
+
+    if (items.length < 2) {
+      const payload = await fetchPlayerHistory(playerId);
+      items = payload.items || [];
+    }
 
     destroyChart(scoreChart);
 
-    if (!items.length) {
+    if (items.length < 2) {
       showChartPlaceholder("score-history-chart", "score-history-placeholder", true);
       return;
     }
@@ -1514,12 +1665,10 @@ async function renderScoreHistory(playerId) {
     scoreChart = new Chart(canvas, {
       type: "line",
       data: {
-        labels: items.map(item =>
-          new Date(item.created_at).toLocaleDateString(undefined, {
-            month: "short",
-            day: "numeric",
-          })
-        ),
+        labels: items.map(item => {
+          const d = new Date(item.week_label || item.created_at);
+          return `W${getIsoWeek(d)} · ${d.toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
+        }),
         datasets: [
           {
             label: "CardSignal",
@@ -1981,6 +2130,13 @@ function getSignalOfWeekStatus(entry = {}) {
 }
 
 function computeSignalOfWeekMovement(entry = {}) {
+  if (entry.weekly_change != null && Number.isFinite(Number(entry.weekly_change))) {
+    const delta = Number(entry.weekly_change);
+    const arrow = delta > 0.01 ? "↑" : delta < -0.01 ? "↓" : "→";
+    const signed = delta > 0 ? `+${delta.toFixed(1)}` : delta < 0 ? `${delta.toFixed(1)}` : `+0.0`;
+    return { arrow, signed };
+  }
+
   const hotness = entry?.hotness || {};
   const momentum = Number(hotness.momentum_score ?? NaN);
   const market = Number(hotness.market_score ?? NaN);
@@ -2010,12 +2166,25 @@ function openSignalOfWeekReport(entry) {
   selectPlayer(entry);
 }
 
-function renderSignalOfTheWeek(entries = []) {
+function renderSignalOfTheWeek(entries = [], storedSignal = null) {
   const card = document.querySelector(".signal-of-week-card");
   if (!card) return;
 
-  const topEntry = getSignalOfWeekTopEntry(entries);
+  const signalEntry = signalOfWeekToEntry(storedSignal || weeklyIntelligence?.signal_of_the_week);
+  const topEntry = signalEntry || getSignalOfWeekTopEntry(entries);
   const entry = topEntry || getSignalOfWeekPlaceholderEntry();
+  const noSelection = !signalEntry && !getSignalOfWeekTopEntry(entries) && storedSignal === null && weeklyIntelligence?.run;
+
+  if (noSelection) {
+    card.innerHTML = `
+      <div class="signal-week-banner signal-week-banner--empty">
+        <div class="signal-week-content">
+          <div class="signal-week-label">Signal of the Week</div>
+          <p class="signal-week-reason">No player qualified this week — insufficient evidence across the Top 100 universe.</p>
+        </div>
+      </div>`;
+    return;
+  }
 
   const score = Number(entry?.hotness?.total_score ?? 0);
   const movement = computeSignalOfWeekMovement(entry);
@@ -2028,11 +2197,13 @@ function renderSignalOfTheWeek(entries = []) {
     };
 
   const placeholders = csIntelGetPlaceholders(placeholderKeyEntry);
-  const aiReason = placeholders?.aiRecommendation?.reason || "Collector demand is accelerating faster than market pricing.";
+  const aiReason = entry?.signal_of_week_reason
+    || placeholders?.aiRecommendation?.reason
+    || "Collector demand is accelerating faster than market pricing.";
   const aiReasonSentence = clampToOneSentence(aiReason) || "Collector demand is accelerating faster than market pricing.";
 
-  const convictionTier = placeholders?.convictionTier || placeholders?.confidenceTier || "MEDIUM";
-  const aiAction = csIntelRecommendationFromTier(convictionTier);
+  const convictionTier = entry?.conviction || placeholders?.convictionTier || placeholders?.confidenceTier || "MEDIUM";
+  const aiAction = entry?.recommendation || csIntelRecommendationFromTier(convictionTier);
 
   const team = getTeamAbbrev(entry);
   const position = entry.position || "—";
@@ -2105,8 +2276,8 @@ function renderSignalOfTheWeek(entries = []) {
 
 /* Signal Center — main dashboard render pipeline */
 function renderSignalCenter(entries) {
-  renderSignalOfTheWeek(entries);
-  renderCardSection(entries);
+  renderSignalOfTheWeek(entries, weeklyIntelligence?.signal_of_the_week);
+  renderCardSection(entries, weeklyIntelligence?.card_intelligence);
 }
 
 /** @deprecated Use renderSignalCenter — kept as alias for compatibility */
@@ -2464,17 +2635,27 @@ async function init() {
     bindAdminActions();
 
     status.textContent = 'Loading leaderboard...';
-    const payload = await fetch(SOURCE_URL).then(res => {
-      if (!res.ok) throw new Error(`Could not load ${SOURCE_URL}.`);
-      return res.json();
-    });
+    const [payload, weeklyPayload] = await Promise.all([
+      fetch(SOURCE_URL).then(res => {
+        if (!res.ok) throw new Error(`Could not load ${SOURCE_URL}.`);
+        return res.json();
+      }),
+      fetchWeeklyLatest('MLB').catch(() => null),
+    ]);
 
-    const entries = payload.items || [];
+    weeklyIntelligence = weeklyPayload;
+    let entries = payload.items || [];
+
+    if (weeklyPayload?.todays_leaders?.length) {
+      entries = weeklyPayload.todays_leaders.map(weeklyLeaderToEntry);
+    }
+
     latestEntries = entries;
     setupPlayerSearch();
     setupPlayerIntelligenceModal();
 
     status.textContent = 'Rendering Signal Center...';
+    renderWeeklyRefreshNote();
     renderSignalCenter(entries);
 
     const leaderboardRoot = document.getElementById('leaderboard-table');

@@ -53,14 +53,16 @@ class PipelineResult(BaseModel):
     deliveries_attempted: int = 0
 
 
-def _build_market_universe(mlb_client: MLBClient, settings) -> list[dict]:
+def _build_market_universe(mlb_client: MLBClient, settings, *, scan_limit: int | None = None) -> list[dict]:
+    candidate_limit = scan_limit or getattr(settings, "weekly_player_limit", None) or DYNAMIC_CANDIDATE_LIMIT
+    market_limit = scan_limit or getattr(settings, "weekly_player_limit", None) or MARKET_SCAN_LIMIT
     universe: dict[int, dict] = {}
 
     try:
         dynamic_candidates = mlb_client.get_dynamic_hitter_candidates(
             season=settings.mlb_season,
             days=7,
-            limit=DYNAMIC_CANDIDATE_LIMIT,
+            limit=max(candidate_limit, DYNAMIC_CANDIDATE_LIMIT),
         )
 
         for candidate in dynamic_candidates:
@@ -108,7 +110,7 @@ def _build_market_universe(mlb_client: MLBClient, settings) -> list[dict]:
         reverse=True,
     )
 
-    return candidates[:MARKET_SCAN_LIMIT]
+    return candidates[:market_limit]
 
 
 def _build_outputs() -> list[PlayerPipelineOutput]:
