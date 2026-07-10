@@ -17,6 +17,8 @@ let piActiveTab = "overview";
 let piModalEntry = null;
 let piModalIntel = null;
 let piModalKeydownHandler = null;
+let piCardMarketState = { status: "idle", data: null, movement: null, activity: null, error: null, playerKey: null };
+let piCardPopulationState = { status: "idle", data: null, error: null, playerKey: null };
 const PI_TABS = [
   { id: "overview", label: "Overview" },
   { id: "cards", label: "Cards" },
@@ -334,6 +336,16 @@ function csIntelFormatMoney(value) {
   return `$${n.toFixed(2)}`;
 }
 
+function enrichPlayerEntryIdentity(entry = {}) {
+  if (typeof CardSignalIdentity === "undefined") return entry;
+  if (entry.cs_player_id) return entry;
+  return CardSignalIdentity.enrichPlayerEntry(entry);
+}
+
+function enrichPlayerEntries(entries = []) {
+  return (entries || []).map((entry) => enrichPlayerEntryIdentity(entry));
+}
+
 function formatConvictionTier(tier = "") {
   const key = String(tier || "").toUpperCase();
   if (key === "HIGH") return "High";
@@ -543,12 +555,18 @@ function movementClass(movement = "") {
 /* Landing page — Quick Intelligence grid row */
 function renderCardIntelRow(item) {
   const moveClass = movementClass(item.movement);
+  const cardName = item.name || CardRegistry.formatCardDisplayName(item);
 
   return `
     <div class="qi-row">
       <div class="qi-row-thumb" aria-hidden="true"></div>
       <div class="qi-row-body">
-        <span class="qi-row-name">${item.name}</span>
+        <span class="qi-row-name">${cardName}</span>
+        <div class="qi-row-detail">
+          <span>${item.year || "—"}</span>
+          <span>${item.setName || "—"}</span>
+          <span>${item.parallel || "—"}</span>
+        </div>
         <div class="qi-row-metrics">
           <span class="qi-price">${csIntelFormatMoney(item.price)}</span>
           <span class="qi-move ${moveClass}">${item.movement}</span>
@@ -644,15 +662,16 @@ function showChartPlaceholder(canvasId, placeholderId, show) {
   if (placeholder) placeholder.classList.toggle("hidden", !show);
 }
 function csIntelGetPlaceholders(entry) {
-  const key = String(entry?.player_id ?? entry?.player_name ?? "unknown");
+  const identityEntry = enrichPlayerEntryIdentity(entry);
+  const key = String(identityEntry?.source_player_id ?? identityEntry?.player_id ?? identityEntry?.player_name ?? "unknown");
   if (csIntelCache.has(key)) return csIntelCache.get(key);
 
-  const storageKey = `cs_intel_placeholders_v1_${key}`;
+  const storageKey = `cs_intel_placeholders_v3_${key}`;
   try {
     const raw = sessionStorage.getItem(storageKey);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (parsed && (parsed.convictionTier || parsed.confidenceTier)) {
+      if (parsed && (parsed.convictionTier || parsed.confidenceTier) && parsed.identityVersion === 1) {
         if (!parsed.convictionTier && parsed.confidenceTier) {
           parsed.convictionTier = parsed.confidenceTier;
         }
@@ -677,82 +696,14 @@ function csIntelGetPlaceholders(entry) {
 
   const score = csIntelClamp(performance * 0.5 + market * 0.4 + momentum * 0.1 + (rng() - 0.5) * 10, 0, 100);
 
-  const trendingNamePool = [
-    "Auric Spark",
-    "Copper Drift",
-    "Midnight Prospect",
-    "Golden Curve",
-    "Sable Surge",
-    "Emerald Lift",
-    "Nova Demand",
-    "Ivory Velocity",
-    "Crimson Shelf",
-    "Sterling Swing",
-  ];
+  const cardRegistry = CardRegistry.getPlayerCardRegistry(identityEntry);
+  const sectionOptions = {
+    count: 3,
+    formatPercent: csIntelFormatPercent,
+  };
 
-  const moverNamePool = [
-    "1st Bowman Auto",
-    "Rookie Patch Parallel",
-    "Bowman Chrome Mojo",
-    "Vintage Select /25",
-    "Topps Chrome Sapphire",
-    "Heritage Black Gold",
-    "Bowman Draft Gold",
-    "Stadium Club Red Ink",
-    "Prizm Draft Stars",
-    "Museum Collection Gem",
-  ];
-
-  const buyLowNamePool = [
-    "Low-Ask Bowman Chrome",
-    "Undervalued Rookie Parallel",
-    "Quiet Liquidity Lot",
-    "Discounted Card Slice",
-    "Value Pocket Prospect",
-    "Supportive Supply Window",
-    "Stable Demand, Soft Prices",
-    "Inked Rookie Deal",
-    "Surprisingly Priced Parallel",
-    "Buyer-Ready Bargain",
-  ];
-
-  const chasedNamePool = [
-    "Hot Case Break",
-    "Chase-Grade Parallel",
-    "Bid-War Magnet",
-    "Collector Pressure Lot",
-    "Velocity Surge Card",
-    "Momentum Mirror",
-    "Rising Demand Select",
-    "Premium Parallels Feed",
-    "Frictionless Chase Copy",
-    "Scarcity-Driven Target",
-  ];
-
-  function pickThree(pool, { bias = 0, priceMin = 8, priceMax = 230, moveMin = 4, moveMax = 30 } = {}) {
-    const used = new Set();
-    const out = [];
-    while (out.length < 3 && used.size < pool.length) {
-      const idx = Math.floor(rng() * pool.length);
-      if (used.has(idx)) continue;
-      used.add(idx);
-      const price = priceMin + rng() * (priceMax - priceMin);
-      const magnitude = moveMin + rng() * (moveMax - moveMin);
-      // bias shifts expectation, but we still allow direction changes.
-      const direction = rng() > 0.5 ? 1 : -1;
-      const move = (direction * magnitude) + bias + (rng() - 0.5) * 5;
-      out.push({
-        name: pool[idx],
-        price,
-        movement: csIntelFormatPercent(move),
-        score: Math.round(40 + rng() * 55),
-        upside: csIntelFormatPercent((rng() - 0.35) * 28),
-      });
-    }
-    return out;
-  }
-
-  const trendingCards = pickThree(trendingNamePool, {
+  const trendingCards = CardRegistry.buildSectionCards(cardRegistry, "trending", rng, {
+    ...sectionOptions,
     bias: (market - 50) / 8 + (momentum - 50) / 10,
     priceMin: 12,
     priceMax: 260,
@@ -760,7 +711,8 @@ function csIntelGetPlaceholders(entry) {
     moveMax: 28,
   });
 
-  const biggestMovers = pickThree(moverNamePool, {
+  const biggestMovers = CardRegistry.buildSectionCards(cardRegistry, "movers", rng, {
+    ...sectionOptions,
     bias: (performance - 50) / 10,
     priceMin: 15,
     priceMax: 310,
@@ -768,7 +720,8 @@ function csIntelGetPlaceholders(entry) {
     moveMax: 38,
   });
 
-  const buyLowOpportunities = pickThree(buyLowNamePool, {
+  const buyLowOpportunities = CardRegistry.buildSectionCards(cardRegistry, "buyLow", rng, {
+    ...sectionOptions,
     bias: -6 + (market < 50 ? 3 : -2),
     priceMin: 9,
     priceMax: 170,
@@ -776,7 +729,8 @@ function csIntelGetPlaceholders(entry) {
     moveMax: 22,
   });
 
-  const mostChased = pickThree(chasedNamePool, {
+  const mostChased = CardRegistry.buildSectionCards(cardRegistry, "chased", rng, {
+    ...sectionOptions,
     bias: 5 + (momentum - 50) / 10,
     priceMin: 18,
     priceMax: 360,
@@ -801,6 +755,16 @@ function csIntelGetPlaceholders(entry) {
     collector: csIntelClamp(collector, 0, 100),
     momentum: csIntelClamp(momentum, 0, 100),
     score: csIntelClamp(score, 0, 100),
+    cardRegistry,
+    cardRegistryVersion: 1,
+    identityVersion: 1,
+    cs_player_id: identityEntry.cs_player_id,
+    source_player_id: identityEntry.source_player_id,
+    league: identityEntry.league,
+    sport: identityEntry.sport,
+    player_name: identityEntry.player_name,
+    cs_signal_id: identityEntry.cs_signal_id,
+    cs_forecast_id: identityEntry.cs_forecast_id,
     trendingCards,
     biggestMovers,
     buyLowOpportunities,
@@ -822,8 +786,9 @@ function csIntelGetPlaceholders(entry) {
 }
 
 function buildPlayerIntel(entry) {
-  const hotness = entry.hotness || {};
-  const placeholders = csIntelGetPlaceholders(entry);
+  const identityEntry = enrichPlayerEntryIdentity(entry);
+  const hotness = identityEntry.hotness || {};
+  const placeholders = csIntelGetPlaceholders(identityEntry);
 
   return {
     ...placeholders,
@@ -833,6 +798,13 @@ function buildPlayerIntel(entry) {
     momentum: csIntelSafeToNumber(hotness.momentum_score) ?? placeholders.momentum,
     score: csIntelSafeToNumber(hotness.total_score) ?? placeholders.score,
     convictionTier: placeholders.convictionTier || placeholders.confidenceTier,
+    cs_player_id: placeholders.cs_player_id,
+    source_player_id: placeholders.source_player_id,
+    league: placeholders.league,
+    sport: placeholders.sport,
+    player_name: placeholders.player_name,
+    cs_signal_id: placeholders.cs_signal_id,
+    cs_forecast_id: placeholders.cs_forecast_id,
   };
 }
 
@@ -851,16 +823,98 @@ function renderProgressRow(label, value, colorClass) {
   `;
 }
 
+function renderPiCardMarketLoading(message = "Loading card-market intelligence…") {
+  return `
+    <div class="pi-card-market-state" role="status" aria-live="polite">
+      <div class="pi-card-market-spinner" aria-hidden="true"></div>
+      <p class="pi-card-market-state-copy">${message}</p>
+    </div>
+  `;
+}
+
+function renderPiCardMarketMessage(message, modifier = "") {
+  return `
+    <div class="pi-card-market-state pi-card-market-state--${modifier}" role="status" aria-live="polite">
+      <p class="pi-card-market-state-copy">${message}</p>
+    </div>
+  `;
+}
+
+function renderPiMarketCardRow(item) {
+  const qualityBadge = CardMarketUI.renderQualityBadge(item.dataQuality);
+  return `
+    <div class="pi-card-row pi-card-row--market">
+      <div class="pi-card-row-thumb" aria-hidden="true"></div>
+      <div class="pi-card-row-copy">
+        <div class="pi-card-row-name">${item.name}</div>
+        <div class="pi-card-row-detail">
+          <span>${item.year || "—"}</span>
+          <span>${item.manufacturer || "—"}</span>
+          <span>${item.set_name || "—"}</span>
+        </div>
+        <div class="pi-card-row-detail pi-card-row-detail--secondary">
+          <span>${item.card_name || "—"}</span>
+          <span>${item.parallel || "—"}</span>
+          <span>${item.grade || "—"}${item.grading_company ? ` · ${item.grading_company}` : ""}</span>
+        </div>
+        <div class="pi-card-row-market-metrics">
+          <span><strong>Median Active Price</strong> ${item.medianPrice}</span>
+          <span><strong>Average Active Price</strong> ${item.averagePrice}</span>
+          <span><strong>Active Listings</strong> ${item.activeListings}</span>
+          <span><strong>Auctions</strong> ${item.auctions}</span>
+        </div>
+        <div class="pi-card-row-population-metrics">
+          <span title="Total PSA graded examples in the population report"><strong>Total PSA Pop</strong> ${item.totalPsaPop || "PSA population pending"}</span>
+          <span title="PSA 10 graded population"><strong>PSA 10 Pop</strong> ${item.psa10Pop || "PSA population pending"}</span>
+          <span title="PSA 9 graded population"><strong>PSA 9 Pop</strong> ${item.psa9Pop || "PSA population pending"}</span>
+          <span title="PSA 10 population divided by total graded population"><strong>Gem Rate</strong> ${item.gemRate || "—"}</span>
+        </div>
+        <div class="pi-card-row-foot">
+          <span class="pi-card-row-snapshot-note">Active listing snapshot</span>
+          <span class="pi-card-row-move ${movementClass(item.movement)}">${item.movement}</span>
+        </div>
+        <div class="pi-card-row-foot pi-card-row-foot--movement">
+          <span class="pi-card-row-movement-label">${item.movementLabel || "7-day active listing movement"}</span>
+          ${item.movementAbs && item.movementAbs !== "—" ? `<span class="pi-card-row-movement-abs">${item.movementAbs}</span>` : ""}
+        </div>
+        <div class="pi-card-row-foot pi-card-row-foot--meta">
+          ${qualityBadge}
+          ${item.hasPopulationSnapshot ? CardPopulationUI.renderQualityBadge(item.populationDataQuality) : ""}
+          ${item.populationSourceMethod ? CardPopulationUI.renderSourceBadge(item.populationSourceMethod) : ""}
+          ${item.movementQuality && item.movementQuality !== "INSUFFICIENT"
+            ? `<span class="cm-quality-badge cm-quality--${String(item.movementQuality).toLowerCase()}">Movement ${item.movementQuality}</span>`
+            : ""}
+          <span class="pi-card-row-captured">${item.capturedLabel}</span>
+        </div>
+        ${item.hasPopulationSnapshot
+          ? `<p class="pi-card-row-population-meta"><span>${item.populationCapturedLabel}</span><span>${item.populationTrendLabel}</span></p>`
+          : `<p class="pi-card-row-population-meta pi-card-row-population-meta--pending">PSA population pending</p>`}
+        <p class="pi-card-row-disclaimer">${item.populationDisclaimer || "PSA population reflects graded examples, not total card supply."}</p>
+        ${item.comparisonCapturedLabel && item.comparisonCapturedLabel !== "—"
+          ? `<p class="pi-card-row-comparison">Compared to ${item.comparisonCapturedLabel}</p>`
+          : ""}
+        ${item.betaNote ? `<p class="pi-card-row-beta-note">Requires price-history confirmation</p>` : ""}
+      </div>
+    </div>
+  `;
+}
+
 function renderPiCardRow(item) {
   const moveClass = movementClass(item.movement);
   const signalLabel = getCardSignalLabel(item.score);
   const signalClass = getCardSignalLabelClass(item.score);
+  const cardName = item.name || CardRegistry.formatCardDisplayName(item);
 
   return `
     <div class="pi-card-row">
       <div class="pi-card-row-thumb" aria-hidden="true"></div>
       <div class="pi-card-row-copy">
-        <div class="pi-card-row-name">${item.name}</div>
+        <div class="pi-card-row-name">${cardName}</div>
+        <div class="pi-card-row-detail">
+          <span class="pi-card-row-year">${item.year || "—"}</span>
+          <span class="pi-card-row-set">${item.setName || "—"}</span>
+          <span class="pi-card-row-parallel">${item.parallel || "—"}</span>
+        </div>
         <div class="pi-card-row-meta">
           <span class="pi-card-row-price">${csIntelFormatMoney(item.price)}</span>
           <span class="pi-card-row-move ${moveClass}">${item.movement}</span>
@@ -871,14 +925,15 @@ function renderPiCardRow(item) {
   `;
 }
 
-function renderPiPlayerSection(playerName, title, items) {
+function renderPiPlayerSection(playerName, title, items, { useMarketRows = false } = {}) {
+  const rowRenderer = useMarketRows ? renderPiMarketCardRow : renderPiCardRow;
   return `
     <section class="cs-premium-card pi-intel-section">
       <div class="cs-premium-head">
         <h3 class="cs-premium-title">${playerName} ${title}</h3>
       </div>
       <div class="cs-premium-card-list cs-premium-card-list--unified">
-        ${items.slice(0, 3).map((item) => renderPiCardRow(item)).join("")}
+        ${items.slice(0, 3).map((item) => rowRenderer(item)).join("")}
       </div>
     </section>
   `;
@@ -951,51 +1006,174 @@ function renderPiOverviewTab(entry, intel) {
   `;
 }
 
-function renderPiCardsTab(entry, intel) {
+function enrichCardSectionsWithPopulation(sections, populationState = piCardPopulationState) {
+  const populationMap = CardPopulationUI.populationByCardId(populationState.data || {});
+  const enrichList = (items = []) =>
+    items.map((item) => CardPopulationUI.enrichCardRow(item, populationMap.get(item.cs_card_id)));
+
+  return {
+    trendingCards: enrichList(sections.trendingCards),
+    biggestMovers: enrichList(sections.biggestMovers),
+    buyLowOpportunities: enrichList(sections.buyLowOpportunities),
+    mostChased: enrichList(sections.mostChased),
+  };
+}
+
+function renderPiCardsTab(entry, intel, marketState = piCardMarketState, populationState = piCardPopulationState) {
   const playerName = entry.player_name || "Player";
+
+  if (marketState.status === "loading") {
+    return `
+      <div class="pi-tab-panel pi-tab-panel--cards" data-tab-panel="cards">
+        ${renderPiCardMarketLoading()}
+      </div>
+    `;
+  }
+
+  if (marketState.status === "error") {
+    const fallback = CardMarketUI.buildRegistryFallbackSections(entry);
+    return `
+      <div class="pi-tab-panel pi-tab-panel--cards" data-tab-panel="cards">
+        ${renderPiCardMarketMessage(marketState.error || "Card-market intelligence is temporarily unavailable.", "error")}
+        <div class="pi-cards-grid">
+          ${renderPiPlayerSection(playerName, "Trending Cards", fallback.trendingCards, { useMarketRows: true })}
+          ${renderPiPlayerSection(playerName, "Biggest Movers", fallback.biggestMovers, { useMarketRows: true })}
+          ${renderPiPlayerSection(playerName, "Buy Low Watch", fallback.buyLowOpportunities, { useMarketRows: true })}
+          ${renderPiPlayerSection(playerName, "Most Chased", fallback.mostChased, { useMarketRows: true })}
+        </div>
+      </div>
+    `;
+  }
+
+  if (marketState.status === "empty" || !marketState.data) {
+    const fallback = CardMarketUI.buildRegistryFallbackSections(entry);
+    return `
+      <div class="pi-tab-panel pi-tab-panel--cards" data-tab-panel="cards">
+        ${renderPiCardMarketMessage("No card-market snapshot is available for this player yet.", "empty")}
+        <div class="pi-cards-grid">
+          ${renderPiPlayerSection(playerName, "Trending Cards", fallback.trendingCards, { useMarketRows: true })}
+          ${renderPiPlayerSection(playerName, "Biggest Movers", fallback.biggestMovers, { useMarketRows: true })}
+          ${renderPiPlayerSection(playerName, "Buy Low Watch", fallback.buyLowOpportunities, { useMarketRows: true })}
+          ${renderPiPlayerSection(playerName, "Most Chased", fallback.mostChased, { useMarketRows: true })}
+        </div>
+      </div>
+    `;
+  }
+
+  const sections = enrichCardSectionsWithPopulation(
+    CardMarketUI.buildCardSections(marketState.data.cards || [], marketState.movement),
+    populationState
+  );
 
   return `
     <div class="pi-tab-panel pi-tab-panel--cards" data-tab-panel="cards">
+      <p class="pi-card-market-disclaimer">These values reflect active eBay listings, not confirmed sold transactions.</p>
       <div class="pi-cards-grid">
-        ${renderPiPlayerSection(playerName, "Trending Cards", intel.trendingCards)}
-        ${renderPiPlayerSection(playerName, "Biggest Movers", intel.biggestMovers)}
-        ${renderPiPlayerSection(playerName, "Buy Low Watch", intel.buyLowOpportunities)}
-        ${renderPiPlayerSection(playerName, "Most Chased", intel.mostChased)}
+        ${renderPiPlayerSection(playerName, "Trending Cards", sections.trendingCards, { useMarketRows: true })}
+        ${renderPiPlayerSection(playerName, "Biggest Movers", sections.biggestMovers, { useMarketRows: true })}
+        ${renderPiPlayerSection(playerName, "Buy Low Watch", sections.buyLowOpportunities, { useMarketRows: true })}
+        ${renderPiPlayerSection(playerName, "Most Chased", sections.mostChased, { useMarketRows: true })}
       </div>
     </div>
   `;
 }
 
-function renderPiMarketTab(entry, intel) {
-  const market = buildMarketPlaceholders(entry, intel);
-  const moveClass = market.priceMove > 0.01 ? "metric-up" : market.priceMove < -0.01 ? "metric-down" : "metric-flat";
-  const priceMoveFormatted = csIntelFormatPercent(market.priceMove);
+function renderPiMarketTab(entry, intel, marketState = piCardMarketState, populationState = piCardPopulationState) {
+  const playerName = entry.player_name || "Player";
+
+  if (marketState.status === "loading") {
+    return `
+      <div class="pi-tab-panel pi-tab-panel--market" data-tab-panel="market">
+        ${renderPiCardMarketLoading()}
+      </div>
+    `;
+  }
+
+  if (marketState.status === "error") {
+    return `
+      <div class="pi-tab-panel pi-tab-panel--market" data-tab-panel="market">
+        ${renderPiCardMarketMessage(marketState.error || "Card-market intelligence is temporarily unavailable.", "error")}
+      </div>
+    `;
+  }
+
+  if (marketState.status === "empty" || !marketState.data) {
+    return `
+      <div class="pi-tab-panel pi-tab-panel--market" data-tab-panel="market">
+        ${renderPiCardMarketMessage("No card-market snapshot is available for this player yet.", "empty")}
+      </div>
+    `;
+  }
+
+  const market = CardMarketUI.buildMarketView(marketState.data, playerName);
+  const populationSummary = CardPopulationUI.buildSignalsPopulationSummary(populationState.data?.cards || []);
 
   return `
     <div class="pi-tab-panel pi-tab-panel--market" data-tab-panel="market">
-      <div class="pi-market-grid">
+      <p class="pi-card-market-disclaimer">These values reflect active eBay listings, not confirmed sold transactions.</p>
+      <div class="pi-market-grid pi-market-grid--expanded">
         <div class="pi-market-stat">
-          <span class="pi-market-stat-value">${csIntelFormatMoney(market.avgSale)}</span>
-          <span class="pi-market-stat-label">Avg Sale</span>
+          <span class="pi-market-stat-value">${market.cardsObserved}</span>
+          <span class="pi-market-stat-label">Cards Observed</span>
         </div>
         <div class="pi-market-stat">
-          <span class="pi-market-stat-value">${market.salesVolume}</span>
-          <span class="pi-market-stat-label">Sales Volume</span>
-        </div>
-        <div class="pi-market-stat">
-          <span class="pi-market-stat-value">${market.activeListings}</span>
+          <span class="pi-market-stat-value">${market.totalActiveListings}</span>
           <span class="pi-market-stat-label">Active Listings</span>
         </div>
         <div class="pi-market-stat">
-          <span class="pi-market-stat-value ${moveClass}">${priceMoveFormatted}</span>
-          <span class="pi-market-stat-label">7-Day Price Move</span>
+          <span class="pi-market-stat-value">${market.totalAuctions}</span>
+          <span class="pi-market-stat-label">Auctions</span>
+        </div>
+        <div class="pi-market-stat">
+          <span class="pi-market-stat-value">${market.totalBuyItNow}</span>
+          <span class="pi-market-stat-label">Buy It Now</span>
+        </div>
+        <div class="pi-market-stat">
+          <span class="pi-market-stat-value">${market.listingsWithBids}</span>
+          <span class="pi-market-stat-label">Listings With Bids</span>
+        </div>
+        <div class="pi-market-stat">
+          <span class="pi-market-stat-value">${market.totalBids}</span>
+          <span class="pi-market-stat-label">Total Bids</span>
+        </div>
+        <div class="pi-market-stat">
+          <span class="pi-market-stat-value">${market.medianActivePrice}</span>
+          <span class="pi-market-stat-label">Median Active Price</span>
+        </div>
+        <div class="pi-market-stat">
+          <span class="pi-market-stat-value">${market.averageActivePrice}</span>
+          <span class="pi-market-stat-label">Average Active Price</span>
         </div>
       </div>
 
-      <div class="pi-market-liquidity">
-        <span class="pi-market-liquidity-label">Liquidity</span>
-        <span class="pi-market-liquidity-value">${market.liquidity}</span>
+      <div class="pi-market-liquidity pi-market-liquidity--split">
+        <div class="pi-market-liquidity-block">
+          <span class="pi-market-liquidity-label">Market Depth</span>
+          ${CardMarketUI.renderDepthBadge(market.marketDepth)}
+        </div>
+        <div class="pi-market-liquidity-block">
+          <span class="pi-market-liquidity-label">Data Quality</span>
+          ${CardMarketUI.renderQualityBadge(market.dataQuality)}
+        </div>
+        <div class="pi-market-liquidity-block pi-market-liquidity-block--wide">
+          <span class="pi-market-liquidity-label">Last Snapshot</span>
+          <span class="pi-market-captured">${market.capturedLabel}</span>
+        </div>
       </div>
+
+      <section class="cs-premium-card pi-population-scarcity pi-population-scarcity--market">
+        <div class="cs-premium-head">
+          <h3 class="cs-premium-title">${populationSummary.label}</h3>
+          ${populationSummary.available ? CardPopulationUI.renderQualityBadge(populationSummary.dataQuality) : ""}
+        </div>
+        <p class="pi-population-scarcity-copy">
+          ${populationSummary.available
+            ? `Beta score ${populationSummary.score} · ${populationSummary.explanation}`
+            : "PSA population pending"}
+        </p>
+        <p class="pi-population-scarcity-source">${populationSummary.sourceLabel}</p>
+        <p class="pi-card-row-disclaimer">PSA population reflects graded examples, not total card supply.</p>
+      </section>
 
       <section class="cs-premium-card pi-market-summary">
         <div class="cs-premium-head">
@@ -1003,10 +1181,6 @@ function renderPiMarketTab(entry, intel) {
         </div>
         <p class="pi-market-summary-copy">${market.summary}</p>
       </section>
-
-      <div class="pi-market-placeholder-note">
-        Live card-market data will populate after pricing snapshots.
-      </div>
     </div>
   `;
 }
@@ -1027,9 +1201,40 @@ function renderPiSignalDetailRow(label, score, explanation, colorClass) {
   `;
 }
 
-function renderPiSignalsTab(entry, intel) {
+function renderPiSignalsTab(entry, intel, populationState = piCardPopulationState) {
+  const populationCards = populationState.data?.cards || [];
+  const populationSummary = CardPopulationUI.buildSignalsPopulationSummary(populationCards);
+  const scarcityBlock = populationSummary.available
+    ? `
+      <section class="cs-premium-card pi-population-scarcity">
+        <div class="cs-premium-head">
+          <h3 class="cs-premium-title">${populationSummary.label}</h3>
+          ${CardPopulationUI.renderQualityBadge(populationSummary.dataQuality)}
+        </div>
+        <div class="pi-population-scarcity-body">
+          <div class="pi-population-scarcity-score">
+            <span class="pi-population-scarcity-value">${populationSummary.score ?? "—"}</span>
+            <span class="pi-population-scarcity-caption">Beta score · ${populationSummary.confidence} confidence</span>
+          </div>
+          <p class="pi-population-scarcity-copy">${populationSummary.explanation}</p>
+          <p class="pi-population-scarcity-source">${populationSummary.sourceLabel}</p>
+          <p class="pi-card-row-disclaimer">PSA population reflects graded examples, not total card supply.</p>
+        </div>
+      </section>
+    `
+    : `
+      <section class="cs-premium-card pi-population-scarcity pi-population-scarcity--pending">
+        <div class="cs-premium-head">
+          <h3 class="cs-premium-title">PSA Population Scarcity</h3>
+        </div>
+        <p class="pi-population-scarcity-copy">PSA population pending</p>
+        <p class="pi-card-row-disclaimer">PSA population reflects graded examples, not total card supply.</p>
+      </section>
+    `;
+
   return `
     <div class="pi-tab-panel pi-tab-panel--signals" data-tab-panel="signals">
+      ${scarcityBlock}
       <div class="pi-signals-intro">
         <p class="eyebrow">Signal Analysis</p>
         <h3 class="pi-signals-heading">Why does this player have this CardSignal Score?</h3>
@@ -1180,14 +1385,14 @@ function renderPiModalHeader(entry, intel) {
   `;
 }
 
-function renderPiModalBody(entry, intel, activeTab) {
+function renderPiModalBody(entry, intel, activeTab, marketState = piCardMarketState, populationState = piCardPopulationState) {
   switch (activeTab) {
     case "cards":
-      return renderPiCardsTab(entry, intel);
+      return renderPiCardsTab(entry, intel, marketState, populationState);
     case "market":
-      return renderPiMarketTab(entry, intel);
+      return renderPiMarketTab(entry, intel, marketState, populationState);
     case "signals":
-      return renderPiSignalsTab(entry, intel);
+      return renderPiSignalsTab(entry, intel, populationState);
     case "forecast":
       return renderPiForecastTab(entry, intel);
     case "overview":
@@ -1220,6 +1425,69 @@ function bindPiModalKeydown() {
   document.addEventListener("keydown", piModalKeydownHandler);
 }
 
+function refreshPiModalMarketTabs() {
+  if (!piModalEntry || !piModalIntel) return;
+  if (piActiveTab !== "cards" && piActiveTab !== "market" && piActiveTab !== "signals") return;
+  const body = document.getElementById("pi-modal-body");
+  if (!body) return;
+  body.innerHTML = renderPiModalBody(piModalEntry, piModalIntel, piActiveTab, piCardMarketState, piCardPopulationState);
+}
+
+async function loadPiCardPopulation(entry, { force = false } = {}) {
+  const playerKey = CardPopulationUI.getCacheKey(entry);
+  if (!entry?.player_id) {
+    piCardPopulationState = { status: "empty", data: null, error: null, playerKey };
+    refreshPiModalMarketTabs();
+    return;
+  }
+
+  if (!force && piCardPopulationState.playerKey === playerKey && piCardPopulationState.status !== "idle") {
+    return;
+  }
+
+  piCardPopulationState = { status: "loading", data: null, error: null, playerKey };
+  refreshPiModalMarketTabs();
+
+  const result = await CardPopulationUI.fetchPlayerCardPopulation(entry.player_id, { force });
+  piCardPopulationState = {
+    status: result.status,
+    data: result.data,
+    error: result.error,
+    playerKey,
+  };
+  refreshPiModalMarketTabs();
+}
+
+async function loadPiCardMarket(entry, { force = false } = {}) {
+  const playerKey = CardMarketUI.getCacheKey(entry);
+  if (!entry?.player_id) {
+    piCardMarketState = { status: "empty", data: null, movement: null, activity: null, error: null, playerKey };
+    refreshPiModalMarketTabs();
+    return;
+  }
+
+  if (!force && piCardMarketState.playerKey === playerKey && piCardMarketState.status !== "idle") {
+    return;
+  }
+
+  piCardMarketState = { status: "loading", data: null, movement: null, activity: null, error: null, playerKey };
+  refreshPiModalMarketTabs();
+
+  const result = await CardMarketUI.fetchPlayerCardMarketBundle(entry.player_id, { force });
+  piCardMarketState = {
+    status: result.status,
+    data: result.data || null,
+    movement: result.movement || null,
+    activity: result.activity || null,
+    error: result.error || null,
+    playerKey,
+  };
+  refreshPiModalMarketTabs();
+  if (entry.player_id) {
+    renderMarketActivity(entry);
+  }
+}
+
 function updatePiModalTabState() {
   const tabsRoot = document.getElementById("pi-modal-tabs");
   if (!tabsRoot) return;
@@ -1247,7 +1515,14 @@ function setupPiTabNavigation() {
     updatePiModalTabState();
 
     const body = document.getElementById("pi-modal-body");
-    if (body) body.innerHTML = renderPiModalBody(piModalEntry, piModalIntel, piActiveTab);
+    if (body) body.innerHTML = renderPiModalBody(piModalEntry, piModalIntel, piActiveTab, piCardMarketState, piCardPopulationState);
+
+    if ((tabId === "cards" || tabId === "market" || tabId === "signals") && piCardMarketState.status === "idle") {
+      loadPiCardMarket(piModalEntry);
+    }
+    if ((tabId === "cards" || tabId === "market" || tabId === "signals") && piCardPopulationState.status === "idle") {
+      loadPiCardPopulation(piModalEntry);
+    }
   });
 }
 
@@ -1278,6 +1553,8 @@ function closePlayerIntelligenceModal() {
   piActiveTab = "overview";
   piModalEntry = null;
   piModalIntel = null;
+  piCardMarketState = { status: "idle", data: null, movement: null, activity: null, error: null, playerKey: null };
+  piCardPopulationState = { status: "idle", data: null, error: null, playerKey: null };
 }
 
 async function openPlayerIntelligenceModal(entry) {
@@ -1297,10 +1574,12 @@ async function openPlayerIntelligenceModal(entry) {
     piModalEntry = player;
     piModalIntel = intel;
     piActiveTab = "overview";
+    piCardMarketState = { status: "idle", data: null, movement: null, activity: null, error: null, playerKey: null };
+    piCardPopulationState = { status: "idle", data: null, error: null, playerKey: null };
 
     header.innerHTML = renderPiModalHeader(player, intel);
     tabs.innerHTML = renderPiModalTabs(piActiveTab);
-    body.innerHTML = renderPiModalBody(player, intel, piActiveTab);
+    body.innerHTML = renderPiModalBody(player, intel, piActiveTab, piCardMarketState, piCardPopulationState);
 
     wirePlayerActions();
     updatePiModalTabState();
@@ -1312,6 +1591,10 @@ async function openPlayerIntelligenceModal(entry) {
     requestAnimationFrame(() => {
       modal.querySelector(".pi-modal-close")?.focus();
     });
+
+    loadPiCardMarket(player);
+    loadPiCardPopulation(player);
+    renderMarketActivity(player);
 
     if (player.player_id) {
       await renderScoreHistory(player.player_id);
@@ -1500,7 +1783,9 @@ async function renderScoreHistory(playerId) {
 
   try {
     const payload = await fetchPlayerHistory(playerId);
-    const items = payload.items || [];
+    const items = (payload.items || []).slice().sort(
+      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    );
 
     destroyChart(scoreChart);
 
@@ -1563,7 +1848,110 @@ async function renderScoreHistory(playerId) {
   }
 }
 
-async function renderLeaderboardHistory() {
+async function renderMarketActivity(entry = selectedPlayer) {
+  const canvas = document.getElementById("leaderboard-history-chart");
+  if (!canvas) return;
+
+  try {
+    destroyChart(leaderboardHistoryChart);
+
+    if (!entry?.player_id) {
+      await renderLeaderboardHistoryFallback();
+      return;
+    }
+
+    const cached = piCardMarketState.activity;
+    let activity = cached;
+    if (!activity || String(piCardMarketState.playerKey) !== String(entry.player_id)) {
+      const result = await CardMarketUI.fetchPlayerCardMarketActivity(entry.player_id);
+      activity = result.status === "success" ? result.data : null;
+    }
+
+    const points = activity?.points || [];
+    if (points.length < 2) {
+      showChartPlaceholder("leaderboard-history-chart", "leaderboard-history-placeholder", true);
+      const placeholder = document.getElementById("leaderboard-history-placeholder");
+      if (placeholder) {
+        placeholder.textContent = points.length
+          ? "More stored card-market history is needed to chart activity for this player."
+          : "Market activity will appear after additional card-market snapshots are captured.";
+      }
+      return;
+    }
+
+    showChartPlaceholder("leaderboard-history-chart", "leaderboard-history-placeholder", false);
+
+    leaderboardHistoryChart = new Chart(canvas, {
+      type: "line",
+      data: {
+        labels: points.map((point) =>
+          new Date(point.captured_at).toLocaleDateString(undefined, {
+            month: "short",
+            day: "numeric",
+          })
+        ),
+        datasets: [
+          {
+            label: "Median Active Price",
+            data: points.map((point) => Number(point.median_active_price || 0)),
+            borderColor: "#BB8455",
+            backgroundColor: "rgba(187, 132, 85, 0.10)",
+            borderWidth: 2.5,
+            tension: 0.35,
+            fill: true,
+            yAxisID: "y",
+            pointRadius: 3,
+          },
+          {
+            label: "Active Listings",
+            data: points.map((point) => Number(point.active_listing_count || 0)),
+            borderColor: "#8A6747",
+            backgroundColor: "rgba(138, 103, 71, 0.08)",
+            borderWidth: 2,
+            tension: 0.35,
+            fill: false,
+            yAxisID: "y1",
+            pointRadius: 2,
+          },
+          {
+            label: "Bid Activity",
+            data: points.map((point) => Number(point.total_bid_count || 0)),
+            borderColor: "#708A72",
+            backgroundColor: "rgba(112, 138, 114, 0.08)",
+            borderWidth: 2,
+            tension: 0.35,
+            fill: false,
+            yAxisID: "y1",
+            pointRadius: 2,
+          },
+        ],
+      },
+      options: {
+        ...getChartOptions("Market Activity"),
+        scales: {
+          x: getChartOptions("Market Activity").scales.x,
+          y: {
+            ...getChartOptions("Market Activity").scales.y,
+            position: "left",
+            title: { display: true, text: "Median Active Price (USD)" },
+          },
+          y1: {
+            beginAtZero: true,
+            position: "right",
+            grid: { drawOnChartArea: false },
+            ticks: { color: "#7D7873" },
+            title: { display: true, text: "Listings / Bids" },
+          },
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Market activity chart error:", error);
+    showChartPlaceholder("leaderboard-history-chart", "leaderboard-history-placeholder", true);
+  }
+}
+
+async function renderLeaderboardHistoryFallback() {
   const canvas = document.getElementById("leaderboard-history-chart");
   if (!canvas) return;
 
@@ -2469,7 +2857,7 @@ async function init() {
       return res.json();
     });
 
-    const entries = payload.items || [];
+    const entries = enrichPlayerEntries(payload.items || []);
     latestEntries = entries;
     setupPlayerSearch();
     setupPlayerIntelligenceModal();
@@ -2493,7 +2881,12 @@ async function init() {
     } else {
       leaderboardRoot.innerHTML = `<div class="detail-empty">Leaderboard unavailable.</div>`;
     }
-    await renderLeaderboardHistory();
+    if (entries.length) {
+      selectedPlayer = entries[0];
+      await renderMarketActivity(entries[0]);
+    } else {
+      await renderLeaderboardHistoryFallback();
+    }
 
     status.textContent = `Loaded ${entries.length} players from ${payload.data_source || 'api'}`;
 

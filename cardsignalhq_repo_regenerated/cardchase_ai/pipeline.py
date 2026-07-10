@@ -12,6 +12,8 @@ from cardchase_ai.clients.ebay import EbayClient
 from cardchase_ai.clients.mlb import MLBClient
 from cardchase_ai.config import get_settings
 from cardchase_ai.delivery import AlertDeliveryClient, DeliverySettings, build_notification_email
+from cardchase_ai.identity import enrich_player_entry
+from cardchase_ai.market.pipeline import run_card_market_snapshots
 from cardchase_ai.models.schemas import HitterHotnessBreakdown, MarketSnapshot, RollingHitterStats
 from cardchase_ai.score import build_hotness_breakdown
 from cardchase_ai.storage import SupabaseStorage
@@ -51,6 +53,8 @@ class PipelineResult(BaseModel):
     run_id: int | None = None
     alerts_created: int = 0
     deliveries_attempted: int = 0
+    card_market_snapshot_count: int = 0
+    card_market_snapshot_path: str | None = None
 
 
 def _build_market_universe(mlb_client: MLBClient, settings) -> list[dict]:
@@ -414,11 +418,11 @@ def run() -> Path:
     return Path(result.leaderboard_path)
 
 
-def run_pipeline() -> PipelineResult:
+def run_pipeline(*, include_card_market_snapshots: bool | None = None) -> PipelineResult:
     settings = get_settings()
 
     outputs = _build_outputs()
-    serialized = [json.loads(output.model_dump_json()) for output in outputs]
+    serialized = [enrich_player_entry(json.loads(output.model_dump_json())) for output in outputs]
 
     file_path = _write_outputs(serialized, settings.output_dir)
 
@@ -441,5 +445,17 @@ def run_pipeline() -> PipelineResult:
             alerts_created=alerts_created,
             deliveries_attempted=deliveries_attempted,
         )
+
+    should_scan_cards = settings.card_market_scan_enabled if include_card_market_snapshots is None else include_card_market_snapshots
+    if should_scan_cards:
+        try:
+            storage = None
+            if settings.supabase_url and settings.supabase_service_role_key:
+                storage = SupabaseStorage(settings.supabase_url, settings.supabase_service_role_key)
+            card_result = run_card_market_snapshots(settings=settings, storage=storage, persist=True)
+            result.card_market_snapshot_count = card_result.snapshot_count
+            result.card_market_snapshot_path = card_result.output_path
+        except Exception as error:
+            print(f"Card market snapshot step failed: {error}")
 
     return result
