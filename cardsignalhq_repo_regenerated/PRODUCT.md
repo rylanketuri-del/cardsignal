@@ -20,30 +20,33 @@ Primary sections:
 
 Global **BETA Early Access** badge is visible in the header.
 
-### Player Intelligence Report (Modal)
+### Scouting Report (Player Modal)
 
-The player modal is a **deep-dive Intelligence Report** for one player. It opens from:
+The player modal is a **premium Scouting Report** — where collectors understand why CardSignal made its recommendation. It opens from:
 
 - Today's Leaders row click
 - Signal of the Week View Report CTA
 - Universal Search result selection
 
-Modal tabs:
+Report sections (scrollable, editorial layout):
 
-| Tab | Purpose |
-|-----|---------|
-| **Overview** | Score, recommendation, conviction, weekly movement, status, signal breakdown, why-it-matters summary |
-| **Cards** | Player-specific trending, movers, buy-low, and most-chased card rows |
-| **Market** | Placeholder sale volume, listings, liquidity, and market summary (live pricing snapshots pending) |
-| **Signals** | Performance, Market, Collector Demand, and Momentum explanations with scores and progress bars |
-| **Forecast** | BUY/HOLD/SELL recommendation, conviction, 2–4 week horizon, risk, summary, and bullet reasons |
+| Section | Purpose |
+|---------|---------|
+| **Header** | Player, team, position, CardSignal Score, recommendation, status, updated timestamp, algorithm version |
+| **Player Snapshot** | Last 7 Days and Season Snapshot from stored MLB stats |
+| **Why This Signal** | Signal contributors explaining score changes from real evidence |
+| **Cards** | Player-linked card intelligence with pricing, movement, listings, PSA population when available |
+| **Market** | Research-style market summary from stored eBay snapshots |
+| **Signal Analysis** | Performance, Market, Momentum, Scarcity, Collector Demand with scores and evidence quality |
+| **Outlook** | Recommendation, Evidence, Risk, Time Horizon, and analyst summary |
 
-Modal UX:
+Report UX:
 
-- Dark backdrop; homepage remains visible behind
+- Dark backdrop; homepage (Signal Center) remains visible behind
 - Close via X, Escape, or backdrop click
 - Centered panel on desktop; full-screen drawer on mobile
 - Body scroll locked while open
+- Uses only real stored intelligence or honest pending states — no fabricated report data
 
 ## CardSignal Score
 
@@ -56,8 +59,8 @@ The CardSignal Score (0–100) blends:
 
 Each player also receives:
 
-- **Recommendation** — BUY / HOLD / SELL (derived from conviction tier)
-- **Conviction** — Low / Medium / High
+- **Recommendation** — BUY / HOLD / SELL / WATCH (derived from evidence tier and score)
+- **Evidence** — HIGH / MEDIUM / LOW / INSUFFICIENT (replaces legacy Conviction/Confidence in the Scouting Report)
 - **Status** — HOT / RISING / COOLING
 
 Forecast language uses tentative phrasing (“suggests,” “may,” “could”) and never implies guaranteed returns.

@@ -13,18 +13,12 @@ let notifications = [];
 let adminToken = localStorage.getItem('cardchase_admin_token') || '';
 let scoreChart = null;
 let leaderboardHistoryChart = null;
-let piActiveTab = "overview";
 let piModalEntry = null;
 let piModalIntel = null;
+let piModalWeeklySnap = null;
 let piModalKeydownHandler = null;
 let weeklyIntelligence = null;
-const PI_TABS = [
-  { id: "overview", label: "Overview" },
-  { id: "cards", label: "Cards" },
-  { id: "market", label: "Market" },
-  { id: "signals", label: "Signals" },
-  { id: "forecast", label: "Forecast" },
-];
+const SCOUTING_REPORT_ALGO = "WEEKLY_INTELLIGENCE_V1";
 
 function tagClass(tag) {
   if (tag === 'BUY LOW') return 'tag buylow';
@@ -411,6 +405,7 @@ function csIntelRecommendationClass(action = "") {
   if (key === "buy") return "cs-recommendation--buy";
   if (key === "hold") return "cs-recommendation--hold";
   if (key === "sell") return "cs-recommendation--sell";
+  if (key === "watch") return "cs-recommendation--watch";
   return "";
 }
 
@@ -949,329 +944,649 @@ function csIntelGetPlaceholders(entry) {
   return placeholders;
 }
 
-function buildPlayerIntel(entry) {
+function formatEvidenceTier(tier = "") {
+  const key = String(tier || "").toUpperCase();
+  if (key === "HIGH") return "HIGH";
+  if (key === "MEDIUM") return "MEDIUM";
+  if (key === "LOW") return "LOW";
+  if (key === "INSUFFICIENT") return "INSUFFICIENT";
+  return "INSUFFICIENT";
+}
+
+function csIntelEvidenceClass(tier = "") {
+  const key = String(tier || "").toUpperCase();
+  if (key === "HIGH") return "cs-evidence--high";
+  if (key === "MEDIUM") return "cs-evidence--medium";
+  if (key === "LOW") return "cs-evidence--low";
+  return "cs-evidence--insufficient";
+}
+
+function formatStatValue(value, { decimals = 3, suffix = "", pending = "—" } = {}) {
+  const n = csIntelSafeToNumber(value);
+  if (n === null) return pending;
+  return `${n.toFixed(decimals)}${suffix}`;
+}
+
+function formatStatCount(value, pending = "—") {
+  const n = csIntelSafeToNumber(value);
+  if (n === null) return pending;
+  return String(Math.round(n));
+}
+
+function normalizeCsPlayerId(entry = {}) {
+  const pid = entry.player_id || entry.cs_player_id || entry.source_player_id;
+  if (!pid) return null;
+  return String(pid).includes(":") ? String(pid) : `mlb:${pid}`;
+}
+
+function resolveWeeklySnapshot(entry = {}, weeklyHistory = []) {
+  const csId = normalizeCsPlayerId(entry);
+  if (!weeklyHistory.length) return null;
+  if (csId) {
+    const match = [...weeklyHistory].reverse().find((snap) => snap.cs_player_id === csId);
+    if (match) return match;
+  }
+  return weeklyHistory[weeklyHistory.length - 1] || null;
+}
+
+function deriveEvidenceTier(weeklySnap, entry = {}) {
+  if (!weeklySnap) {
+    const conviction = String(entry.conviction || "").toUpperCase();
+    if (conviction) return formatEvidenceTier(conviction);
+    return "INSUFFICIENT";
+  }
+  const missing = weeklySnap.missing_inputs || [];
+  const critical = ["stats_7d", "market_snapshots", "listing_volume"];
+  if (critical.some((key) => missing.includes(key)) || weeklySnap.card_signal_score == null) {
+    return "INSUFFICIENT";
+  }
+  const conviction = String(weeklySnap.conviction || entry.conviction || "").toUpperCase();
+  return formatEvidenceTier(conviction || "MEDIUM");
+}
+
+function resolveRecommendation(entry = {}, weeklySnap = null) {
+  const rec = weeklySnap?.recommendation || entry.recommendation;
+  if (rec) return String(rec).toUpperCase();
+  const evidence = deriveEvidenceTier(weeklySnap, entry);
+  if (evidence === "INSUFFICIENT") return "WATCH";
+  const score = weeklySnap?.card_signal_score ?? entry.hotness?.total_score;
+  if (score == null) return "WATCH";
+  if (score >= 75 && evidence === "HIGH") return "BUY";
+  if (score < 45 || evidence === "LOW") return "SELL";
+  if (score >= 55) return "HOLD";
+  return "WATCH";
+}
+
+function getReportStatus(entry = {}, weeklySnap = null) {
+  const statusRaw = String(weeklySnap?.status || entry.hotness?.tag || "").toUpperCase();
+  const score = Number(weeklySnap?.card_signal_score ?? entry.hotness?.total_score ?? 0);
+  const evidence = deriveEvidenceTier(weeklySnap, entry);
+
+  if (statusRaw.includes("COOL") || statusRaw.includes("COOLING")) {
+    return { label: "Cooling", emoji: "📉", className: "sr-status--cooling" };
+  }
+  if (evidence === "INSUFFICIENT" || statusRaw.includes("WATCH")) {
+    return { label: "Watch", emoji: "⚠", className: "sr-status--watch" };
+  }
+  if (score >= 80 || statusRaw.includes("HOT") || statusRaw.includes("JUMP")) {
+    return { label: "HOT", emoji: "🔥", className: "sr-status--hot" };
+  }
+  if (statusRaw.includes("RISING") || statusRaw.includes("BUY")) {
+    return { label: "Rising", emoji: "📈", className: "sr-status--rising" };
+  }
+  return { label: "Rising", emoji: "📈", className: "sr-status--rising" };
+}
+
+function deriveEvidenceQuality(score, missingKeys = [], requiredKey = null) {
+  if (requiredKey && missingKeys.includes(requiredKey)) return "INSUFFICIENT";
+  const n = csIntelSafeToNumber(score);
+  if (n === null) return "INSUFFICIENT";
+  if (n >= 75) return "HIGH";
+  if (n >= 50) return "MEDIUM";
+  return "LOW";
+}
+
+function buildStoredPlayerIntel(entry = {}, weeklySnap = null) {
   const hotness = entry.hotness || {};
-  const placeholders = csIntelGetPlaceholders(entry);
+  const missing = weeklySnap?.missing_inputs || [];
 
   return {
-    ...placeholders,
-    performance: csIntelSafeToNumber(hotness.performance_score) ?? placeholders.performance,
-    market: csIntelSafeToNumber(hotness.market_score) ?? placeholders.market,
-    collector: csIntelSafeToNumber(hotness.collector_score) ?? placeholders.collector,
-    momentum: csIntelSafeToNumber(hotness.momentum_score) ?? placeholders.momentum,
-    score: csIntelSafeToNumber(hotness.total_score) ?? placeholders.score,
-    convictionTier: placeholders.convictionTier || placeholders.confidenceTier,
+    score: csIntelSafeToNumber(weeklySnap?.card_signal_score ?? hotness.total_score),
+    performance: csIntelSafeToNumber(weeklySnap?.performance_score ?? hotness.performance_score),
+    market: csIntelSafeToNumber(weeklySnap?.market_score ?? hotness.market_score),
+    collector: csIntelSafeToNumber(weeklySnap?.collector_score ?? hotness.collector_score),
+    momentum: csIntelSafeToNumber(weeklySnap?.momentum_score ?? hotness.momentum_score),
+    scarcity: csIntelSafeToNumber(weeklySnap?.scarcity_score),
+    evidenceTier: deriveEvidenceTier(weeklySnap, entry),
+    recommendation: resolveRecommendation(entry, weeklySnap),
+    weeklyChange: csIntelSafeToNumber(weeklySnap?.weekly_change ?? entry.weekly_change),
+    evidence: weeklySnap?.evidence || {},
+    missingInputs: missing,
+    algorithmVersion: weeklySnap?.algorithm_version || weeklyIntelligence?.run?.algorithm_version || SCOUTING_REPORT_ALGO,
+    capturedAt: weeklySnap?.captured_at || entry.generated_at || weeklyIntelligence?.run?.completed_at,
+    stats7d: entry.stats_7d || null,
+    stats30d: entry.stats_30d || null,
+    marketSnapshots: entry.market_snapshots || {},
   };
 }
 
-function renderProgressRow(label, value, colorClass) {
-  const v = csIntelClamp(Number(value) || 0, 0, 100);
-  return `
-    <div class="cs-progress-row">
-      <div class="cs-progress-top">
-        <span class="cs-progress-label">${label}</span>
-        <span class="cs-progress-value">${formatScore(v)}</span>
-      </div>
-      <div class="cs-progress-track" aria-hidden="true">
-        <span class="cs-progress-fill ${colorClass}" style="width:${v}%"></span>
-      </div>
-    </div>
-  `;
+function hasPerformanceStats(stats) {
+  return stats && Number(stats.games) > 0;
 }
 
-function renderPiCardRow(item) {
-  const moveClass = movementClass(item.movement);
-  const signalLabel = getCardSignalLabel(item.score);
-  const signalClass = getCardSignalLabelClass(item.score);
-
+function renderSnapshotStat(label, value) {
   return `
-    <div class="pi-card-row">
-      <div class="pi-card-row-thumb" aria-hidden="true"></div>
-      <div class="pi-card-row-copy">
-        <div class="pi-card-row-name">${item.name}</div>
-        <div class="pi-card-row-meta">
-          <span class="pi-card-row-price">${csIntelFormatMoney(item.price)}</span>
-          <span class="pi-card-row-move ${moveClass}">${item.movement}</span>
-        </div>
-      </div>
-      <span class="pi-signal-label ${signalClass}">${signalLabel}</span>
-    </div>
-  `;
+    <div class="sr-snapshot-stat">
+      <span class="sr-snapshot-stat-value">${value}</span>
+      <span class="sr-snapshot-stat-label">${label}</span>
+    </div>`;
 }
 
-function renderPiPlayerSection(playerName, title, items) {
+function renderPlayerSnapshot(intel) {
+  const stats7d = intel.stats7d;
+  const stats30d = intel.stats30d;
+  const has7d = hasPerformanceStats(stats7d);
+  const hasSeason = hasPerformanceStats(stats30d);
+
+  const kRate7d = has7d && stats7d.at_bats > 0
+    ? formatStatValue((stats7d.strikeouts / stats7d.at_bats) * 100, { decimals: 1, suffix: "%" })
+    : "—";
+
+  const last7Body = has7d
+    ? `
+      <div class="sr-snapshot-grid">
+        ${renderSnapshotStat("AVG", formatStatValue(stats7d.avg, { decimals: 3 }))}
+        ${renderSnapshotStat("HR", formatStatCount(stats7d.home_runs))}
+        ${renderSnapshotStat("RBI", formatStatCount(stats7d.rbi))}
+        ${renderSnapshotStat("OPS", formatStatValue(stats7d.ops, { decimals: 3 }))}
+        ${renderSnapshotStat("Hits", formatStatCount(stats7d.hits))}
+        ${renderSnapshotStat("Runs", "—")}
+        ${renderSnapshotStat("SB", formatStatCount(stats7d.stolen_bases))}
+        ${renderSnapshotStat("BB", formatStatCount(stats7d.walks))}
+        ${renderSnapshotStat("K Rate", kRate7d)}
+      </div>`
+    : `<p class="sr-pending">Performance data pending.</p>`;
+
+  const seasonBody = hasSeason
+    ? `
+      <div class="sr-snapshot-grid">
+        ${renderSnapshotStat("AVG", formatStatValue(stats30d.avg, { decimals: 3 }))}
+        ${renderSnapshotStat("HR", formatStatCount(stats30d.home_runs))}
+        ${renderSnapshotStat("RBI", formatStatCount(stats30d.rbi))}
+        ${renderSnapshotStat("OPS", formatStatValue(stats30d.ops, { decimals: 3 }))}
+        ${renderSnapshotStat("WAR", "—")}
+        ${renderSnapshotStat("Games", formatStatCount(stats30d.games))}
+        ${renderSnapshotStat("OBP", formatStatValue(stats30d.obp, { decimals: 3 }))}
+        ${renderSnapshotStat("SLG", formatStatValue(stats30d.slg, { decimals: 3 }))}
+      </div>`
+    : `<p class="sr-pending">Performance data pending.</p>`;
+
   return `
-    <section class="cs-premium-card pi-intel-section">
-      <div class="cs-premium-head">
-        <h3 class="cs-premium-title">${playerName} ${title}</h3>
+    <section class="sr-section sr-snapshot">
+      <h3 class="sr-section-title">Player Snapshot</h3>
+      <div class="sr-snapshot-panels">
+        <article class="sr-panel">
+          <h4 class="sr-panel-title">Last 7 Days</h4>
+          ${last7Body}
+        </article>
+        <article class="sr-panel">
+          <h4 class="sr-panel-title">Season Snapshot</h4>
+          ${seasonBody}
+        </article>
       </div>
-      <div class="cs-premium-card-list cs-premium-card-list--unified">
-        ${items.slice(0, 3).map((item) => renderPiCardRow(item)).join("")}
-      </div>
-    </section>
-  `;
+    </section>`;
 }
 
-function renderPiOverviewTab(entry, intel) {
-  const convictionTier = intel.convictionTier;
-  const recommendation = csIntelRecommendationFromTier(convictionTier);
-  const recommendationClass = csIntelRecommendationClass(recommendation);
-  const convictionClass = csIntelConvictionClass(convictionTier);
-  const convictionLabel = formatConvictionTier(convictionTier);
-  const movement = computeSignalOfWeekMovement(entry);
-  const moveClass = movement.signed.startsWith("+") ? "metric-up" : movement.signed.startsWith("-") ? "metric-down" : "metric-flat";
-  const status = getSignalOfWeekStatus(entry);
-  const whyMatters = buildWhySignalMatters(entry, intel);
+function buildSignalContributors(entry, intel) {
+  const contributors = [];
+  const stats7d = intel.stats7d;
+  const stats30d = intel.stats30d;
+  const evidence = intel.evidence || {};
 
-  return `
-    <div class="pi-tab-panel pi-tab-panel--overview" data-tab-panel="overview">
-      <section class="cs-intel-score-card">
-        <div class="cs-section-head">
-          <div>
-            <p class="eyebrow">CardSignal Score</p>
-          </div>
-          <div class="cs-section-head-right">
-            <div class="cs-recommendation-wrap">
-              <div class="cs-recommendation-badge ${recommendationClass}">${recommendation}</div>
-              <small class="cs-recommendation-label">Recommendation</small>
+  if (hasPerformanceStats(stats7d) && hasPerformanceStats(stats30d)) {
+    const avgDelta = stats7d.avg - stats30d.avg;
+    if (Number.isFinite(avgDelta) && Math.abs(avgDelta) >= 0.005) {
+      const dir = avgDelta >= 0 ? "up" : "down";
+      contributors.push({
+        label: "Batting Average",
+        direction: dir,
+        detail: `${avgDelta >= 0 ? "+" : ""}${avgDelta.toFixed(3)} vs 30-day baseline`,
+      });
+    }
+    if (stats7d.home_runs > 0) {
+      contributors.push({
+        label: "Home Runs",
+        direction: "up",
+        detail: `${stats7d.home_runs} in the last 7 days`,
+      });
+    }
+    if (stats7d.ops > 0) {
+      contributors.push({
+        label: "OPS",
+        direction: stats7d.ops >= stats30d.ops ? "up" : "down",
+        detail: stats7d.ops.toFixed(3),
+      });
+    }
+  }
+
+  (evidence.performance_reasons || []).slice(0, 2).forEach((reason) => {
+    contributors.push({ label: "Performance", direction: "up", detail: reason });
+  });
+
+  const snapshots = Object.values(intel.marketSnapshots || {});
+  if (snapshots.length) {
+    const totalListings = snapshots.reduce((sum, s) => sum + (s.listings_count || 0), 0);
+    if (totalListings > 0) {
+      contributors.push({
+        label: "Active Listings",
+        direction: "up",
+        detail: `${totalListings} tracked listings`,
+      });
+    }
+    const avgPrices = snapshots.map((s) => s.avg_price).filter((p) => p != null);
+    if (avgPrices.length >= 2) {
+      const recent = avgPrices[avgPrices.length - 1];
+      const prior = avgPrices[0];
+      if (prior > 0) {
+        const pct = ((recent - prior) / prior) * 100;
+        contributors.push({
+          label: "Auction Activity",
+          direction: pct >= 0 ? "up" : "down",
+          detail: csIntelFormatPercent(pct),
+        });
+      }
+    }
+  }
+
+  (evidence.momentum_evidence || []).slice(0, 1).forEach((line) => {
+    contributors.push({ label: "Momentum", direction: "up", detail: line });
+  });
+
+  (evidence.collector_evidence || []).slice(0, 1).forEach((line) => {
+    contributors.push({ label: "Collector Demand", direction: "up", detail: line });
+  });
+
+  return contributors;
+}
+
+function renderWhyThisSignal(entry, intel) {
+  const contributors = buildSignalContributors(entry, intel);
+  const body = contributors.length
+    ? `
+      <div class="sr-contributors">
+        <p class="sr-contributors-label">Signal Contributors</p>
+        ${contributors.map((c) => `
+          <div class="sr-contributor">
+            <span class="sr-contributor-arrow sr-contributor-arrow--${c.direction}">${c.direction === "up" ? "⬆" : "⬇"}</span>
+            <div class="sr-contributor-copy">
+              <strong>${c.label}</strong>
+              <span>${c.detail}</span>
             </div>
-            <div class="cs-conviction-wrap">
-              <div class="cs-conviction-badge ${convictionClass}">${convictionLabel}</div>
-              <small class="cs-conviction-label">Conviction</small>
-            </div>
-          </div>
-        </div>
-        <div class="cs-score-large">
-          <span>${formatScore(intel.score)}</span>
-        </div>
-      </section>
-
-      <div class="pi-overview-stats">
-        <div class="pi-overview-stat">
-          <span class="pi-overview-stat-value ${moveClass}">${movement.arrow} ${movement.signed}</span>
-          <span class="pi-overview-stat-label">Weekly Movement</span>
-        </div>
-        <div class="pi-overview-stat">
-          <span class="pi-overview-stat-value pi-status-pill ${status.className} pi-status-pill--inline">${status.label}</span>
-          <span class="pi-overview-stat-label">Status</span>
-        </div>
-      </div>
-
-      <section class="cs-intel-breakdown">
-        <div class="cs-section-head">
-          <h3 class="cs-section-title">Signal Breakdown</h3>
-        </div>
-        <div class="cs-progress-list">
-          ${renderProgressRow("Performance", intel.performance, "cs-progress-fill--performance")}
-          ${renderProgressRow("Market", intel.market, "cs-progress-fill--market")}
-          ${renderProgressRow("Collector Demand", intel.collector, "cs-progress-fill--collector")}
-          ${renderProgressRow("Momentum", intel.momentum, "cs-progress-fill--momentum")}
-        </div>
-      </section>
-
-      <section class="cs-premium-card pi-why-matters">
-        <div class="cs-premium-head">
-          <h3 class="cs-premium-title">Why This Signal Matters</h3>
-        </div>
-        <p class="pi-why-matters-copy">${whyMatters}</p>
-      </section>
-    </div>
-  `;
-}
-
-function renderPiCardsTab(entry, intel) {
-  const playerName = entry.player_name || "Player";
+          </div>`).join("")}
+      </div>`
+    : `<p class="sr-pending">Signal contributor data pending.</p>`;
 
   return `
-    <div class="pi-tab-panel pi-tab-panel--cards" data-tab-panel="cards">
-      <div class="pi-cards-grid">
-        ${renderPiPlayerSection(playerName, "Trending Cards", intel.trendingCards)}
-        ${renderPiPlayerSection(playerName, "Biggest Movers", intel.biggestMovers)}
-        ${renderPiPlayerSection(playerName, "Buy Low Watch", intel.buyLowOpportunities)}
-        ${renderPiPlayerSection(playerName, "Most Chased", intel.mostChased)}
-      </div>
-    </div>
-  `;
+    <section class="sr-section">
+      <h3 class="sr-section-title">Why This Signal</h3>
+      <p class="sr-section-lead">How recent performance and market activity shaped this week's CardSignal Score.</p>
+      ${body}
+    </section>`;
 }
 
-function renderPiMarketTab(entry, intel) {
-  const market = buildMarketPlaceholders(entry, intel);
-  const moveClass = market.priceMove > 0.01 ? "metric-up" : market.priceMove < -0.01 ? "metric-down" : "metric-flat";
-  const priceMoveFormatted = csIntelFormatPercent(market.priceMove);
+function collectPlayerCards(entry, weeklySnap) {
+  const csId = normalizeCsPlayerId(entry);
+  const cardIntel = weeklyIntelligence?.card_intelligence || {};
+  const sections = ["trending_cards", "biggest_movers", "buy_low_watch", "most_chased"];
+  const seen = new Set();
+  const cards = [];
+
+  sections.forEach((key) => {
+    (cardIntel[key] || []).forEach((row) => {
+      if (csId && row.cs_player_id !== csId) return;
+      const id = row.cs_card_id || row.card_label;
+      if (!id || seen.has(id)) return;
+      seen.add(id);
+      cards.push(row);
+    });
+  });
+
+  if (!cards.length) {
+    Object.entries(entry.market_snapshots || {}).forEach(([queryName, snap]) => {
+      cards.push({
+        card_label: snap.query_name || queryName,
+        score: null,
+        recommendation: "WATCH",
+        evidence: {
+          query_name: queryName,
+          listings_count: snap.listings_count,
+          avg_price: snap.avg_price,
+          tags: snap.tags,
+        },
+        missing_inputs: snap.listings_count ? [] : ["listings"],
+      });
+    });
+  }
+
+  return cards;
+}
+
+function renderReportCardPanel(card) {
+  const evidence = card.evidence || {};
+  const tags = evidence.tags || {};
+  const psaPop = tags.psa10_count != null ? formatStatCount(tags.psa10_count) : null;
+  const identityPending = !card.year && !card.brand;
+  const label = card.card_label || evidence.query_name || "Card";
+  const rec = card.recommendation || "WATCH";
+  const recClass = csIntelRecommendationClass(rec.toLowerCase());
 
   return `
-    <div class="pi-tab-panel pi-tab-panel--market" data-tab-panel="market">
-      <div class="pi-market-grid">
-        <div class="pi-market-stat">
-          <span class="pi-market-stat-value">${csIntelFormatMoney(market.avgSale)}</span>
-          <span class="pi-market-stat-label">Avg Sale</span>
+    <article class="sr-card-panel">
+      <div class="sr-card-identity">
+        ${identityPending
+    ? `<p class="sr-pending sr-pending--inline">Card identity pending.</p>`
+    : `
+          <p class="sr-card-title">${card.year || ""} ${card.brand || ""} ${card.set || label}</p>
+          <p class="sr-card-meta">${card.parallel || ""} ${card.card_number ? `#${card.card_number}` : ""}</p>
+          <p class="sr-card-grade">${card.grading_company || ""} ${card.grade || ""}</p>`}
+        <p class="sr-card-query">${label}</p>
+      </div>
+      <div class="sr-card-metrics">
+        <div class="sr-card-metric">
+          <span class="sr-card-metric-label">Median Active Price</span>
+          <span class="sr-card-metric-value">${evidence.avg_price != null ? csIntelFormatMoney(evidence.avg_price) : "Movement pending."}</span>
         </div>
-        <div class="pi-market-stat">
-          <span class="pi-market-stat-value">${market.salesVolume}</span>
-          <span class="pi-market-stat-label">Sales Volume</span>
+        <div class="sr-card-metric">
+          <span class="sr-card-metric-label">7-Day Movement</span>
+          <span class="sr-card-metric-value">${card.demand_score != null ? csIntelFormatPercent(card.demand_score) : "Movement pending."}</span>
         </div>
-        <div class="pi-market-stat">
-          <span class="pi-market-stat-value">${market.activeListings}</span>
-          <span class="pi-market-stat-label">Active Listings</span>
+        <div class="sr-card-metric">
+          <span class="sr-card-metric-label">Active Listings</span>
+          <span class="sr-card-metric-value">${evidence.listings_count != null ? formatStatCount(evidence.listings_count) : "—"}</span>
         </div>
-        <div class="pi-market-stat">
-          <span class="pi-market-stat-value ${moveClass}">${priceMoveFormatted}</span>
-          <span class="pi-market-stat-label">7-Day Price Move</span>
+        <div class="sr-card-metric">
+          <span class="sr-card-metric-label">PSA Population</span>
+          <span class="sr-card-metric-value">${psaPop != null ? psaPop : "PSA population pending."}</span>
+        </div>
+        <div class="sr-card-metric">
+          <span class="sr-card-metric-label">CardSignal Score</span>
+          <span class="sr-card-metric-value">${card.score != null ? formatScore(card.score) : "—"}</span>
+        </div>
+        <div class="sr-card-metric">
+          <span class="sr-card-metric-label">Recommendation</span>
+          <span class="cs-recommendation-badge ${recClass} sr-card-rec">${rec}</span>
         </div>
       </div>
-
-      <div class="pi-market-liquidity">
-        <span class="pi-market-liquidity-label">Liquidity</span>
-        <span class="pi-market-liquidity-value">${market.liquidity}</span>
-      </div>
-
-      <section class="cs-premium-card pi-market-summary">
-        <div class="cs-premium-head">
-          <h3 class="cs-premium-title">Market Summary</h3>
-        </div>
-        <p class="pi-market-summary-copy">${market.summary}</p>
-      </section>
-
-      <div class="pi-market-placeholder-note">
-        Live card-market data will populate after pricing snapshots.
-      </div>
-    </div>
-  `;
+      <p class="sr-card-evidence">
+        <span class="sr-evidence-label">Evidence</span>
+        ${evidence.listings_count
+    ? `Based on ${evidence.listings_count} active listing${evidence.listings_count === 1 ? "" : "s"} in this query window.`
+    : "Market history still building."}
+      </p>
+    </article>`;
 }
 
-function renderPiSignalDetailRow(label, score, explanation, colorClass) {
-  const v = csIntelClamp(Number(score) || 0, 0, 100);
-  return `
-    <section class="cs-premium-card pi-signal-detail">
-      <div class="cs-premium-head">
-        <h3 class="cs-premium-title">${label}</h3>
-        <span class="pi-signal-detail-score">${formatScore(v)}</span>
-      </div>
-      <div class="cs-progress-track pi-signal-detail-bar" aria-hidden="true">
-        <span class="cs-progress-fill ${colorClass}" style="width:${v}%"></span>
-      </div>
-      <p class="pi-signal-detail-copy">${explanation}</p>
-    </section>
-  `;
-}
-
-function renderPiSignalsTab(entry, intel) {
-  return `
-    <div class="pi-tab-panel pi-tab-panel--signals" data-tab-panel="signals">
-      <div class="pi-signals-intro">
-        <p class="eyebrow">Signal Analysis</p>
-        <h3 class="pi-signals-heading">Why does this player have this CardSignal Score?</h3>
-      </div>
-      <div class="pi-signals-list">
-        ${renderPiSignalDetailRow(
-          "Performance Signal",
-          intel.performance,
-          getSignalExplanation("performance", intel.performance, entry),
-          "cs-progress-fill--performance"
-        )}
-        ${renderPiSignalDetailRow(
-          "Market Signal",
-          intel.market,
-          getSignalExplanation("market", intel.market, entry),
-          "cs-progress-fill--market"
-        )}
-        ${renderPiSignalDetailRow(
-          "Collector Demand Signal",
-          intel.collector,
-          getSignalExplanation("collector", intel.collector, entry),
-          "cs-progress-fill--collector"
-        )}
-        ${renderPiSignalDetailRow(
-          "Momentum Signal",
-          intel.momentum,
-          getSignalExplanation("momentum", intel.momentum, entry),
-          "cs-progress-fill--momentum"
-        )}
-      </div>
-    </div>
-  `;
-}
-
-function renderPiForecastTab(entry, intel) {
-  const convictionTier = intel.convictionTier;
-  const recommendation = csIntelRecommendationFromTier(convictionTier);
-  const recommendationClass = csIntelRecommendationClass(recommendation);
-  const convictionClass = csIntelConvictionClass(convictionTier);
-  const convictionLabel = formatConvictionTier(convictionTier);
-  const risk = getRiskLevel(intel);
-  const riskClass = risk === "Low" ? "pi-risk--low" : risk === "High" ? "pi-risk--high" : "pi-risk--medium";
-  const summary = buildForecastSummary(entry, intel);
-  const reasons = buildForecastReasons(entry, intel);
+function renderReportCards(entry, weeklySnap) {
+  const cards = collectPlayerCards(entry, weeklySnap);
+  const body = cards.length
+    ? `<div class="sr-cards-list">${cards.map((c) => renderReportCardPanel(c)).join("")}</div>`
+    : `<p class="sr-pending">Card intelligence pending for this player.</p>`;
 
   return `
-    <div class="pi-tab-panel pi-tab-panel--forecast" data-tab-panel="forecast">
-      <section class="cs-premium-card pi-forecast-hero">
-        <div class="pi-forecast-top">
-          <div class="pi-forecast-rec">
-            <span class="cs-recommendation-badge ${recommendationClass} pi-forecast-rec-badge">${recommendation}</span>
-            <small class="cs-recommendation-label">Recommendation</small>
-          </div>
-          <div class="pi-forecast-conviction">
-            <span class="cs-conviction-badge ${convictionClass}">${convictionLabel}</span>
-            <small class="cs-conviction-label">Conviction</small>
-          </div>
-          <div class="pi-forecast-horizon">
-            <span class="pi-forecast-horizon-value">2–4 weeks</span>
-            <small class="pi-forecast-horizon-label">Time Horizon</small>
-          </div>
-          <div class="pi-forecast-risk">
-            <span class="pi-risk-badge ${riskClass}">${risk}</span>
-            <small class="pi-forecast-risk-label">Risk</small>
-          </div>
-        </div>
-      </section>
-
-      <section class="cs-premium-card pi-forecast-summary">
-        <div class="cs-premium-head">
-          <h3 class="cs-premium-title">Forecast Summary</h3>
-        </div>
-        <p class="pi-forecast-summary-copy">${summary}</p>
-      </section>
-
-      <section class="cs-premium-card pi-forecast-reasons">
-        <div class="cs-premium-head">
-          <h3 class="cs-premium-title">Key Factors</h3>
-        </div>
-        <ul class="pi-forecast-reasons-list">
-          ${reasons.map((reason) => `<li>${reason}</li>`).join("")}
-        </ul>
-        <p class="pi-forecast-disclaimer">Forecasts reflect current signal inputs and may change as new data arrives. They do not guarantee returns.</p>
-      </section>
-    </div>
-  `;
+    <section class="sr-section">
+      <h3 class="sr-section-title">Cards</h3>
+      <p class="sr-section-lead">Tracked card queries linked to this player's market activity.</p>
+      ${body}
+    </section>`;
 }
 
-function renderPiModalTabs(activeTab) {
-  return PI_TABS.map((tab) => `
-    <button
-      type="button"
-      class="pi-modal-tab${tab.id === activeTab ? " pi-modal-tab--active" : ""}"
-      data-pi-tab="${tab.id}"
-      role="tab"
-      aria-selected="${tab.id === activeTab ? "true" : "false"}"
-      aria-controls="pi-tab-panel-${tab.id}"
-    >${tab.label}</button>
-  `).join("");
+function aggregateMarketData(entry, intel) {
+  const snapshots = Object.values(intel.marketSnapshots || {});
+  if (!snapshots.length) return null;
+
+  const prices = snapshots.map((s) => s.avg_price).filter((p) => p != null && p > 0);
+  const listings = snapshots.reduce((sum, s) => sum + (s.listings_count || 0), 0);
+  const psa10 = snapshots.reduce((sum, s) => sum + (s.tags?.psa10_count || 0), 0);
+
+  const avgPrice = prices.length ? prices.reduce((a, b) => a + b, 0) / prices.length : null;
+  const sorted = [...prices].sort((a, b) => a - b);
+  const medianPrice = sorted.length
+    ? sorted.length % 2 === 1
+      ? sorted[(sorted.length - 1) / 2]
+      : (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2
+    : null;
+
+  return { avgPrice, medianPrice, listings, psa10, snapshotCount: snapshots.length };
 }
 
-function renderPiModalHeader(entry, intel) {
+function buildMarketSummary(market, intel) {
+  if (!market) return "Market history still building.";
+  const parts = [];
+  if (market.listings >= 20) {
+    parts.push("Listing supply remains active across tracked card queries");
+  } else if (market.listings > 0) {
+    parts.push("Listing supply is limited but present across tracked queries");
+  }
+  if (market.psa10 > 0) {
+    parts.push("graded inventory is visible in current snapshots");
+  }
+  if (intel.momentum != null && intel.momentum >= 60) {
+    parts.push("auction participation appears to be increasing");
+  } else if (intel.momentum != null && intel.momentum < 45) {
+    parts.push("market momentum has softened relative to recent weeks");
+  }
+  return parts.length
+    ? `${parts[0].charAt(0).toUpperCase()}${parts[0].slice(1)}${parts.length > 1 ? ` while ${parts.slice(1).join(" and ")}.` : "."}`
+    : "Market activity is being tracked; additional snapshots will sharpen this summary.";
+}
+
+function renderReportMarket(entry, intel) {
+  const market = aggregateMarketData(entry, intel);
+  const missing = intel.missingInputs || [];
+  const dataQuality = missing.length === 0 ? "Complete" : missing.length <= 2 ? "Partial" : "Building";
+
+  if (!market) {
+    return `
+      <section class="sr-section">
+        <h3 class="sr-section-title">Market</h3>
+        <p class="sr-pending">Market history still building.</p>
+      </section>`;
+  }
+
+  const summary = buildMarketSummary(market, intel);
+
+  return `
+    <section class="sr-section">
+      <h3 class="sr-section-title">Market</h3>
+      <p class="sr-section-lead">${summary}</p>
+      <div class="sr-market-grid">
+        <div class="sr-market-item">
+          <span class="sr-market-label">Median Active Price</span>
+          <span class="sr-market-value">${market.medianPrice != null ? csIntelFormatMoney(market.medianPrice) : "—"}</span>
+        </div>
+        <div class="sr-market-item">
+          <span class="sr-market-label">Average Active Price</span>
+          <span class="sr-market-value">${market.avgPrice != null ? csIntelFormatMoney(market.avgPrice) : "—"}</span>
+        </div>
+        <div class="sr-market-item">
+          <span class="sr-market-label">Active Listings</span>
+          <span class="sr-market-value">${formatStatCount(market.listings)}</span>
+        </div>
+        <div class="sr-market-item">
+          <span class="sr-market-label">Auction Count</span>
+          <span class="sr-market-value">${formatStatCount(market.snapshotCount)}</span>
+        </div>
+        <div class="sr-market-item">
+          <span class="sr-market-label">Listings With Bids</span>
+          <span class="sr-market-value sr-pending--inline">Pending</span>
+        </div>
+        <div class="sr-market-item">
+          <span class="sr-market-label">Market Depth</span>
+          <span class="sr-market-value">${market.listings >= 25 ? "Deep" : market.listings >= 10 ? "Moderate" : "Thin"}</span>
+        </div>
+        <div class="sr-market-item">
+          <span class="sr-market-label">Data Quality</span>
+          <span class="sr-market-value">${dataQuality}</span>
+        </div>
+        <div class="sr-market-item">
+          <span class="sr-market-label">Captured</span>
+          <span class="sr-market-value">${intel.capturedAt ? formatTimestamp(intel.capturedAt) : "—"}</span>
+        </div>
+      </div>
+    </section>`;
+}
+
+function renderSignalCategory(label, score, explanation, quality) {
+  const v = csIntelSafeToNumber(score);
+  return `
+    <article class="sr-signal-category">
+      <div class="sr-signal-category-head">
+        <h4 class="sr-signal-category-title">${label}</h4>
+        <span class="sr-signal-category-score">${v != null ? formatScore(v) : "—"}</span>
+      </div>
+      <p class="sr-signal-category-copy">${explanation}</p>
+      <p class="sr-signal-category-evidence">
+        <span class="sr-evidence-label">Evidence</span>
+        <span class="cs-evidence-badge ${csIntelEvidenceClass(quality)}">${quality}</span>
+      </p>
+    </article>`;
+}
+
+function renderSignalAnalysis(entry, intel) {
+  const missing = intel.missingInputs || [];
+  const categories = [
+    {
+      label: "Performance",
+      score: intel.performance,
+      explanation: intel.performance != null
+        ? getSignalExplanation("performance", intel.performance, entry)
+        : "Performance inputs are still being collected for this player.",
+      quality: deriveEvidenceQuality(intel.performance, missing, "stats_7d"),
+    },
+    {
+      label: "Market",
+      score: intel.market,
+      explanation: intel.market != null
+        ? getSignalExplanation("market", intel.market, entry)
+        : "Market snapshots are not yet available for this reporting period.",
+      quality: deriveEvidenceQuality(intel.market, missing, "market_snapshots"),
+    },
+    {
+      label: "Momentum",
+      score: intel.momentum,
+      explanation: intel.momentum != null
+        ? getSignalExplanation("momentum", intel.momentum, entry)
+        : "Momentum history still building.",
+      quality: deriveEvidenceQuality(intel.momentum, missing),
+    },
+    {
+      label: "Scarcity",
+      score: intel.scarcity,
+      explanation: intel.scarcity != null
+        ? (intel.scarcity >= 70
+          ? "Graded and numbered inventory appears relatively scarce in active listings."
+          : intel.scarcity >= 45
+            ? "PSA population and numbered parallels suggest moderate scarcity."
+            : "Current listing mix suggests supply is more available than scarce.")
+        : "PSA population pending.",
+      quality: deriveEvidenceQuality(intel.scarcity, missing),
+    },
+    {
+      label: "Collector Demand",
+      score: intel.collector,
+      explanation: intel.collector != null
+        ? getSignalExplanation("collector", intel.collector, entry)
+        : "Collector demand signals are pending.",
+      quality: deriveEvidenceQuality(intel.collector, missing, "market_snapshots"),
+    },
+  ];
+
+  return `
+    <section class="sr-section">
+      <h3 class="sr-section-title">Signal Analysis</h3>
+      <p class="sr-section-lead">How performance, market, momentum, scarcity, and collector demand combine into the CardSignal Score.</p>
+      <div class="sr-signal-grid">
+        ${categories.map((c) => renderSignalCategory(c.label, c.score, c.explanation, c.quality)).join("")}
+      </div>
+    </section>`;
+}
+
+function buildOutlookSummary(entry, intel) {
+  const name = entry.player_name || "This player";
+  const rec = intel.recommendation;
+  const recLower = rec.toLowerCase();
+
+  if (rec === "WATCH" || intel.evidenceTier === "INSUFFICIENT") {
+    return `Insufficient stored evidence prevents a directional call on ${name}. Monitor performance and market activity until the next weekly refresh.`;
+  }
+
+  if (rec === "BUY") {
+    return `Recent production and market activity currently support a BUY outlook for ${name}, though outcomes are never guaranteed.`;
+  }
+  if (rec === "SELL") {
+    return `Current performance and market inputs suggest caution on ${name}; the signal may face near-term headwinds.`;
+  }
+  return `Recent performance and market activity currently support a ${recLower} outlook for ${name} over the next reporting window.`;
+}
+
+function deriveOutlookRisk(intel) {
+  if (intel.evidenceTier === "INSUFFICIENT") return "HIGH";
+  if (intel.evidenceTier === "HIGH" && (intel.score || 0) >= 75) return "LOW";
+  if (intel.evidenceTier === "LOW" || (intel.score || 0) < 45) return "HIGH";
+  return "MEDIUM";
+}
+
+function renderOutlook(entry, intel) {
+  const recommendation = intel.recommendation;
+  const recommendationClass = csIntelRecommendationClass(recommendation.toLowerCase());
+  const evidenceClass = csIntelEvidenceClass(intel.evidenceTier);
+  const risk = deriveOutlookRisk(intel);
+  const riskClass = risk === "LOW" ? "pi-risk--low" : risk === "HIGH" ? "pi-risk--high" : "pi-risk--medium";
+  const summary = buildOutlookSummary(entry, intel);
+
+  return `
+    <section class="sr-section sr-outlook">
+      <h3 class="sr-section-title">CardSignal Outlook</h3>
+      <div class="sr-outlook-grid">
+        <div class="sr-outlook-item">
+          <span class="cs-recommendation-badge ${recommendationClass} sr-outlook-rec">${recommendation}</span>
+          <span class="sr-outlook-label">Recommendation</span>
+        </div>
+        <div class="sr-outlook-item">
+          <span class="cs-evidence-badge ${evidenceClass}">${intel.evidenceTier}</span>
+          <span class="sr-outlook-label">Evidence</span>
+        </div>
+        <div class="sr-outlook-item">
+          <span class="pi-risk-badge ${riskClass}">${risk}</span>
+          <span class="sr-outlook-label">Risk</span>
+        </div>
+        <div class="sr-outlook-item">
+          <span class="sr-outlook-horizon">2–4 Weeks</span>
+          <span class="sr-outlook-label">Time Horizon</span>
+        </div>
+      </div>
+      <div class="sr-outlook-summary">
+        <p class="sr-outlook-summary-label">Summary</p>
+        <p class="sr-outlook-summary-copy">${summary}</p>
+      </div>
+      <p class="sr-outlook-disclaimer">Outlook reflects stored signal inputs and may change as new data arrives. It does not guarantee returns.</p>
+    </section>`;
+}
+
+function renderScoutingReportHeader(entry, intel) {
   const team = getTeamAbbrev(entry);
   const position = entry.position || "—";
-  const recommendation = csIntelRecommendationFromTier(intel.convictionTier);
-  const recommendationClass = csIntelRecommendationClass(recommendation);
-  const status = getSignalOfWeekStatus(entry);
+  const recommendation = intel.recommendation;
+  const recommendationClass = csIntelRecommendationClass(recommendation.toLowerCase());
+  const status = getReportStatus(entry, piModalWeeklySnap);
+  const updatedLabel = intel.capturedAt ? formatTimestamp(intel.capturedAt) : "Pending";
 
   return `
-    <div class="pi-modal-header-main">
+    <div class="pi-modal-header-main sr-header">
       <div class="pi-modal-identity">
         <div class="pi-modal-headshot">${renderPlayerHeadshot(entry)}</div>
         <div class="pi-modal-identity-copy">
-          <p class="eyebrow pi-modal-kicker">Player Intelligence</p>
+          <p class="eyebrow pi-modal-kicker">Scouting Report</p>
           <h2 class="pi-modal-title" id="pi-modal-title">${entry.player_name}</h2>
           <div class="pi-modal-meta">
             <span class="pi-modal-meta-chip">
@@ -1280,12 +1595,13 @@ function renderPiModalHeader(entry, intel) {
             </span>
             <span class="pi-modal-meta-chip pi-modal-meta-chip--muted">${position}</span>
           </div>
+          <p class="sr-header-tagline">Where performance meets the market.</p>
         </div>
       </div>
 
-      <div class="pi-modal-header-stats">
+      <div class="pi-modal-header-stats sr-header-stats">
         <div class="pi-modal-stat">
-          <span class="pi-modal-stat-value">${formatScore(intel.score)}</span>
+          <span class="pi-modal-stat-value">${intel.score != null ? formatScore(intel.score) : "—"}</span>
           <span class="pi-modal-stat-label">CardSignal Score</span>
         </div>
         <div class="pi-modal-stat">
@@ -1293,35 +1609,40 @@ function renderPiModalHeader(entry, intel) {
           <span class="pi-modal-stat-label">Recommendation</span>
         </div>
         <div class="pi-modal-stat">
-          <span class="pi-modal-stat-value pi-status-pill ${status.className}">${status.label}</span>
+          <span class="pi-modal-stat-value sr-status-pill ${status.className}">${status.emoji} ${status.label}</span>
           <span class="pi-modal-stat-label">Status</span>
         </div>
+      </div>
+
+      <div class="sr-header-meta">
+        <span>Updated ${updatedLabel}</span>
+        <span class="sr-header-meta-sep" aria-hidden="true">·</span>
+        <span>${intel.algorithmVersion}</span>
       </div>
 
       <div class="pi-modal-header-actions">
         <button type="button" id="watchlist-toggle-btn" class="player-save-btn pi-modal-save-btn">
           ${currentUser ? "Save to watchlist" : "Sign in to save"}
         </button>
-        <button type="button" class="pi-modal-close" data-pi-close aria-label="Close player intelligence report">✕</button>
+        <button type="button" class="pi-modal-close" data-pi-close aria-label="Close scouting report">✕</button>
       </div>
-    </div>
-  `;
+    </div>`;
 }
 
-function renderPiModalBody(entry, intel, activeTab) {
-  switch (activeTab) {
-    case "cards":
-      return renderPiCardsTab(entry, intel);
-    case "market":
-      return renderPiMarketTab(entry, intel);
-    case "signals":
-      return renderPiSignalsTab(entry, intel);
-    case "forecast":
-      return renderPiForecastTab(entry, intel);
-    case "overview":
-    default:
-      return renderPiOverviewTab(entry, intel);
-  }
+function renderScoutingReport(entry, intel) {
+  return `
+    <div class="sr-report">
+      ${renderPlayerSnapshot(intel)}
+      ${renderWhyThisSignal(entry, intel)}
+      ${renderReportCards(entry, piModalWeeklySnap)}
+      ${renderReportMarket(entry, intel)}
+      ${renderSignalAnalysis(entry, intel)}
+      ${renderOutlook(entry, intel)}
+    </div>`;
+}
+
+function buildPlayerIntel(entry, weeklySnap = null) {
+  return buildStoredPlayerIntel(entry, weeklySnap);
 }
 
 function isPlayerIntelligenceModalOpen() {
@@ -1348,37 +1669,6 @@ function bindPiModalKeydown() {
   document.addEventListener("keydown", piModalKeydownHandler);
 }
 
-function updatePiModalTabState() {
-  const tabsRoot = document.getElementById("pi-modal-tabs");
-  if (!tabsRoot) return;
-
-  tabsRoot.querySelectorAll("[data-pi-tab]").forEach((button) => {
-    const isActive = button.dataset.piTab === piActiveTab;
-    button.classList.toggle("pi-modal-tab--active", isActive);
-    button.setAttribute("aria-selected", isActive ? "true" : "false");
-  });
-}
-
-function setupPiTabNavigation() {
-  const tabsRoot = document.getElementById("pi-modal-tabs");
-  if (!tabsRoot || tabsRoot.dataset.piTabsBound === "1") return;
-  tabsRoot.dataset.piTabsBound = "1";
-
-  tabsRoot.addEventListener("click", (event) => {
-    const button = event.target.closest("[data-pi-tab]");
-    if (!button || !piModalEntry || !piModalIntel) return;
-
-    const tabId = button.dataset.piTab;
-    if (!tabId || tabId === piActiveTab) return;
-
-    piActiveTab = tabId;
-    updatePiModalTabState();
-
-    const body = document.getElementById("pi-modal-body");
-    if (body) body.innerHTML = renderPiModalBody(piModalEntry, piModalIntel, piActiveTab);
-  });
-}
-
 function setupPlayerIntelligenceModal() {
   const modal = document.getElementById("player-intelligence-modal");
   if (!modal || modal.dataset.piBound === "1") return;
@@ -1392,7 +1682,6 @@ function setupPlayerIntelligenceModal() {
     }
   });
 
-  setupPiTabNavigation();
   bindPiModalKeydown();
 }
 
@@ -1403,35 +1692,43 @@ function closePlayerIntelligenceModal() {
   modal.classList.add("hidden");
   modal.setAttribute("aria-hidden", "true");
   unlockBodyScrollForModal();
-  piActiveTab = "overview";
   piModalEntry = null;
   piModalIntel = null;
+  piModalWeeklySnap = null;
 }
 
 async function openPlayerIntelligenceModal(entry) {
   const modal = document.getElementById("player-intelligence-modal");
   const header = document.getElementById("pi-modal-header");
-  const tabs = document.getElementById("pi-modal-tabs");
   const body = document.getElementById("pi-modal-body");
-  if (!modal || !header || !tabs || !body) return;
+  if (!modal || !header || !body) return;
 
   selectedPlayer = entry;
 
   try {
     const player = entry.player_id ? await fetchPlayer(entry.player_id) : entry;
     selectedPlayer = player;
-    const intel = buildPlayerIntel(player);
+
+    let weeklySnap = null;
+    if (player.player_id) {
+      try {
+        const weeklyData = await fetchPlayerWeeklySignals(player.player_id);
+        weeklySnap = resolveWeeklySnapshot(player, weeklyData?.items || []);
+      } catch (_) {
+        weeklySnap = null;
+      }
+    }
+
+    const intel = buildPlayerIntel(player, weeklySnap);
 
     piModalEntry = player;
     piModalIntel = intel;
-    piActiveTab = "overview";
+    piModalWeeklySnap = weeklySnap;
 
-    header.innerHTML = renderPiModalHeader(player, intel);
-    tabs.innerHTML = renderPiModalTabs(piActiveTab);
-    body.innerHTML = renderPiModalBody(player, intel, piActiveTab);
+    header.innerHTML = renderScoutingReportHeader(player, intel);
+    body.innerHTML = renderScoutingReport(player, intel);
 
     wirePlayerActions();
-    updatePiModalTabState();
 
     modal.classList.remove("hidden");
     modal.setAttribute("aria-hidden", "false");
