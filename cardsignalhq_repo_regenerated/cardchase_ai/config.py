@@ -33,6 +33,22 @@ class Settings:
     daily_digest_cooldown_hours: int
     notification_limit: int
     admin_api_token: str
+    card_market_scan_enabled: bool
+    card_market_player_limit: int
+    card_market_cards_per_player_limit: int
+    card_market_scan_limit: int
+    ebay_results_per_query_limit: int
+    card_market_movement_7d_tolerance_days: int
+    card_market_movement_30d_tolerance_days: int
+    card_market_movement_max_gap_7d_days: int
+    card_market_movement_max_gap_30d_days: int
+    psa_api_base_url: str
+    psa_access_token: str
+    psa_population_enabled: bool
+    psa_population_provider: str
+    psa_population_card_limit: int
+    psa_population_import_path: Path | None
+    psa_population_beta_seed_path: Path | None
 
 
 def get_settings() -> Settings:
@@ -64,4 +80,32 @@ def get_settings() -> Settings:
         daily_digest_cooldown_hours=int(os.getenv("DAILY_DIGEST_COOLDOWN_HOURS", "20")),
         notification_limit=int(os.getenv("NOTIFICATION_LIMIT", "50")),
         admin_api_token=os.getenv("ADMIN_API_TOKEN", ""),
+        card_market_scan_enabled=os.getenv("CARD_MARKET_SCAN_ENABLED", "false").lower() in {"1", "true", "yes"},
+        card_market_player_limit=int(os.getenv("CARD_MARKET_PLAYER_LIMIT", "100")),
+        card_market_cards_per_player_limit=int(os.getenv("CARD_MARKET_CARDS_PER_PLAYER_LIMIT", "4")),
+        card_market_scan_limit=int(os.getenv("CARD_MARKET_SCAN_LIMIT", "120")),
+        ebay_results_per_query_limit=int(os.getenv("EBAY_RESULTS_PER_QUERY_LIMIT", "25")),
+        card_market_movement_7d_tolerance_days=int(os.getenv("CARD_MARKET_MOVEMENT_7D_TOLERANCE_DAYS", "3")),
+        card_market_movement_30d_tolerance_days=int(os.getenv("CARD_MARKET_MOVEMENT_30D_TOLERANCE_DAYS", "7")),
+        card_market_movement_max_gap_7d_days=int(os.getenv("CARD_MARKET_MOVEMENT_MAX_GAP_7D_DAYS", "10")),
+        card_market_movement_max_gap_30d_days=int(os.getenv("CARD_MARKET_MOVEMENT_MAX_GAP_30D_DAYS", "14")),
+        psa_api_base_url=os.getenv("PSA_API_BASE_URL", "https://api.psacard.com/publicapi"),
+        psa_access_token=os.getenv("PSA_ACCESS_TOKEN", ""),
+        psa_population_enabled=os.getenv("PSA_POPULATION_ENABLED", "false").lower() in {"1", "true", "yes"},
+        psa_population_provider=os.getenv("PSA_POPULATION_PROVIDER", "import"),
+        psa_population_card_limit=int(os.getenv("PSA_POPULATION_CARD_LIMIT", "50")),
+        psa_population_import_path=_optional_path(os.getenv("PSA_POPULATION_IMPORT_PATH", "")),
+        psa_population_beta_seed_path=_optional_path(
+            os.getenv(
+                "PSA_POPULATION_BETA_SEED_PATH",
+                str(Path(__file__).resolve().parent.parent / "data" / "psa_population_beta_seed.json"),
+            )
+        ),
     )
+
+
+def _optional_path(value: str) -> Path | None:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    return Path(raw)
