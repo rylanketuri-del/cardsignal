@@ -64,6 +64,16 @@
   - [x] Data-quality badges, active-listing disclaimers, and captured timestamps
   - [x] Session cache for card-market fetches; graceful loading/empty/error states
 
+- **Sprint 8.5** — Historical Price Movement (Release v0.9.0):
+  - [x] Reusable `CardMarketMovement` model with comparison windows (`previous`, `7d`, `30d`)
+  - [x] Append-only local history file plus Supabase history reads/indexes
+  - [x] `GET /api/cards/{cs_card_id}/market/history` and `/market/movement`
+  - [x] `GET /api/players/{player_id}/cards/market/movement` and `/market/activity`
+  - [x] Cards tab 7-day active listing movement when history exists
+  - [x] Biggest Movers ranked by valid median movement quality
+  - [x] Market Activity chart wired to stored player snapshot history
+  - [x] Signal Timeline uses stored player score history when available
+
 ## Current Milestone
 
 ### Sprint 8 — Real Card Intelligence
@@ -72,14 +82,9 @@
 - **Sprint 8.2** — Foundation & Identity (Release v0.9.0) — complete
 - **Sprint 8.3** — eBay Market Snapshot Foundation (Release v0.9.0) — complete
 - **Sprint 8.4** — Real Card Market UI (Release v0.9.0) — complete
-- Populate Signal Timeline and Market Activity from live runs
+- **Sprint 8.5** — Historical Price Movement (Release v0.9.0) — complete
 
 ## Up Next
-
-### Sprint 8.5 — Historical Price Movement
-
-- Historical active-listing trend lines per card identity
-- Movement metrics derived from snapshot history (not asking-price comps as sales)
 
 ### Sprint 8.6 — PSA Population Foundation
 
@@ -88,8 +93,10 @@
 
 ### Future Sprint 8+ Work
 
+- Sold-comps integration
+- Buy Low Engine
 - Signal Accuracy tracking
-- Sold-comps integration beyond active eBay listings
+- Weekly snapshot scheduler
 
 ### v1.0.0 — Multi-Sport Expansion
 

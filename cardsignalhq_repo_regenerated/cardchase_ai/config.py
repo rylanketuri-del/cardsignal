@@ -38,6 +38,10 @@ class Settings:
     card_market_cards_per_player_limit: int
     card_market_scan_limit: int
     ebay_results_per_query_limit: int
+    card_market_movement_7d_tolerance_days: int
+    card_market_movement_30d_tolerance_days: int
+    card_market_movement_max_gap_7d_days: int
+    card_market_movement_max_gap_30d_days: int
 
 
 def get_settings() -> Settings:
@@ -74,4 +78,8 @@ def get_settings() -> Settings:
         card_market_cards_per_player_limit=int(os.getenv("CARD_MARKET_CARDS_PER_PLAYER_LIMIT", "4")),
         card_market_scan_limit=int(os.getenv("CARD_MARKET_SCAN_LIMIT", "120")),
         ebay_results_per_query_limit=int(os.getenv("EBAY_RESULTS_PER_QUERY_LIMIT", "25")),
+        card_market_movement_7d_tolerance_days=int(os.getenv("CARD_MARKET_MOVEMENT_7D_TOLERANCE_DAYS", "3")),
+        card_market_movement_30d_tolerance_days=int(os.getenv("CARD_MARKET_MOVEMENT_30D_TOLERANCE_DAYS", "7")),
+        card_market_movement_max_gap_7d_days=int(os.getenv("CARD_MARKET_MOVEMENT_MAX_GAP_7D_DAYS", "10")),
+        card_market_movement_max_gap_30d_days=int(os.getenv("CARD_MARKET_MOVEMENT_MAX_GAP_30D_DAYS", "14")),
     )

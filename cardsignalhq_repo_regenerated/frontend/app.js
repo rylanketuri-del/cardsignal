@@ -17,7 +17,7 @@ let piActiveTab = "overview";
 let piModalEntry = null;
 let piModalIntel = null;
 let piModalKeydownHandler = null;
-let piCardMarketState = { status: "idle", data: null, error: null, playerKey: null };
+let piCardMarketState = { status: "idle", data: null, movement: null, activity: null, error: null, playerKey: null };
 const PI_TABS = [
   { id: "overview", label: "Overview" },
   { id: "cards", label: "Cards" },
@@ -864,12 +864,22 @@ function renderPiMarketCardRow(item) {
         </div>
         <div class="pi-card-row-foot">
           <span class="pi-card-row-snapshot-note">Active listing snapshot</span>
-          <span class="pi-card-row-move metric-flat">${item.movement}</span>
+          <span class="pi-card-row-move ${movementClass(item.movement)}">${item.movement}</span>
+        </div>
+        <div class="pi-card-row-foot pi-card-row-foot--movement">
+          <span class="pi-card-row-movement-label">${item.movementLabel || "7-day active listing movement"}</span>
+          ${item.movementAbs && item.movementAbs !== "—" ? `<span class="pi-card-row-movement-abs">${item.movementAbs}</span>` : ""}
         </div>
         <div class="pi-card-row-foot pi-card-row-foot--meta">
           ${qualityBadge}
+          ${item.movementQuality && item.movementQuality !== "INSUFFICIENT"
+            ? `<span class="cm-quality-badge cm-quality--${String(item.movementQuality).toLowerCase()}">Movement ${item.movementQuality}</span>`
+            : ""}
           <span class="pi-card-row-captured">${item.capturedLabel}</span>
         </div>
+        ${item.comparisonCapturedLabel && item.comparisonCapturedLabel !== "—"
+          ? `<p class="pi-card-row-comparison">Compared to ${item.comparisonCapturedLabel}</p>`
+          : ""}
         ${item.betaNote ? `<p class="pi-card-row-beta-note">Requires price-history confirmation</p>` : ""}
       </div>
     </div>
@@ -1024,7 +1034,7 @@ function renderPiCardsTab(entry, intel, marketState = piCardMarketState) {
     `;
   }
 
-  const sections = CardMarketUI.buildCardSections(marketState.data.cards || []);
+  const sections = CardMarketUI.buildCardSections(marketState.data.cards || [], marketState.movement);
 
   return `
     <div class="pi-tab-panel pi-tab-panel--cards" data-tab-panel="cards">
@@ -1351,7 +1361,7 @@ function refreshPiModalMarketTabs() {
 async function loadPiCardMarket(entry, { force = false } = {}) {
   const playerKey = CardMarketUI.getCacheKey(entry);
   if (!entry?.player_id) {
-    piCardMarketState = { status: "empty", data: null, error: null, playerKey };
+    piCardMarketState = { status: "empty", data: null, movement: null, activity: null, error: null, playerKey };
     refreshPiModalMarketTabs();
     return;
   }
@@ -1360,17 +1370,22 @@ async function loadPiCardMarket(entry, { force = false } = {}) {
     return;
   }
 
-  piCardMarketState = { status: "loading", data: null, error: null, playerKey };
+  piCardMarketState = { status: "loading", data: null, movement: null, activity: null, error: null, playerKey };
   refreshPiModalMarketTabs();
 
-  const result = await CardMarketUI.fetchPlayerCardMarket(entry.player_id, { force });
+  const result = await CardMarketUI.fetchPlayerCardMarketBundle(entry.player_id, { force });
   piCardMarketState = {
     status: result.status,
     data: result.data || null,
+    movement: result.movement || null,
+    activity: result.activity || null,
     error: result.error || null,
     playerKey,
   };
   refreshPiModalMarketTabs();
+  if (entry.player_id) {
+    renderMarketActivity(entry);
+  }
 }
 
 function updatePiModalTabState() {
@@ -1435,7 +1450,7 @@ function closePlayerIntelligenceModal() {
   piActiveTab = "overview";
   piModalEntry = null;
   piModalIntel = null;
-  piCardMarketState = { status: "idle", data: null, error: null, playerKey: null };
+  piCardMarketState = { status: "idle", data: null, movement: null, activity: null, error: null, playerKey: null };
 }
 
 async function openPlayerIntelligenceModal(entry) {
@@ -1455,7 +1470,7 @@ async function openPlayerIntelligenceModal(entry) {
     piModalEntry = player;
     piModalIntel = intel;
     piActiveTab = "overview";
-    piCardMarketState = { status: "idle", data: null, error: null, playerKey: null };
+    piCardMarketState = { status: "idle", data: null, movement: null, activity: null, error: null, playerKey: null };
 
     header.innerHTML = renderPiModalHeader(player, intel);
     tabs.innerHTML = renderPiModalTabs(piActiveTab);
@@ -1473,6 +1488,7 @@ async function openPlayerIntelligenceModal(entry) {
     });
 
     loadPiCardMarket(player);
+    renderMarketActivity(player);
 
     if (player.player_id) {
       await renderScoreHistory(player.player_id);
@@ -1661,7 +1677,9 @@ async function renderScoreHistory(playerId) {
 
   try {
     const payload = await fetchPlayerHistory(playerId);
-    const items = payload.items || [];
+    const items = (payload.items || []).slice().sort(
+      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    );
 
     destroyChart(scoreChart);
 
@@ -1724,7 +1742,110 @@ async function renderScoreHistory(playerId) {
   }
 }
 
-async function renderLeaderboardHistory() {
+async function renderMarketActivity(entry = selectedPlayer) {
+  const canvas = document.getElementById("leaderboard-history-chart");
+  if (!canvas) return;
+
+  try {
+    destroyChart(leaderboardHistoryChart);
+
+    if (!entry?.player_id) {
+      await renderLeaderboardHistoryFallback();
+      return;
+    }
+
+    const cached = piCardMarketState.activity;
+    let activity = cached;
+    if (!activity || String(piCardMarketState.playerKey) !== String(entry.player_id)) {
+      const result = await CardMarketUI.fetchPlayerCardMarketActivity(entry.player_id);
+      activity = result.status === "success" ? result.data : null;
+    }
+
+    const points = activity?.points || [];
+    if (points.length < 2) {
+      showChartPlaceholder("leaderboard-history-chart", "leaderboard-history-placeholder", true);
+      const placeholder = document.getElementById("leaderboard-history-placeholder");
+      if (placeholder) {
+        placeholder.textContent = points.length
+          ? "More stored card-market history is needed to chart activity for this player."
+          : "Market activity will appear after additional card-market snapshots are captured.";
+      }
+      return;
+    }
+
+    showChartPlaceholder("leaderboard-history-chart", "leaderboard-history-placeholder", false);
+
+    leaderboardHistoryChart = new Chart(canvas, {
+      type: "line",
+      data: {
+        labels: points.map((point) =>
+          new Date(point.captured_at).toLocaleDateString(undefined, {
+            month: "short",
+            day: "numeric",
+          })
+        ),
+        datasets: [
+          {
+            label: "Median Active Price",
+            data: points.map((point) => Number(point.median_active_price || 0)),
+            borderColor: "#BB8455",
+            backgroundColor: "rgba(187, 132, 85, 0.10)",
+            borderWidth: 2.5,
+            tension: 0.35,
+            fill: true,
+            yAxisID: "y",
+            pointRadius: 3,
+          },
+          {
+            label: "Active Listings",
+            data: points.map((point) => Number(point.active_listing_count || 0)),
+            borderColor: "#8A6747",
+            backgroundColor: "rgba(138, 103, 71, 0.08)",
+            borderWidth: 2,
+            tension: 0.35,
+            fill: false,
+            yAxisID: "y1",
+            pointRadius: 2,
+          },
+          {
+            label: "Bid Activity",
+            data: points.map((point) => Number(point.total_bid_count || 0)),
+            borderColor: "#708A72",
+            backgroundColor: "rgba(112, 138, 114, 0.08)",
+            borderWidth: 2,
+            tension: 0.35,
+            fill: false,
+            yAxisID: "y1",
+            pointRadius: 2,
+          },
+        ],
+      },
+      options: {
+        ...getChartOptions("Market Activity"),
+        scales: {
+          x: getChartOptions("Market Activity").scales.x,
+          y: {
+            ...getChartOptions("Market Activity").scales.y,
+            position: "left",
+            title: { display: true, text: "Median Active Price (USD)" },
+          },
+          y1: {
+            beginAtZero: true,
+            position: "right",
+            grid: { drawOnChartArea: false },
+            ticks: { color: "#7D7873" },
+            title: { display: true, text: "Listings / Bids" },
+          },
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Market activity chart error:", error);
+    showChartPlaceholder("leaderboard-history-chart", "leaderboard-history-placeholder", true);
+  }
+}
+
+async function renderLeaderboardHistoryFallback() {
   const canvas = document.getElementById("leaderboard-history-chart");
   if (!canvas) return;
 
@@ -2654,7 +2775,12 @@ async function init() {
     } else {
       leaderboardRoot.innerHTML = `<div class="detail-empty">Leaderboard unavailable.</div>`;
     }
-    await renderLeaderboardHistory();
+    if (entries.length) {
+      selectedPlayer = entries[0];
+      await renderMarketActivity(entries[0]);
+    } else {
+      await renderLeaderboardHistoryFallback();
+    }
 
     status.textContent = `Loaded ${entries.length} players from ${payload.data_source || 'api'}`;
 

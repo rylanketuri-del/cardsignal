@@ -14,6 +14,7 @@ from cardchase_ai.clients.ebay import EbayClient
 from cardchase_ai.clients.mlb import MLBClient
 from cardchase_ai.config import Settings, get_settings
 from cardchase_ai.identity import enrich_player_entry
+from cardchase_ai.market.history import append_local_card_market_history
 from cardchase_ai.market.queries import build_card_search_query
 from cardchase_ai.market.snapshot import build_card_market_snapshot
 from cardchase_ai.models.schemas import CardMarketSnapshot
@@ -37,6 +38,7 @@ def _write_local_snapshots(snapshots: list[dict[str, Any]], output_dir: Path) ->
 
     latest_path = output_dir / "latest_card_market_snapshots.json"
     latest_path.write_text(json.dumps(snapshots, indent=2), encoding="utf-8")
+    append_local_card_market_history(snapshots, output_dir)
     return file_path
 
 

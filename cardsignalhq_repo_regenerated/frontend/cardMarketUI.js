@@ -6,6 +6,8 @@
   "use strict";
 
   const cache = new Map();
+  const movementCache = new Map();
+  const activityCache = new Map();
   const inflight = new Map();
 
   const QUALITY_META = {
@@ -83,10 +85,75 @@
     return bits.join(" · ") || "Active listing snapshot";
   }
 
-  function enrichCardRow(card = {}) {
+  const MOVEMENT_QUALITY_RANK = {
+    HIGH: 4,
+    MEDIUM: 3,
+    LOW: 2,
+    INSUFFICIENT: 0,
+  };
+
+  function formatMovementPercent(value) {
+    if (value === null || value === undefined || Number.isNaN(Number(value))) {
+      return "Movement pending";
+    }
+    const n = Number(value);
+    const sign = n > 0 ? "+" : "";
+    return `${sign}${n.toFixed(1)}%`;
+  }
+
+  function formatMovementMoney(value, currency = "USD") {
+    if (value === null || value === undefined || Number.isNaN(Number(value))) {
+      return "—";
+    }
+    const n = Number(value);
+    const sign = n > 0 ? "+" : n < 0 ? "−" : "";
+    return `${sign}${formatMoney(Math.abs(n), currency)}`;
+  }
+
+  function movementByCardId(movementPayload = {}) {
+    const map = new Map();
+    for (const card of movementPayload.cards || []) {
+      if (card?.cs_card_id) {
+        map.set(card.cs_card_id, card.movement || null);
+      }
+    }
+    return map;
+  }
+
+  function applyMovementToRow(row, movement) {
+    if (!movement || !movement.has_movement) {
+      return {
+        ...row,
+        movement: "Movement pending",
+        movementLabel: "Movement pending",
+        movementPct: null,
+        movementAbs: null,
+        movementQuality: "INSUFFICIENT",
+        comparisonCapturedLabel: "—",
+        movementWindowLabel: "7-day active listing movement",
+      };
+    }
+
+    const currency = row.currency || "USD";
+    return {
+      ...row,
+      movement: formatMovementPercent(movement.median_price_change_pct),
+      movementLabel: "7-day active listing movement",
+      movementPct: movement.median_price_change_pct,
+      movementAbs: formatMovementMoney(movement.median_price_change, currency),
+      movementQuality: movement.movement_quality || "INSUFFICIENT",
+      comparisonCapturedLabel: movement.comparison_captured_at
+        ? formatCapturedAt(movement.comparison_captured_at)
+        : "—",
+      movementWindowLabel: "7-day active listing movement",
+      movementDetail: movement,
+    };
+  }
+
+  function enrichCardRow(card = {}, movement = null) {
     const snap = card.market_snapshot || null;
     const currency = snap?.currency || "USD";
-    return {
+    const baseRow = {
       ...card,
       name: cardDisplayName(card),
       subtitle: cardSubtitle(card),
@@ -104,24 +171,62 @@
       chaseScore: snap
         ? (snap.listings_with_bids || 0) * 3 + (snap.total_bid_count || 0)
         : 0,
+      cs_card_id: card.cs_card_id,
+      currency,
     };
+    return applyMovementToRow(baseRow, movement);
+  }
+
+  function buildBuyLowInputs(card = {}, movement = null, performanceMovement = null) {
+    return {
+      cs_card_id: card.cs_card_id,
+      currentPriceMovement: movement?.median_price_change_pct ?? null,
+      listingSupplyMovement: movement?.listing_count_change_pct ?? null,
+      bidActivityMovement: movement?.bid_count_change_pct ?? null,
+      playerPerformanceMovement: performanceMovement ?? null,
+      movementQuality: movement?.movement_quality || "INSUFFICIENT",
+    };
+  }
+
+  function rankBiggestMovers(rows, movementMap) {
+    return [...rows]
+      .map((row) => applyMovementToRow(row, movementMap.get(row.cs_card_id)))
+      .filter((row) => row.movementDetail?.has_movement)
+      .sort((a, b) => {
+        const qualityDelta =
+          (MOVEMENT_QUALITY_RANK[b.movementQuality] || 0) -
+          (MOVEMENT_QUALITY_RANK[a.movementQuality] || 0);
+        if (qualityDelta !== 0) return qualityDelta;
+        const sampleDelta =
+          (b.movementDetail?.sample_size_current || 0) -
+          (a.movementDetail?.sample_size_current || 0);
+        if (sampleDelta !== 0) return sampleDelta;
+        return Math.abs(b.movementPct || 0) - Math.abs(a.movementPct || 0);
+      })
+      .slice(0, 3);
   }
 
   function sortCards(cards, compareFn) {
     return [...cards].sort(compareFn).slice(0, 3);
   }
 
-  function buildCardSections(cards = []) {
-    const rows = cards.map(enrichCardRow);
+  function buildCardSections(cards = [], movementPayload = null) {
+    const movementMap = movementByCardId(movementPayload);
+    const rows = cards.map((card) => enrichCardRow(card, movementMap.get(card.cs_card_id)));
     const withSnapshots = rows.filter((row) => row.hasSnapshot);
 
     const trending = sortCards(withSnapshots.length ? withSnapshots : rows, (a, b) => b.activityScore - a.activityScore);
     const mostChased = sortCards(withSnapshots.length ? withSnapshots : rows, (a, b) => b.chaseScore - a.chaseScore);
-    const biggestMovers = sortCards(rows, (a, b) => (b.hasSnapshot ? 1 : 0) - (a.hasSnapshot ? 1 : 0));
+    const rankedMovers = rankBiggestMovers(rows, movementMap);
+    const biggestMovers = rankedMovers.length
+      ? rankedMovers
+      : rows.slice(0, 3).map((row) => ({ ...row, movement: "Movement pending", movementLabel: "Movement pending" }));
     const buyLow = sortCards(rows, (a, b) => (a.hasSnapshot ? 1 : 0) - (b.hasSnapshot ? 1 : 0)).map((row) => ({
-      ...row,
+      ...applyMovementToRow(row, movementMap.get(row.cs_card_id)),
       movement: "Requires price-history confirmation",
+      movementLabel: "Requires price-history confirmation",
       betaNote: true,
+      buyLowInputs: buildBuyLowInputs(row, movementMap.get(row.cs_card_id)),
     }));
 
     return {
@@ -184,6 +289,70 @@
     return Boolean(payload?.aggregate?.cards_observed || payload?.cards?.some((card) => card.market_snapshot));
   }
 
+  async function fetchPlayerCardMarketMovement(playerId, window = "7d", { force = false } = {}) {
+    const key = `${playerId}:${window}`;
+    if (!force && movementCache.has(key)) {
+      return { status: "success", data: movementCache.get(key) };
+    }
+
+    try {
+      const apiBase = (global.APP_CONFIG && global.APP_CONFIG.API_BASE_URL) || "https://cardsignal-api.onrender.com";
+      const response = await fetch(
+        `${apiBase}/api/players/${encodeURIComponent(playerId)}/cards/market/movement?window=${encodeURIComponent(window)}`
+      );
+      if (!response.ok) {
+        throw new Error(`Movement request failed (${response.status})`);
+      }
+      const data = await response.json();
+      movementCache.set(key, data);
+      return { status: "success", data };
+    } catch (error) {
+      return { status: "error", error: error.message || "Movement data is temporarily unavailable." };
+    }
+  }
+
+  async function fetchPlayerCardMarketActivity(playerId, { force = false } = {}) {
+    const key = String(playerId);
+    if (!force && activityCache.has(key)) {
+      return { status: "success", data: activityCache.get(key) };
+    }
+
+    try {
+      const apiBase = (global.APP_CONFIG && global.APP_CONFIG.API_BASE_URL) || "https://cardsignal-api.onrender.com";
+      const response = await fetch(
+        `${apiBase}/api/players/${encodeURIComponent(playerId)}/cards/market/activity?limit=12`
+      );
+      if (!response.ok) {
+        throw new Error(`Market activity request failed (${response.status})`);
+      }
+      const data = await response.json();
+      activityCache.set(key, data);
+      return { status: "success", data };
+    } catch (error) {
+      return { status: "error", error: error.message || "Market activity is temporarily unavailable." };
+    }
+  }
+
+  async function fetchPlayerCardMarketBundle(playerId, { force = false } = {}) {
+    const [latest, movement, activity] = await Promise.all([
+      fetchPlayerCardMarket(playerId, { force }),
+      fetchPlayerCardMarketMovement(playerId, "7d", { force }),
+      fetchPlayerCardMarketActivity(playerId, { force }),
+    ]);
+
+    if (latest.status === "error") {
+      return latest;
+    }
+
+    return {
+      status: latest.status,
+      data: latest.data,
+      movement: movement.status === "success" ? movement.data : null,
+      activity: activity.status === "success" ? activity.data : null,
+      error: latest.error || null,
+    };
+  }
+
   async function fetchPlayerCardMarket(playerId, { force = false } = {}) {
     const key = String(playerId);
     if (!force && cache.has(key)) {
@@ -216,6 +385,12 @@
 
   function clearCacheForPlayer(playerId) {
     cache.delete(String(playerId));
+    activityCache.delete(String(playerId));
+    for (const key of movementCache.keys()) {
+      if (key.startsWith(`${playerId}:`)) {
+        movementCache.delete(key);
+      }
+    }
   }
 
   function buildRegistryFallbackSections(entry = {}) {
@@ -249,17 +424,25 @@
     getCacheKey,
     formatMoney,
     formatCapturedAt,
+    formatMovementPercent,
+    formatMovementMoney,
     qualityMeta,
     depthMeta,
     renderQualityBadge,
     renderDepthBadge,
     buildCardSections,
     buildMarketView,
+    buildBuyLowInputs,
     hasSnapshots,
     fetchPlayerCardMarket,
+    fetchPlayerCardMarketMovement,
+    fetchPlayerCardMarketActivity,
+    fetchPlayerCardMarketBundle,
     clearCacheForPlayer,
     enrichCardRow,
     cardDisplayName,
     buildRegistryFallbackSections,
+    applyMovementToRow,
+    movementByCardId,
   };
 })(typeof window !== "undefined" ? window : globalThis);

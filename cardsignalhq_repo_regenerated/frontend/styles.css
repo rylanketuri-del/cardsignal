@@ -5291,6 +5291,31 @@ body.pi-modal-open {
   grid-column: span 1;
 }
 
+.pi-card-row-comparison {
+  margin: 6px 0 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.pi-card-row-foot--movement {
+  margin-top: 4px;
+}
+
+.pi-card-row-movement-label {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--bronze);
+}
+
+.pi-card-row-movement-abs {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text);
+}
+
 .pi-signals-intro {
   display: grid;
   gap: 6px;

@@ -84,12 +84,22 @@ Placeholder intelligence (forecast reasons and homepage card intelligence rows) 
 CardSignal player modal **Cards** and **Market** tabs surface stored `CardMarketSnapshot` observations when available.
 
 - **Active listings are not sold comps** — median and average values describe current eBay asking prices; they must never be labeled as sold price, market value, confirmed value, or comp.
-- **No fake movement values** — price movement displays `Movement pending` until Sprint 8.5 historical comparisons exist.
+- **No fake movement values** — price movement is calculated from stored snapshot history when available; otherwise the UI shows `Movement pending`.
 - **Data-quality labels are required** — every snapshot row and aggregate summary shows `HIGH`, `MEDIUM`, `LOW`, or `INSUFFICIENT` with readable descriptions.
 - **Timestamps must be visible** — each card row and market summary shows when the snapshot was captured in the user's local time.
 - **Recommendations require multiple supporting signal types** — BUY/HOLD/SELL and forecast language must not be derived from active listing asking prices alone.
 
 When snapshots are unavailable, the UI preserves the card registry and shows `Snapshot pending`, `Movement pending`, and `Not enough data` — never invented prices or percentages.
+
+## Historical Market Intelligence Principles
+
+CardSignal historical card-market movement compares **append-only active listing snapshots** using each observation's `captured_at` timestamp.
+
+- **Snapshots are append-only** — new pipeline runs add observations; prior card-market history is never overwritten.
+- **Active listing movement is not sold-price appreciation** — median and average movement describe asking-price shifts between stored listing snapshots.
+- **Comparisons require visible quality labels** — every movement result includes `movement_quality` (`HIGH`, `MEDIUM`, `LOW`, `INSUFFICIENT`) derived from sample size, data quality, and comparison-window fit.
+- **Missing history must never be fabricated** — when no valid prior snapshot exists for a comparison window, movement fields remain null and the UI shows `Movement pending`.
+- **Weekly snapshots are the beta baseline** — 7-day and 30-day windows use the nearest valid snapshot at or before the target date, with configurable tolerance for sparse beta capture schedules.
 
 ## Release Principles
 

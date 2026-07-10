@@ -541,3 +541,35 @@ class SupabaseStorage:
             if card_id and card_id not in latest_by_card:
                 latest_by_card[card_id] = row
         return list(latest_by_card.values())
+
+    def fetch_card_market_snapshot_history(self, cs_card_id: str, *, limit: int = 12) -> list[dict[str, Any]]:
+        fetch_limit = max(limit, 12)
+        rows = self._get(
+            "card_market_snapshots",
+            {
+                "select": "id,created_at,cs_card_id,cs_player_id,captured_at,source,query,algorithm_version,metrics",
+                "cs_card_id": f"eq.{cs_card_id}",
+                "order": "captured_at.desc",
+                "limit": str(min(max(fetch_limit, 1), 120)),
+            },
+        )
+        if not rows:
+            return []
+        return list(reversed(rows))
+
+    def fetch_card_market_snapshots_for_player_history(
+        self,
+        cs_player_id: str,
+        *,
+        limit: int = 500,
+    ) -> list[dict[str, Any]]:
+        rows = self._get(
+            "card_market_snapshots",
+            {
+                "select": "id,created_at,cs_card_id,cs_player_id,captured_at,source,query,algorithm_version,metrics",
+                "cs_player_id": f"eq.{cs_player_id}",
+                "order": "captured_at.asc",
+                "limit": str(max(1, min(limit, 1000))),
+            },
+        )
+        return rows

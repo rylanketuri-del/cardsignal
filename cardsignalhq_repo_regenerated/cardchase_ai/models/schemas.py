@@ -135,3 +135,32 @@ class CardMarketSnapshot(BaseModel):
     sample_size: int = 0
     data_quality: str = "INSUFFICIENT"
     algorithm_version: str
+
+
+class CardMarketMovement(BaseModel):
+    """Historical active-listing movement between two stored snapshots."""
+
+    cs_card_id: str
+    cs_player_id: str
+    current_captured_at: datetime
+    comparison_captured_at: datetime | None = None
+    comparison_window: str
+    current_median_price: float | None = None
+    previous_median_price: float | None = None
+    median_price_change: float | None = None
+    median_price_change_pct: float | None = None
+    current_average_price: float | None = None
+    previous_average_price: float | None = None
+    average_price_change: float | None = None
+    average_price_change_pct: float | None = None
+    listing_count_change: int | None = None
+    listing_count_change_pct: float | None = None
+    bid_count_change: int | None = None
+    bid_count_change_pct: float | None = None
+    auction_count_change: int | None = None
+    sample_size_current: int = 0
+    sample_size_previous: int = 0
+    current_data_quality: str = "INSUFFICIENT"
+    previous_data_quality: str = "INSUFFICIENT"
+    movement_quality: str = "INSUFFICIENT"
+    algorithm_version: str
