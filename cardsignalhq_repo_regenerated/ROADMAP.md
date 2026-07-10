@@ -35,12 +35,24 @@
   - [x] **Signals** — performance, market, collector demand, momentum explanations
   - [x] **Forecast** — recommendation, conviction, horizon, risk, summary, bullet reasons
 
+### Player Card Registry (Sprint 8.x)
+
+- **Release v0.9.0** — Player Card Registry (Sprint 8.1):
+  - [x] Per-player card registry with realistic MLB product entries
+  - [x] Reusable pricing enrichment helpers for future eBay/PSA integration
+  - [x] Cards tab displays year, set, parallel, estimated price, movement, CardSignal mini-score
+  - [x] Homepage intelligence rows use real card product names
+
 ## Current Milestone
 
 ### Sprint 8 — Real Card Intelligence
 
+- **Sprint 8.1** — Player Card Registry (Release v0.9.0):
+  - [x] Per-player card registry with realistic product entries (set, card, parallel, grade)
+  - [x] Reusable helpers for future eBay/PSA pricing enrichment
+  - [x] Cards tab and homepage intelligence rows show real card names
+  - [x] Year, set, parallel, estimated price, 7-day movement, CardSignal mini-score on card rows
 - Wire Market tab to live pricing snapshots
-- Replace placeholder card rows with player-linked listing data
 - Populate Signal Timeline and Market Activity from live runs
 - Backend card-market endpoints for player-specific intelligence
 
