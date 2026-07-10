@@ -1115,10 +1115,19 @@ function hasPerformanceStats(stats) {
   return stats && Number(stats.games) > 0;
 }
 
-function renderSnapshotStat(label, value) {
+function srMetricFormatters() {
+  return {
+    money: (value) => csIntelFormatMoney(value),
+    percent: (value) => csIntelFormatPercent(value),
+    score: (value) => formatScore(value),
+  };
+}
+
+function renderSnapshotStat(label, value, { title = "" } = {}) {
+  const titleAttr = title ? ` title="${title}"` : "";
   return `
     <div class="sr-snapshot-stat">
-      <span class="sr-snapshot-stat-value">${value}</span>
+      <span class="sr-snapshot-stat-value"${titleAttr}>${value}</span>
       <span class="sr-snapshot-stat-label">${label}</span>
     </div>`;
 }
@@ -1128,37 +1137,25 @@ function renderPlayerSnapshot(intel) {
   const stats30d = intel.stats30d;
   const has7d = hasPerformanceStats(stats7d);
   const hasSeason = hasPerformanceStats(stats30d);
-
-  const kRate7d = has7d && stats7d.at_bats > 0
-    ? formatStatValue((stats7d.strikeouts / stats7d.at_bats) * 100, { decimals: 1, suffix: "%" })
-    : "—";
+  const formatters = srMetricFormatters();
 
   const last7Body = has7d
     ? `
       <div class="sr-snapshot-grid">
-        ${renderSnapshotStat("AVG", formatStatValue(stats7d.avg, { decimals: 3 }))}
-        ${renderSnapshotStat("HR", formatStatCount(stats7d.home_runs))}
-        ${renderSnapshotStat("RBI", formatStatCount(stats7d.rbi))}
-        ${renderSnapshotStat("OPS", formatStatValue(stats7d.ops, { decimals: 3 }))}
-        ${renderSnapshotStat("Hits", formatStatCount(stats7d.hits))}
-        ${renderSnapshotStat("Runs", "—")}
-        ${renderSnapshotStat("SB", formatStatCount(stats7d.stolen_bases))}
-        ${renderSnapshotStat("BB", formatStatCount(stats7d.walks))}
-        ${renderSnapshotStat("K Rate", kRate7d)}
+        ${SRMetrics.SR_PLAYER_STAT_SPECS.last7d.map((spec) => {
+    const stat = SRMetrics.srFormatPlayerStat(spec, stats7d, formatters);
+    return renderSnapshotStat(stat.label, stat.display, { title: stat.title });
+  }).join("")}
       </div>`
     : `<p class="sr-pending">Performance data pending.</p>`;
 
   const seasonBody = hasSeason
     ? `
       <div class="sr-snapshot-grid">
-        ${renderSnapshotStat("AVG", formatStatValue(stats30d.avg, { decimals: 3 }))}
-        ${renderSnapshotStat("HR", formatStatCount(stats30d.home_runs))}
-        ${renderSnapshotStat("RBI", formatStatCount(stats30d.rbi))}
-        ${renderSnapshotStat("OPS", formatStatValue(stats30d.ops, { decimals: 3 }))}
-        ${renderSnapshotStat("WAR", "—")}
-        ${renderSnapshotStat("Games", formatStatCount(stats30d.games))}
-        ${renderSnapshotStat("OBP", formatStatValue(stats30d.obp, { decimals: 3 }))}
-        ${renderSnapshotStat("SLG", formatStatValue(stats30d.slg, { decimals: 3 }))}
+        ${SRMetrics.SR_PLAYER_STAT_SPECS.season.map((spec) => {
+    const stat = SRMetrics.srFormatPlayerStat(spec, stats30d, formatters);
+    return renderSnapshotStat(stat.label, stat.display, { title: stat.title });
+  }).join("")}
       </div>`
     : `<p class="sr-pending">Performance data pending.</p>`;
 
@@ -1330,16 +1327,17 @@ function resolveStoredCardRecommendation(card = {}) {
 function renderReportCardPanel(card) {
   const evidence = card.evidence || {};
   const tags = evidence.tags || {};
-  const psaPop = tags.psa10_count != null ? formatStatCount(tags.psa10_count) : null;
+  const psaPop = tags.psa10_count != null ? formatStatCount(tags.psa10_count, "PSA population pending.") : "PSA population pending.";
   const identityHtml = formatCardIdentityHtml(card);
   const rec = resolveStoredCardRecommendation(card);
   const recClass = csIntelRecommendationClass(rec.toLowerCase());
-  const medianPrice = csIntelSafeToNumber(evidence.median_price ?? evidence.median_active_price);
-  const avgPrice = csIntelSafeToNumber(evidence.avg_price);
-  const activePrice = medianPrice != null ? csIntelFormatMoney(medianPrice)
-    : avgPrice != null ? csIntelFormatMoney(avgPrice) : null;
-  const priceLabel = medianPrice != null ? "Median Active Price" : "Average Active Price";
-  const movement = csIntelSafeToNumber(card.momentum_score ?? card.price_change_pct);
+  const metrics = SRMetrics.srBuildCardMetrics(card, srMetricFormatters());
+
+  const metricRow = (metric) => `
+    <div class="sr-card-metric">
+      <span class="sr-card-metric-label">${metric.label}</span>
+      <span class="sr-card-metric-value${metric.pending ? " sr-pending--inline" : ""}">${metric.display}</span>
+    </div>`;
 
   return `
     <article class="sr-card-panel" data-cs-card-id="${card.cs_card_id || ""}">
@@ -1347,25 +1345,18 @@ function renderReportCardPanel(card) {
         ${identityHtml || `<p class="sr-pending">Card registry data is still being linked.</p>`}
       </div>
       <div class="sr-card-metrics">
-        <div class="sr-card-metric">
-          <span class="sr-card-metric-label">${priceLabel}</span>
-          <span class="sr-card-metric-value">${activePrice || "Movement pending."}</span>
-        </div>
-        <div class="sr-card-metric">
-          <span class="sr-card-metric-label">7-Day Movement</span>
-          <span class="sr-card-metric-value">${movement != null ? csIntelFormatPercent(movement) : "Movement pending."}</span>
-        </div>
-        <div class="sr-card-metric">
-          <span class="sr-card-metric-label">Active Listings</span>
-          <span class="sr-card-metric-value">${evidence.listings_count != null ? formatStatCount(evidence.listings_count) : "—"}</span>
-        </div>
+        ${metricRow(metrics.medianActivePrice)}
+        ${metricRow(metrics.averageActivePrice)}
+        ${metricRow(metrics.priceMovement7d)}
+        ${!metrics.momentumScore.pending ? metricRow(metrics.momentumScore) : ""}
+        ${metricRow(metrics.activeListings)}
         <div class="sr-card-metric">
           <span class="sr-card-metric-label">PSA Population</span>
-          <span class="sr-card-metric-value">${psaPop != null ? psaPop : "PSA population pending."}</span>
+          <span class="sr-card-metric-value">${psaPop}</span>
         </div>
         <div class="sr-card-metric">
           <span class="sr-card-metric-label">CardSignal Score</span>
-          <span class="sr-card-metric-value">${card.card_signal_score != null ? formatScore(card.card_signal_score) : card.score != null ? formatScore(card.score) : "—"}</span>
+          <span class="sr-card-metric-value">${card.card_signal_score != null ? formatScore(card.card_signal_score) : card.score != null ? formatScore(card.score) : "Pending"}</span>
         </div>
         <div class="sr-card-metric">
           <span class="sr-card-metric-label">Recommendation</span>
@@ -1394,46 +1385,14 @@ function renderReportCards(cards = []) {
     </section>`;
 }
 
-function aggregateMarketData(entry, intel) {
-  const snapshots = Object.values(intel.marketSnapshots || {});
-  if (!snapshots.length) return null;
-
-  const prices = snapshots.map((s) => s.avg_price).filter((p) => p != null && p > 0);
-  const listings = snapshots.reduce((sum, s) => sum + (s.listings_count || 0), 0);
-  const psa10 = snapshots.reduce((sum, s) => sum + (s.tags?.psa10_count || 0), 0);
-
-  const avgPrice = prices.length ? prices.reduce((a, b) => a + b, 0) / prices.length : null;
-  const sorted = [...prices].sort((a, b) => a - b);
-  const medianPrice = sorted.length
-    ? sorted.length % 2 === 1
-      ? sorted[(sorted.length - 1) / 2]
-      : (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2
-    : null;
-
-  return { avgPrice, medianPrice, listings, psa10, snapshotCount: snapshots.length };
-}
-
-function buildMarketSummary(market) {
-  if (!market) return "Market history still building.";
-  const parts = [];
-  if (market.listings > 0) {
-    parts.push(`${market.listings} active listings captured across ${market.snapshotCount} stored market snapshot${market.snapshotCount === 1 ? "" : "s"}`);
-  }
-  if (market.medianPrice != null) {
-    parts.push(`median active price at ${csIntelFormatMoney(market.medianPrice)}`);
-  }
-  if (market.psa10 > 0) {
-    parts.push(`${market.psa10} PSA 10 listing${market.psa10 === 1 ? "" : "s"} visible in stored snapshots`);
-  }
-  return parts.length ? `${parts.join("; ")}.` : "Market history still building.";
-}
-
-function renderReportMarket(entry, intel) {
-  const market = aggregateMarketData(entry, intel);
+function renderReportMarket(entry, intel, weeklySnap = null) {
+  const metrics = SRMetrics.srBuildMarketMetrics(intel, weeklySnap, srMetricFormatters());
   const missing = intel.missingInputs || [];
   const dataQuality = missing.length === 0 ? "Complete" : missing.length <= 2 ? "Partial" : "Building";
+  const hasAnyMarketField = Object.values(metrics).some((metric) => !metric.pending);
+  const summary = SRMetrics.srBuildMarketSummary(metrics);
 
-  if (!market) {
+  if (!hasAnyMarketField) {
     return `
       <section class="sr-section">
         <h3 class="sr-section-title">Market</h3>
@@ -1441,44 +1400,30 @@ function renderReportMarket(entry, intel) {
       </section>`;
   }
 
-  const summary = buildMarketSummary(market);
+  const marketItem = (metric) => `
+    <div class="sr-market-item">
+      <span class="sr-market-label">${metric.label}</span>
+      <span class="sr-market-value${metric.pending ? " sr-pending--inline" : ""}">${metric.display}</span>
+    </div>`;
 
   return `
     <section class="sr-section">
       <h3 class="sr-section-title">Market</h3>
       <p class="sr-section-lead">${summary}</p>
       <div class="sr-market-grid">
-        <div class="sr-market-item">
-          <span class="sr-market-label">Median Active Price</span>
-          <span class="sr-market-value">${market.medianPrice != null ? csIntelFormatMoney(market.medianPrice) : "—"}</span>
-        </div>
-        <div class="sr-market-item">
-          <span class="sr-market-label">Average Active Price</span>
-          <span class="sr-market-value">${market.avgPrice != null ? csIntelFormatMoney(market.avgPrice) : "—"}</span>
-        </div>
-        <div class="sr-market-item">
-          <span class="sr-market-label">Active Listings</span>
-          <span class="sr-market-value">${formatStatCount(market.listings)}</span>
-        </div>
-        <div class="sr-market-item">
-          <span class="sr-market-label">Auction Count</span>
-          <span class="sr-market-value">${formatStatCount(market.snapshotCount)}</span>
-        </div>
-        <div class="sr-market-item">
-          <span class="sr-market-label">Listings With Bids</span>
-          <span class="sr-market-value sr-pending--inline">Pending</span>
-        </div>
-        <div class="sr-market-item">
-          <span class="sr-market-label">Market Depth</span>
-          <span class="sr-market-value">${market.listings >= 25 ? "Deep" : market.listings >= 10 ? "Moderate" : "Thin"}</span>
-        </div>
+        ${marketItem(metrics.medianActivePrice)}
+        ${marketItem(metrics.averageActivePrice)}
+        ${marketItem(metrics.activeListings)}
+        ${marketItem(metrics.auctionCount)}
+        ${marketItem(metrics.listingsWithBids)}
+        ${marketItem(metrics.marketDepth)}
         <div class="sr-market-item">
           <span class="sr-market-label">Data Quality</span>
           <span class="sr-market-value">${dataQuality}</span>
         </div>
         <div class="sr-market-item">
           <span class="sr-market-label">Captured</span>
-          <span class="sr-market-value">${intel.capturedAt ? formatTimestamp(intel.capturedAt) : "—"}</span>
+          <span class="sr-market-value">${intel.capturedAt ? formatTimestamp(intel.capturedAt) : "Pending"}</span>
         </div>
       </div>
     </section>`;
@@ -1681,7 +1626,7 @@ function renderScoutingReport(entry, intel, cards = [], weeklySnap = null) {
       ${renderPlayerSnapshot(intel)}
       ${renderWhyThisSignal(entry, intel, weeklySnap)}
       ${renderReportCards(cards)}
-      ${renderReportMarket(entry, intel)}
+      ${renderReportMarket(entry, intel, weeklySnap)}
       ${renderSignalAnalysis(entry, intel)}
       ${renderOutlook(entry, intel, weeklySnap)}
     </div>`;
