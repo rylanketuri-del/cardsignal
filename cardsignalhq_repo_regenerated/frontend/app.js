@@ -18,6 +18,15 @@ let piModalEntry = null;
 let piModalIntel = null;
 let piModalKeydownHandler = null;
 let weeklyIntelligence = null;
+let activeSportFilter = 'ALL';
+const LEADERBOARD_LIMIT = 30;
+const QUICK_INTEL_LIMIT = 10;
+const SPORT_KEYS = ['MLB', 'NBA', 'NFL'];
+let sportDatasets = {
+  MLB: { entries: [], weekly: null, signal: null },
+  NBA: { entries: [], weekly: null, signal: null },
+  NFL: { entries: [], weekly: null, signal: null },
+};
 const PI_TABS = [
   { id: "overview", label: "Overview" },
   { id: "cards", label: "Cards" },
@@ -190,6 +199,7 @@ function weeklyLeaderToEntry(leader = {}) {
     rank: leader.rank,
     team: leader.team,
     position: leader.position,
+    sport: leader.sport || 'MLB',
     headshot_url: leader.headshot_url,
     team_logo_url: leader.team_logo_url,
     weekly_change: leader.weekly_change,
@@ -216,6 +226,7 @@ function signalOfWeekToEntry(signal = {}) {
     rank: signal.rank,
     team: signal.team,
     position: signal.position,
+    sport: signal.sport || 'MLB',
     headshot_url: signal.headshot_url,
     team_logo_url: signal.team_logo_url,
     hotness: {
@@ -245,15 +256,159 @@ function weeklyCardRowToIntelItem(row = {}) {
   };
 }
 
+const SPORT_COMING_SOON = {
+  NBA: {
+    title: 'NBA Intelligence',
+    subtitle: 'Coming with the 2026–27 season',
+    note: 'The sport framework is ready, but live intelligence is not yet active.',
+  },
+  NFL: {
+    title: 'NFL Intelligence',
+    subtitle: 'Coming with the 2026 season',
+    note: 'The sport framework is ready, but live intelligence is not yet active.',
+  },
+};
+
+function isSportLive(sport) {
+  return sport === 'MLB';
+}
+
+function isComingSoonSport(sport) {
+  return sport === 'NBA' || sport === 'NFL';
+}
+
+function getSportSignalEntry(sport) {
+  if (!isSportLive(sport)) return null;
+  const dataset = sportDatasets[sport];
+  if (!dataset) return null;
+  if (dataset.signal) return dataset.signal;
+  const entries = dataset.entries || [];
+  return getSignalOfWeekTopEntry(entries) || entries[0] || null;
+}
+
+function getMlbLeaderEntries(limit = LEADERBOARD_LIMIT) {
+  return (sportDatasets.MLB.entries || [])
+    .slice(0, limit)
+    .map((entry, index) => ({ ...entry, rank: index + 1, sport: 'MLB' }));
+}
+
+function getFilteredLeaderEntries() {
+  if (isComingSoonSport(activeSportFilter)) return [];
+  return getMlbLeaderEntries();
+}
+
+function getLeaderboardCopy() {
+  if (activeSportFilter === 'ALL') {
+    return {
+      subtitle: 'Current Live Leaders',
+      description: 'MLB intelligence is live. NBA and NFL coverage is coming soon.',
+    };
+  }
+  if (activeSportFilter === 'MLB') {
+    return {
+      subtitle: 'MLB Leaders',
+      description: 'The strongest CardSignal profiles across tracked MLB players this week.',
+    };
+  }
+  return { subtitle: '', description: '' };
+}
+
+function renderSportComingSoonSignalCard(sport) {
+  const copy = SPORT_COMING_SOON[sport];
+  if (!copy) return '';
+
+  return `
+    <article class="sport-signal-card sport-signal-card--coming-soon" data-sport="${sport}">
+      <div class="sport-signal-card-header">
+        <span class="sport-signal-sport-icon">${getSportIcon({ sport })}</span>
+        <span class="sport-signal-sport-label">${sport} Signal</span>
+        <span class="sport-availability-badge sport-availability-badge--soon">Coming Soon</span>
+      </div>
+      <div class="sport-coming-soon-body">
+        <h3 class="sport-coming-soon-title">${copy.title}</h3>
+        <p class="sport-coming-soon-subtitle">${copy.subtitle}</p>
+        <p class="sport-coming-soon-note">${copy.note}</p>
+      </div>
+    </article>`;
+}
+
+function renderSportComingSoonPanel(sport) {
+  const copy = SPORT_COMING_SOON[sport];
+  if (!copy) return '';
+
+  return `
+    <section class="sport-coming-soon-panel" data-sport="${sport}" aria-label="${copy.title}">
+      <div class="sport-coming-soon-panel-icon" aria-hidden="true">${getSportIcon({ sport })}</div>
+      <span class="sport-availability-badge sport-availability-badge--soon">Coming Soon</span>
+      <h3 class="sport-coming-soon-title">${copy.title}</h3>
+      <p class="sport-coming-soon-subtitle">${copy.subtitle}</p>
+      <p class="sport-coming-soon-note">${copy.note}</p>
+    </section>`;
+}
+
+function renderQuickIntelPendingState() {
+  return `
+    <div class="qi-pending-state detail-empty">
+      MLB card intelligence will populate after the next weekly refresh.
+    </div>`;
+}
+
+function getEntryRecommendation(entry = {}) {
+  if (entry.recommendation) return entry.recommendation;
+  const intel = csIntelGetPlaceholders(entry);
+  return csIntelRecommendationFromTier(intel.convictionTier || intel.confidenceTier || 'MEDIUM');
+}
+
+function populateSportDatasets(mlbEntries, mlbWeekly) {
+  const mlbTagged = (mlbEntries || []).map((entry) => ({ ...entry, sport: entry.sport || 'MLB' }));
+  sportDatasets.MLB = {
+    entries: mlbTagged.slice(0, LEADERBOARD_LIMIT),
+    weekly: mlbWeekly,
+    signal: signalOfWeekToEntry(mlbWeekly?.signal_of_the_week) || getSignalOfWeekTopEntry(mlbTagged),
+  };
+
+  sportDatasets.NBA = { entries: [], weekly: null, signal: null };
+  sportDatasets.NFL = { entries: [], weekly: null, signal: null };
+
+  weeklyIntelligence = mlbWeekly;
+  latestEntries = mlbTagged.slice(0, 100);
+}
+
+function setupSportTabs() {
+  const tabs = document.getElementById('sport-tabs');
+  if (!tabs) return;
+
+  tabs.addEventListener('click', (event) => {
+    const button = event.target.closest('.sport-tab');
+    if (!button || button.classList.contains('disabled')) return;
+
+    const sport = button.dataset.sport || 'ALL';
+    activeSportFilter = sport;
+
+    tabs.querySelectorAll('.sport-tab').forEach((tab) => {
+      tab.classList.toggle('active', tab.dataset.sport === sport);
+      tab.classList.remove('active-sport');
+    });
+
+    refreshHomepage();
+  });
+}
+
+function refreshHomepage() {
+  const entries = getFilteredLeaderEntries();
+  renderSignalCenter(entries);
+  renderLeaderboardTable(entries);
+}
+
 function renderWeeklyRefreshNote() {
-  const hero = document.getElementById('signal-center-hero');
-  if (!hero) return;
+  const section = document.getElementById('this-weeks-signals-section');
+  if (!section) return;
   let note = document.getElementById('weekly-refresh-note');
   if (!note) {
     note = document.createElement('p');
     note.id = 'weekly-refresh-note';
     note.className = 'weekly-refresh-note section-desc';
-    hero.appendChild(note);
+    section.querySelector('.section-header')?.appendChild(note);
   }
   const nextRefresh = weeklyIntelligence?.next_refresh;
   const nextLabel = nextRefresh
@@ -265,31 +420,33 @@ function renderWeeklyRefreshNote() {
 }
 
 function buildLeaderboard(entries) {
+  const copy = getLeaderboardCopy();
+  const sportClass = activeSportFilter === 'ALL' ? 'all-sports' : activeSportFilter.toLowerCase();
+
   return `
-    <section class="market-leaders-module sport-section sport-section--mlb" data-sport="mlb">
+    <section class="market-leaders-module sport-section sport-section--${sportClass}" data-sport="${sportClass}">
       <div class="market-leaders-header">
         <div>
           <h2 class="leaders-section-title">Today's Leaders</h2>
-          <p class="section-desc">${SECTION_DESCRIPTIONS.leaders}</p>
+          <p class="section-desc leaders-section-subtitle">${copy.subtitle}</p>
+          <p class="section-desc">${copy.description}</p>
         </div>
       </div>
 
       <div class="market-leaders-scroll">
-        <div class="market-leaders-table">
+        <div class="market-leaders-table market-leaders-table--v10">
           <div class="leaders-table-head">
-            <span>Rank</span>
+            <span>Sport</span>
             <span>Player</span>
+            <span>Team</span>
             <span>Signal</span>
-            <span>Performance</span>
-            <span>Market</span>
-            <span>Trend</span>
+            <span>Change</span>
+            <span>Rec</span>
             <span>Report</span>
           </div>
 
           ${entries.map((entry, index) => {
             const score = entry.hotness?.total_score || 0;
-            const performance = entry.hotness?.performance_score || 0;
-            const market = entry.hotness?.market_score || 0;
             const movement = entry.weekly_change != null && Number.isFinite(Number(entry.weekly_change))
               ? (() => {
                 const delta = Number(entry.weekly_change);
@@ -300,23 +457,22 @@ function buildLeaderboard(entries) {
               : computeSignalOfWeekMovement(entry);
             const moveClass = movement.signed.startsWith("+") ? "metric-up" : movement.signed.startsWith("-") ? "metric-down" : "metric-flat";
             const team = getTeamAbbrev(entry);
-            const position = entry.position || "—";
+            const recommendation = getEntryRecommendation(entry);
+            const recClass = recommendation.toLowerCase();
 
             return `
               <button class="leader-table-row" type="button" data-player-index="${index}">
-                <span class="leader-rank-small">${entry.rank || index + 1}</span>
+                <span class="leader-sport-icon" aria-label="${entry.sport || 'MLB'}">${getSportIcon(entry)}</span>
                 <span class="leader-player-cell">
                   <span class="leader-photo-cell">${renderLeaderHeadshot(entry)}</span>
-                  <span class="leader-team-logo-cell">${renderTeamLogoMarkup(entry)}</span>
                   <span class="leader-player-copy">
                     <span class="leader-player-name">${entry.player_name}</span>
-                    <span class="leader-player-meta">${team} · ${position}</span>
                   </span>
                 </span>
+                <span class="leader-team-cell">${team}</span>
                 <span class="leader-number">${formatScore(score)}</span>
-                <span class="leader-metric">${formatScore(performance)}</span>
-                <span class="leader-metric">${formatScore(market)}</span>
                 <span class="leader-trend ${moveClass}">${movement.arrow} ${movement.signed}</span>
+                <span class="leader-rec-pill leader-rec-pill--${recClass}">${recommendation}</span>
                 <span class="leader-report-pill">View Report</span>
               </button>
             `;
@@ -325,6 +481,31 @@ function buildLeaderboard(entries) {
       </div>
     </section>
   `;
+}
+
+function renderLeaderboardTable(entries) {
+  const leaderboardRoot = document.getElementById('leaderboard-table');
+  if (!leaderboardRoot) return;
+
+  if (isComingSoonSport(activeSportFilter)) {
+    leaderboardRoot.innerHTML = renderSportComingSoonPanel(activeSportFilter);
+    return;
+  }
+
+  if (!entries.length) {
+    leaderboardRoot.innerHTML = `<div class="detail-empty">No MLB leaders available yet.</div>`;
+    return;
+  }
+
+  leaderboardRoot.innerHTML = buildLeaderboard(entries);
+  const leaderRows = [...leaderboardRoot.querySelectorAll('.leader-table-row')];
+  leaderRows.forEach((row, index) => {
+    row.addEventListener('click', async () => {
+      leaderRows.forEach((r) => r.classList.remove('active'));
+      row.classList.add('active');
+      await selectPlayer(entries[index]);
+    });
+  });
 }
 
 function getCollectorGrade(score = 0) {
@@ -598,7 +779,6 @@ function buildForecastReasons(entry, intel) {
 }
 
 const SECTION_DESCRIPTIONS = {
-  leaders: "The strongest collector signals across tracked players this week.",
   trending: "Cards gaining the most attention across the market.",
   movers: "The sharpest weekly price and demand movement.",
   buyLow: "Potential value spots before the broader market reacts.",
@@ -656,13 +836,13 @@ function renderCardIntelRow(item) {
   `;
 }
 
-function renderCardIntelBox({ title, modifier, description, items }) {
+function renderCardIntelBox({ title, modifier, description, items, maxItems = QUICK_INTEL_LIMIT }) {
   return `
     <article class="qi-card qi-card--${modifier}">
       <h3 class="qi-card-title">${title}</h3>
       <p class="qi-card-desc">${description}</p>
       <div class="qi-card-list">
-        ${items.slice(0, 3).map((item) => renderCardIntelRow(item)).join("")}
+        ${items.slice(0, maxItems).map((item) => renderCardIntelRow(item)).join("")}
       </div>
     </article>
   `;
@@ -677,7 +857,13 @@ function renderCardSection(entries = [], cardIntel = null) {
     || document.getElementById("card-section-grid");
   if (!root) return;
 
+  if (isComingSoonSport(activeSportFilter)) {
+    root.innerHTML = renderSportComingSoonPanel(activeSportFilter);
+    return;
+  }
+
   const stored = cardIntel || weeklyIntelligence?.card_intelligence;
+
   if (stored && (stored.trending_cards?.length || stored.biggest_movers?.length)) {
     root.innerHTML = `
       ${renderCardIntelBox({
@@ -708,35 +894,7 @@ function renderCardSection(entries = [], cardIntel = null) {
     return;
   }
 
-  const entry = getCardSectionEntry(entries);
-  const intel = csIntelGetPlaceholders(entry);
-
-  root.innerHTML = `
-    ${renderCardIntelBox({
-      title: "Trending Cards",
-      modifier: "trending",
-      description: SECTION_DESCRIPTIONS.trending,
-      items: intel.trendingCards,
-    })}
-    ${renderCardIntelBox({
-      title: "Biggest Movers",
-      modifier: "movers",
-      description: SECTION_DESCRIPTIONS.movers,
-      items: intel.biggestMovers,
-    })}
-    ${renderCardIntelBox({
-      title: "Buy Low Watch",
-      modifier: "buy-low",
-      description: SECTION_DESCRIPTIONS.buyLow,
-      items: intel.buyLowOpportunities,
-    })}
-    ${renderCardIntelBox({
-      title: "Most Chased",
-      modifier: "chased",
-      description: SECTION_DESCRIPTIONS.chased,
-      items: intel.mostChased,
-    })}
-  `;
+  root.innerHTML = renderQuickIntelPendingState();
 }
 
 /* Signal Center — player identity row with headshot for featured sections */
@@ -857,16 +1015,15 @@ function csIntelGetPlaceholders(entry) {
     "Scarcity-Driven Target",
   ];
 
-  function pickThree(pool, { bias = 0, priceMin = 8, priceMax = 230, moveMin = 4, moveMax = 30 } = {}) {
+  function pickItems(pool, count = 3, { bias = 0, priceMin = 8, priceMax = 230, moveMin = 4, moveMax = 30 } = {}) {
     const used = new Set();
     const out = [];
-    while (out.length < 3 && used.size < pool.length) {
+    while (out.length < count && used.size < pool.length) {
       const idx = Math.floor(rng() * pool.length);
       if (used.has(idx)) continue;
       used.add(idx);
       const price = priceMin + rng() * (priceMax - priceMin);
       const magnitude = moveMin + rng() * (moveMax - moveMin);
-      // bias shifts expectation, but we still allow direction changes.
       const direction = rng() > 0.5 ? 1 : -1;
       const move = (direction * magnitude) + bias + (rng() - 0.5) * 5;
       out.push({
@@ -880,7 +1037,7 @@ function csIntelGetPlaceholders(entry) {
     return out;
   }
 
-  const trendingCards = pickThree(trendingNamePool, {
+  const trendingCards = pickItems(trendingNamePool, QUICK_INTEL_LIMIT, {
     bias: (market - 50) / 8 + (momentum - 50) / 10,
     priceMin: 12,
     priceMax: 260,
@@ -888,7 +1045,7 @@ function csIntelGetPlaceholders(entry) {
     moveMax: 28,
   });
 
-  const biggestMovers = pickThree(moverNamePool, {
+  const biggestMovers = pickItems(moverNamePool, QUICK_INTEL_LIMIT, {
     bias: (performance - 50) / 10,
     priceMin: 15,
     priceMax: 310,
@@ -896,7 +1053,7 @@ function csIntelGetPlaceholders(entry) {
     moveMax: 38,
   });
 
-  const buyLowOpportunities = pickThree(buyLowNamePool, {
+  const buyLowOpportunities = pickItems(buyLowNamePool, QUICK_INTEL_LIMIT, {
     bias: -6 + (market < 50 ? 3 : -2),
     priceMin: 9,
     priceMax: 170,
@@ -904,7 +1061,7 @@ function csIntelGetPlaceholders(entry) {
     moveMax: 22,
   });
 
-  const mostChased = pickThree(chasedNamePool, {
+  const mostChased = pickItems(chasedNamePool, QUICK_INTEL_LIMIT, {
     bias: 5 + (momentum - 50) / 10,
     priceMin: 18,
     priceMax: 360,
@@ -1631,6 +1788,7 @@ function getIsoWeek(date) {
 
 async function renderScoreHistory(playerId) {
   const canvas = document.getElementById("score-history-chart");
+  if (!canvas) return;
   if (!canvas || !playerId) return;
 
   try {
@@ -2166,118 +2324,119 @@ function openSignalOfWeekReport(entry) {
   selectPlayer(entry);
 }
 
-function renderSignalOfTheWeek(entries = [], storedSignal = null) {
-  const card = document.querySelector(".signal-of-week-card");
-  if (!card) return;
+function renderSportSignalCard(sport) {
+  if (isComingSoonSport(sport)) {
+    return renderSportComingSoonSignalCard(sport);
+  }
 
-  const signalEntry = signalOfWeekToEntry(storedSignal || weeklyIntelligence?.signal_of_the_week);
-  const topEntry = signalEntry || getSignalOfWeekTopEntry(entries);
-  const entry = topEntry || getSignalOfWeekPlaceholderEntry();
-  const noSelection = !signalEntry && !getSignalOfWeekTopEntry(entries) && storedSignal === null && weeklyIntelligence?.run;
+  const entry = getSportSignalEntry(sport);
+  const noSelection = !entry && sport === 'MLB' && weeklyIntelligence?.run;
 
   if (noSelection) {
-    card.innerHTML = `
-      <div class="signal-week-banner signal-week-banner--empty">
-        <div class="signal-week-content">
-          <div class="signal-week-label">Signal of the Week</div>
-          <p class="signal-week-reason">No player qualified this week — insufficient evidence across the Top 100 universe.</p>
+    return `
+      <article class="sport-signal-card sport-signal-card--empty" data-sport="${sport}">
+        <div class="sport-signal-card-header">
+          <span class="sport-signal-sport-icon">${getSportIcon({ sport })}</span>
+          <span class="sport-signal-sport-label">${sport} Signal</span>
+          <span class="sport-availability-badge sport-availability-badge--live">Live</span>
         </div>
-      </div>`;
-    return;
+        <p class="sport-signal-empty-copy">No player qualified this week — insufficient evidence.</p>
+      </article>`;
+  }
+
+  if (!entry) {
+    return `
+      <article class="sport-signal-card sport-signal-card--empty" data-sport="${sport}">
+        <div class="sport-signal-card-header">
+          <span class="sport-signal-sport-icon">${getSportIcon({ sport })}</span>
+          <span class="sport-signal-sport-label">${sport} Signal</span>
+          <span class="sport-availability-badge sport-availability-badge--live">Live</span>
+        </div>
+        <p class="sport-signal-empty-copy">Signal data unavailable.</p>
+      </article>`;
   }
 
   const score = Number(entry?.hotness?.total_score ?? 0);
   const movement = computeSignalOfWeekMovement(entry);
-
-  const placeholderKeyEntry = entry?.player_id
-    ? entry
-    : {
-      player_id: "signal_of_week_placeholder",
-      player_name: entry?.player_name || "Signal of the Week",
-    };
-
-  const placeholders = csIntelGetPlaceholders(placeholderKeyEntry);
-  const aiReason = entry?.signal_of_week_reason
-    || placeholders?.aiRecommendation?.reason
-    || "Collector demand is accelerating faster than market pricing.";
-  const aiReasonSentence = clampToOneSentence(aiReason) || "Collector demand is accelerating faster than market pricing.";
-
-  const convictionTier = entry?.conviction || placeholders?.convictionTier || placeholders?.confidenceTier || "MEDIUM";
-  const aiAction = entry?.recommendation || csIntelRecommendationFromTier(convictionTier);
-
-  const team = getTeamAbbrev(entry);
-  const position = entry.position || "—";
   const moveClass = movement.signed.startsWith("+") ? "metric-up" : movement.signed.startsWith("-") ? "metric-down" : "metric-flat";
+  const recommendation = getEntryRecommendation(entry);
+  const recClass = recommendation.toLowerCase();
+  const team = getTeamAbbrev(entry);
+  const initials = getPlayerInitials(entry.player_name);
+  const photo = entry.headshot_url
+    ? `<img src="${entry.headshot_url}" alt="" loading="lazy" class="player-headshot-image" onerror="this.remove();this.parentElement.insertAdjacentHTML('beforeend','<span>${initials}</span>')" />`
+    : `<span>${initials}</span>`;
 
-  card.classList.add("featured-signal-banner");
-  card.removeAttribute("role");
-  card.removeAttribute("tabindex");
-  card.removeAttribute("aria-label");
-
-  card.innerHTML = `
-    <div class="signal-week-banner">
-      <div class="signal-week-media">
-        ${renderSignalWeekPlayerImage(entry)}
+  return `
+    <article class="sport-signal-card" data-sport="${sport}">
+      <div class="sport-signal-card-header">
+        <span class="sport-signal-sport-icon">${getSportIcon(entry)}</span>
+        <span class="sport-signal-sport-label">${sport} Signal</span>
+        <span class="sport-availability-badge sport-availability-badge--live">Live</span>
       </div>
-
-      <div class="signal-week-content">
-        <div class="signal-week-label">Signal of the Week</div>
-        <div class="signal-week-primary">
-          <div class="signal-week-identity">
-            <div class="signal-week-name">${entry.player_name || "—"}</div>
-            <div class="signal-week-meta">
-              <span class="signal-week-team-logo">${renderTeamLogoMarkup(entry)}</span>
-              <span class="signal-week-team-name">${team}</span>
-              <span class="signal-week-meta-sep" aria-hidden="true">·</span>
-              <span class="signal-week-position">${position}</span>
-            </div>
-          </div>
-
-          <div class="signal-week-stats">
-            <div class="signal-week-stat">
-              <span class="signal-week-stat-value">${formatScore(score)}</span>
-              <span class="signal-week-stat-label">CardSignal Score</span>
-            </div>
-            <div class="signal-week-stat">
-              <span class="signal-week-stat-value ${moveClass}">${movement.arrow} ${movement.signed}</span>
-              <span class="signal-week-stat-label">Weekly Movement</span>
-            </div>
-          </div>
-        </div>
-
-        <div class="signal-week-insight">
-          <div class="signal-week-ai-row">
-            <span class="signal-week-ai-pill signal-week-ai-pill--${aiAction.toLowerCase()}">${aiAction}</span>
-          </div>
-          <p class="signal-week-reason">${aiReasonSentence}</p>
+      <div class="sport-signal-player">
+        <div class="sport-signal-photo">${photo}</div>
+        <div class="sport-signal-identity">
+          <div class="sport-signal-name">${entry.player_name || "—"}</div>
+          <div class="sport-signal-team">${team}</div>
         </div>
       </div>
-
-      <div class="signal-week-action">
-        <button type="button" class="signal-week-cta" id="signal-week-view-report">
-          View Report
-          <span class="signal-week-cta-arrow" aria-hidden="true">→</span>
-        </button>
+      <div class="sport-signal-metrics">
+        <div class="sport-signal-metric">
+          <span class="sport-signal-metric-value">${formatScore(score)}</span>
+          <span class="sport-signal-metric-label">CardSignal Score</span>
+        </div>
+        <div class="sport-signal-metric">
+          <span class="sport-signal-rec-pill sport-signal-rec-pill--${recClass}">${recommendation}</span>
+          <span class="sport-signal-metric-label">Recommendation</span>
+        </div>
+        <div class="sport-signal-metric">
+          <span class="sport-signal-metric-value ${moveClass}">${movement.arrow} ${movement.signed}</span>
+          <span class="sport-signal-metric-label">Weekly Movement</span>
+        </div>
       </div>
-    </div>
-  `;
+      <button type="button" class="sport-signal-cta" data-sport-signal="${sport}">
+        View Report
+        <span class="sport-signal-cta-arrow" aria-hidden="true">→</span>
+      </button>
+    </article>`;
+}
 
-  const cta = card.querySelector("#signal-week-view-report");
-  if (cta) {
-    cta.addEventListener("click", (event) => {
+function wireSportSignalCards() {
+  const root = document.getElementById('this-weeks-signals-grid');
+  if (!root) return;
+
+  root.querySelectorAll('[data-sport-signal]').forEach((button) => {
+    button.addEventListener('click', (event) => {
       event.stopPropagation();
-      openSignalOfWeekReport(entry);
+      const sport = button.dataset.sportSignal;
+      const entry = getSportSignalEntry(sport);
+      if (entry) openSignalOfWeekReport(entry);
     });
-  }
+  });
+}
 
-  card.onclick = null;
-  card.onkeydown = null;
+function renderThisWeeksSignals() {
+  const root = document.getElementById('this-weeks-signals-grid');
+  if (!root) return;
+
+  const sportsToShow = activeSportFilter === 'ALL'
+    ? SPORT_KEYS
+    : [activeSportFilter];
+  root.innerHTML = sportsToShow.map((sport) => renderSportSignalCard(sport)).join('');
+  wireSportSignalCards();
+}
+
+/** @deprecated Use renderThisWeeksSignals — kept for compatibility */
+function renderSignalOfTheWeek(entries = [], storedSignal = null) {
+  renderThisWeeksSignals();
 }
 
 /* Signal Center — main dashboard render pipeline */
 function renderSignalCenter(entries) {
-  renderSignalOfTheWeek(entries, weeklyIntelligence?.signal_of_the_week);
-  renderCardSection(entries, weeklyIntelligence?.card_intelligence);
+  renderThisWeeksSignals();
+  const useMlbIntel = activeSportFilter === 'ALL' || activeSportFilter === 'MLB';
+  renderCardSection(entries, useMlbIntel ? weeklyIntelligence?.card_intelligence : null);
 }
 
 /** @deprecated Use renderSignalCenter — kept as alias for compatibility */
@@ -2650,33 +2809,16 @@ async function init() {
       entries = weeklyPayload.todays_leaders.map(weeklyLeaderToEntry);
     }
 
-    latestEntries = entries;
+    populateSportDatasets(entries, weeklyPayload);
     setupPlayerSearch();
     setupPlayerIntelligenceModal();
+    setupSportTabs();
 
     status.textContent = 'Rendering Signal Center...';
     renderWeeklyRefreshNote();
-    renderSignalCenter(entries);
+    refreshHomepage();
 
-    const leaderboardRoot = document.getElementById('leaderboard-table');
-    if (entries.length) {
-      leaderboardRoot.innerHTML = buildLeaderboard(entries);
-
-      const leaderRows = [...leaderboardRoot.querySelectorAll('.leader-table-row')];
-
-      leaderRows.forEach((row, index) => {
-        row.addEventListener('click', async () => {
-          leaderRows.forEach(r => r.classList.remove('active'));
-          row.classList.add('active');
-          await selectPlayer(entries[index]);
-        });
-      });
-    } else {
-      leaderboardRoot.innerHTML = `<div class="detail-empty">Leaderboard unavailable.</div>`;
-    }
-    await renderLeaderboardHistory();
-
-    status.textContent = `Loaded ${entries.length} players from ${payload.data_source || 'api'}`;
+    status.textContent = `Loaded ${latestEntries.length} MLB players from ${payload.data_source || 'api'}`;
 
     if (currentUser) {
       await Promise.all([loadRules(), loadWatchlist(), loadAlerts(), loadNotifications()]);
@@ -2690,17 +2832,12 @@ async function init() {
     status.textContent = `Load failed: ${error.message}`;
     status.style.color = '#9A6656';
 
-    // Graceful fallback: still show Signal of the Week and card section.
+    // Graceful fallback: still show Signal Center sections.
     try {
-      renderSignalOfTheWeek([]);
-      renderCardSection([]);
+      populateSportDatasets([], null);
+      setupSportTabs();
+      refreshHomepage();
     } catch (_) {}
-
-    const leaderboardRoot = document.getElementById('leaderboard-table');
-    if (leaderboardRoot) {
-      leaderboardRoot.innerHTML =
-        `<div class="detail-empty">Load failed: ${error.message}</div>`;
-    }
   }
 }
 
