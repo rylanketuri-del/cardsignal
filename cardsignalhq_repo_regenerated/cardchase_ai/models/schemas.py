@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import List, Optional
 
 from pydantic import BaseModel, Field
@@ -90,3 +91,47 @@ class HitterHotnessBreakdown(BaseModel):
     confidence_multiplier: float
     tag: str
     reasons: List[str]
+
+
+class NormalizedActiveListing(BaseModel):
+    """Normalized eBay active listing observation (asking price, not a sold comp)."""
+
+    source_listing_id: str
+    title: str
+    price: float | None = None
+    shipping: float | None = None
+    total_price: float | None = None
+    currency: str = "USD"
+    condition: str | None = None
+    listing_type: str = "unknown"
+    bid_count: int = 0
+    item_url: str | None = None
+    image_url: str | None = None
+    seller: str | None = None
+    captured_at: str | None = None
+
+
+class CardMarketSnapshot(BaseModel):
+    """Historical active-listing market observation for one registry card."""
+
+    cs_card_id: str
+    cs_player_id: str
+    league: str
+    source: str = "ebay"
+    query: str
+    captured_at: datetime
+    active_listing_count: int = 0
+    auction_count: int = 0
+    buy_it_now_count: int = 0
+    listings_with_bids: int = 0
+    total_bid_count: int = 0
+    average_price: float | None = None
+    median_price: float | None = None
+    minimum_price: float | None = None
+    maximum_price: float | None = None
+    average_shipping: float | None = None
+    total_market_value: float | None = None
+    currency: str = "USD"
+    sample_size: int = 0
+    data_quality: str = "INSUFFICIENT"
+    algorithm_version: str

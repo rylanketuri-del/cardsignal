@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from cardchase_ai.identity import enrich_player_entry
 from cardchase_ai.clients.mlb import MLBClient
 from cardchase_ai.config import get_settings
 from cardchase_ai.pipeline import run_pipeline
@@ -224,7 +225,8 @@ def get_public_config() -> JSONResponse:
 @app.get("/api/leaderboard/latest")
 def get_latest_leaderboard() -> JSONResponse:
     payload, source = _load_latest()
-    return JSONResponse({"data_source": source, "items": payload})
+    enriched = [enrich_player_entry(entry) for entry in payload]
+    return JSONResponse({"data_source": source, "items": enriched})
 
 
 @app.get("/api/runs/latest")
@@ -246,7 +248,8 @@ def search_players(q: str = "") -> JSONResponse:
 
     try:
         results = MLBClient().search_players(query, limit=10)
-        return JSONResponse(results)
+        enriched = [enrich_player_entry(result.model_dump()) for result in results]
+        return JSONResponse(enriched)
     except Exception:
         return JSONResponse([])
 
@@ -255,7 +258,48 @@ def search_players(q: str = "") -> JSONResponse:
 def get_player(player_id: str) -> JSONResponse:
     payload, source = _load_player(player_id)
     if isinstance(payload, dict):
+        payload = enrich_player_entry(payload)
         payload["data_source"] = source
+    return JSONResponse(payload)
+
+
+def _load_latest_card_market_snapshot(cs_card_id: str) -> tuple[dict[str, Any], str]:
+    storage = _storage()
+    if storage:
+        try:
+            row = storage.fetch_latest_card_market_snapshot(cs_card_id)
+            if row:
+                metrics = row.get("metrics") or {}
+                return (
+                    {
+                        "cs_card_id": row["cs_card_id"],
+                        "cs_player_id": row["cs_player_id"],
+                        "league": metrics.get("league", "MLB"),
+                        "source": row.get("source", "ebay"),
+                        "query": row.get("query", ""),
+                        "captured_at": row.get("captured_at") or row.get("created_at"),
+                        "algorithm_version": row.get("algorithm_version", ""),
+                        **metrics,
+                    },
+                    "supabase",
+                )
+        except SupabaseError:
+            pass
+
+    latest_path = _settings().output_dir / "latest_card_market_snapshots.json"
+    if latest_path.exists():
+        items = json.loads(latest_path.read_text(encoding="utf-8"))
+        for item in items:
+            if str(item.get("cs_card_id")) == cs_card_id:
+                return item, "file"
+
+    raise HTTPException(status_code=404, detail=f"No market snapshot found for card {cs_card_id}.")
+
+
+@app.get("/api/cards/{cs_card_id}/market/latest")
+def get_card_market_latest(cs_card_id: str) -> JSONResponse:
+    payload, source = _load_latest_card_market_snapshot(cs_card_id)
+    payload["data_source"] = source
     return JSONResponse(payload)
 
 
@@ -341,7 +385,15 @@ def update_alerts(payload: AlertsUpdateRequest, auth=Depends(get_current_user)) 
 def trigger_pipeline(authorization: str | None = Header(default=None)) -> dict[str, str | int]:
     _authorize_pipeline_trigger(authorization)
     result = run_pipeline()
-    return {"status": "ok", "output_path": result.leaderboard_path, "run_id": result.run_id or 0, "alerts_created": result.alerts_created, "deliveries_attempted": result.deliveries_attempted}
+    return {
+        "status": "ok",
+        "output_path": result.leaderboard_path,
+        "run_id": result.run_id or 0,
+        "alerts_created": result.alerts_created,
+        "deliveries_attempted": result.deliveries_attempted,
+        "card_market_snapshot_count": result.card_market_snapshot_count,
+        "card_market_snapshot_path": result.card_market_snapshot_path or "",
+    }
 
 
 @app.get("/api/notifications")

@@ -476,3 +476,51 @@ class SupabaseStorage:
             user_token,
         )
         return rows[0] if rows else None
+
+    def insert_card_market_snapshots(self, snapshots: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        if not snapshots:
+            return []
+
+        payload = []
+        for snapshot in snapshots:
+            payload.append(
+                {
+                    "cs_card_id": snapshot["cs_card_id"],
+                    "cs_player_id": snapshot["cs_player_id"],
+                    "captured_at": snapshot["captured_at"],
+                    "source": snapshot.get("source", "ebay"),
+                    "query": snapshot.get("query", ""),
+                    "algorithm_version": snapshot.get("algorithm_version", ""),
+                    "metrics": {
+                        "active_listing_count": snapshot.get("active_listing_count", 0),
+                        "auction_count": snapshot.get("auction_count", 0),
+                        "buy_it_now_count": snapshot.get("buy_it_now_count", 0),
+                        "listings_with_bids": snapshot.get("listings_with_bids", 0),
+                        "total_bid_count": snapshot.get("total_bid_count", 0),
+                        "average_price": snapshot.get("average_price"),
+                        "median_price": snapshot.get("median_price"),
+                        "minimum_price": snapshot.get("minimum_price"),
+                        "maximum_price": snapshot.get("maximum_price"),
+                        "average_shipping": snapshot.get("average_shipping"),
+                        "total_market_value": snapshot.get("total_market_value"),
+                        "currency": snapshot.get("currency", "USD"),
+                        "sample_size": snapshot.get("sample_size", 0),
+                        "data_quality": snapshot.get("data_quality", "INSUFFICIENT"),
+                        "league": snapshot.get("league", "MLB"),
+                    },
+                }
+            )
+
+        return self._post("card_market_snapshots", payload, prefer="return=representation")
+
+    def fetch_latest_card_market_snapshot(self, cs_card_id: str) -> dict[str, Any] | None:
+        rows = self._get(
+            "card_market_snapshots",
+            {
+                "select": "id,created_at,cs_card_id,cs_player_id,captured_at,source,query,algorithm_version,metrics",
+                "cs_card_id": f"eq.{cs_card_id}",
+                "order": "captured_at.desc",
+                "limit": "1",
+            },
+        )
+        return rows[0] if rows else None
