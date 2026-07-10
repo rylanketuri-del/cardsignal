@@ -25,6 +25,7 @@ create table if not exists public.weekly_intelligence_runs (
   warnings jsonb not null default '[]'::jsonb,
   errors jsonb not null default '[]'::jsonb,
   homepage_payload jsonb,
+  stage_outcomes jsonb not null default '[]'::jsonb,
   created_at timestamptz not null default now()
 );
 

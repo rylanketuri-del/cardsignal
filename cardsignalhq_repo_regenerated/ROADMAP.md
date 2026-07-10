@@ -37,13 +37,20 @@
 
 ### Real Card Intelligence (Sprint 8.x)
 
-- **Sprint 8.7** — Card registry, eBay market snapshots, PSA population, card intelligence synthesis, market movement *(complete)*
-- **Sprint 8.8 — Weekly Intelligence Pipeline** *(complete — pending final verification)*
+- **Sprint 8.7 — partial in this branch**
+  - [x] eBay market snapshots in manual pipeline
+  - [x] Card intelligence synthesis from stored eBay query templates
+  - [ ] Card registry (not present in this branch)
+  - [ ] PSA population provider/integration (not present; optional stage interface only)
+  - [x] Historical market movement foundation (stored snapshot comparison; no live provider reads on GET)
+
+- **Sprint 8.8 — Weekly Intelligence Pipeline** *(in progress — verification pass pending)*
   - Weekly orchestration layer for Tuesday refresh
   - Top 100 MLB beta universe
   - Append-only player/card weekly snapshots
   - Signal of the Week selection with evidence requirements
   - Today's Leaders from latest completed official run
+  - Explicit stage outcomes with FAILED / PARTIAL / SKIPPED / UNAVAILABLE handling
   - `GET /api/weekly/latest`, weekly history endpoints
   - Admin `POST /api/weekly/run` with duplicate guard and force option
   - Local JSON fallback when Supabase is unavailable
@@ -52,7 +59,7 @@
 
 ### Release v0.9.0 — Weekly Intelligence Pipeline
 
-Ready for final verification. Do not merge or deploy until QA pass.
+In progress. Do not merge or deploy until verification pass.
 
 **Beta schedule (documented, idempotent guard):** Tuesday 6:00 AM America/New_York via external scheduler calling `POST /api/weekly/run` with admin token.
 
@@ -63,6 +70,7 @@ Ready for final verification. Do not merge or deploy until QA pass.
 - End-to-end weekly run verification in staging
 - Seed historical weekly snapshots for chart coverage
 - Supabase migration apply + rollback test
+- PSA population provider implementation (when credentials/source available)
 
 ### v1.0.0 — Multi-Sport Expansion
 
@@ -78,6 +86,8 @@ Ready for final verification. Do not merge or deploy until QA pass.
 
 ## Future
 
+- **Card registry** — canonical card identity layer for player-linked intelligence
+- **PSA population integration** — wired through `PopulationProvider` when available
 - **Tuesday email report** — weekly digest from stored homepage intelligence
 - **Signal Vault** — searchable archive of weekly signals and card intelligence
 - **Weekly push notifications** — Signal of the Week and mover alerts

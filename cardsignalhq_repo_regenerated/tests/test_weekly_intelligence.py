@@ -358,6 +358,148 @@ class PlayerLimitTests(unittest.TestCase):
             self.assertLessEqual(len(processed_ids), 5)
 
 
+class CatastrophicFailureTests(unittest.TestCase):
+    def _settings(self, tmp: str):
+        from cardchase_ai.config import Settings
+
+        return Settings(
+            ebay_token="",
+            ebay_client_id="",
+            ebay_client_secret="",
+            ebay_marketplace_id="EBAY_US",
+            tracked_players=[],
+            output_dir=Path(tmp),
+            mlb_season=2026,
+            supabase_url="",
+            supabase_service_role_key="",
+            supabase_anon_key="",
+            pipeline_trigger_token="",
+            alert_webhook_url="",
+            alert_webhook_bearer_token="",
+            alert_from_email="",
+            alert_sender_name="",
+            app_base_url="",
+            resend_api_key="",
+            alert_cooldown_hours=12,
+            daily_digest_cooldown_hours=20,
+            notification_limit=50,
+            admin_api_token="",
+            weekly_player_limit=100,
+            weekly_card_limit_per_player=4,
+            weekly_market_enabled=False,
+            weekly_population_enabled=False,
+            weekly_timezone="America/New_York",
+            weekly_refresh_day=1,
+            weekly_refresh_hour=6,
+        )
+
+    def test_catastrophic_exception_marks_failed_not_running(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = self._settings(tmp)
+            storage = WeeklyStorage(None, WeeklyJsonStorage(Path(tmp)))
+            with patch(
+                "cardchase_ai.weekly_intelligence._build_market_universe",
+                side_effect=RuntimeError("catastrophic failure"),
+            ):
+                summary = run_weekly_intelligence(
+                    league="MLB",
+                    force=True,
+                    triggered_by="test",
+                    settings=settings,
+                    storage=storage,
+                )
+            self.assertEqual(summary.run.status, "FAILED")
+            self.assertIsNotNone(summary.run.completed_at)
+            self.assertTrue(any("catastrophic failure" in err for err in summary.run.errors))
+            stored = json.loads((Path(tmp) / "weekly" / "runs" / f"{summary.run.run_id}.json").read_text())
+            self.assertEqual(stored["run"]["status"], "FAILED")
+
+
+class PartialStatusTests(unittest.TestCase):
+    def test_partial_when_one_player_fails_and_one_succeeds(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            from cardchase_ai.config import Settings
+
+            settings = Settings(
+                ebay_token="",
+                ebay_client_id="",
+                ebay_client_secret="",
+                ebay_marketplace_id="EBAY_US",
+                tracked_players=[],
+                output_dir=Path(tmp),
+                mlb_season=2026,
+                supabase_url="",
+                supabase_service_role_key="",
+                supabase_anon_key="",
+                pipeline_trigger_token="",
+                alert_webhook_url="",
+                alert_webhook_bearer_token="",
+                alert_from_email="",
+                alert_sender_name="",
+                app_base_url="",
+                resend_api_key="",
+                alert_cooldown_hours=12,
+                daily_digest_cooldown_hours=20,
+                notification_limit=50,
+                admin_api_token="",
+                weekly_player_limit=100,
+                weekly_card_limit_per_player=4,
+                weekly_market_enabled=False,
+                weekly_population_enabled=False,
+                weekly_timezone="America/New_York",
+                weekly_refresh_day=1,
+                weekly_refresh_hour=6,
+            )
+            storage = WeeklyStorage(None, WeeklyJsonStorage(Path(tmp)))
+
+            def fake_processor(candidate, mlb, ebay, settings, *, market_enabled):
+                from cardchase_ai.pipeline import PlayerPipelineOutput
+
+                if int(candidate["player_id"]) == 2:
+                    return None, [], "Player Two: simulated stage failure"
+                stats = RollingHitterStats(games=7, at_bats=20, ops=0.9)
+                hotness = HitterHotnessBreakdown(
+                    player_name=candidate["player_name"],
+                    performance_score=75.0,
+                    market_score=60.0,
+                    total_score=70.0,
+                    confidence_multiplier=0.95,
+                    tag="RISING",
+                    reasons=["test"],
+                )
+                return PlayerPipelineOutput(
+                    player_name=candidate["player_name"],
+                    player_id=candidate["player_id"],
+                    stats_7d=stats,
+                    stats_30d=stats,
+                    market_snapshots={"broad": MarketSnapshot(query_name="broad", listings_count=10, avg_price=25.0)},
+                    hotness=hotness,
+                ), [], None
+
+            with patch("cardchase_ai.weekly_intelligence._build_market_universe") as mock_universe:
+                mock_universe.return_value = [
+                    {"player_id": 1, "player_name": "Player One", "team": "CIN", "candidate_source": "dynamic"},
+                    {"player_id": 2, "player_name": "Player Two", "team": "KC", "candidate_source": "dynamic"},
+                ]
+                summary = run_weekly_intelligence(
+                    league="MLB",
+                    force=True,
+                    triggered_by="test",
+                    player_limit=2,
+                    market_enabled=False,
+                    settings=settings,
+                    storage=storage,
+                    player_processor=fake_processor,
+                )
+
+            self.assertEqual(summary.run.status, "PARTIAL")
+            self.assertEqual(summary.run.players_processed, 1)
+            self.assertTrue(any("Player Two" in err for err in summary.run.errors))
+            payload = json.loads((Path(tmp) / "weekly" / "runs" / f"{summary.run.run_id}.json").read_text())
+            self.assertEqual(len(payload["player_snapshots"]), 1)
+            self.assertEqual(payload["player_snapshots"][0]["player_name"], "Player One")
+
+
 class FailedRunPreservesLatestTests(unittest.TestCase):
     def test_failed_run_does_not_replace_latest_pointer(self):
         with tempfile.TemporaryDirectory() as tmp:

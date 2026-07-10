@@ -36,6 +36,7 @@ class WeeklyIntelligenceRun(BaseModel):
     intelligence_records_created: int = 0
     warnings: list[str] = Field(default_factory=list)
     errors: list[str] = Field(default_factory=list)
+    stage_outcomes: list[dict[str, Any]] = Field(default_factory=list)
     created_at: datetime | None = None
 
 

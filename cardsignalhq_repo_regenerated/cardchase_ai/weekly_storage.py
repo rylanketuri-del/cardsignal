@@ -117,6 +117,8 @@ class WeeklyJsonStorage:
         card_snapshots: list[CardWeeklyIntelligenceSnapshot],
         signal: SignalOfTheWeek | None,
         homepage: WeeklyHomepageIntelligence,
+        *,
+        market_movements: list | None = None,
     ) -> None:
         path = self._run_path(run.run_id)
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -125,6 +127,10 @@ class WeeklyJsonStorage:
         data["card_snapshots"] = [s.model_dump(mode="json") for s in card_snapshots]
         data["signal_of_the_week"] = signal.model_dump(mode="json") if signal else None
         data["homepage"] = homepage.model_dump(mode="json")
+        data["market_movements"] = [
+            m.model_dump(mode="json") if hasattr(m, "model_dump") else m for m in (market_movements or [])
+        ]
+        data["stage_outcomes"] = run.stage_outcomes
         path.write_text(json.dumps(data, indent=2, default=_serialize), encoding="utf-8")
         self.update_run(run)
         if run.status in {"COMPLETED", "PARTIAL"} and not run.force and run.triggered_by != "test":
@@ -257,11 +263,14 @@ class WeeklyStorage:
         card_snapshots: list[CardWeeklyIntelligenceSnapshot],
         signal: SignalOfTheWeek | None,
         homepage: WeeklyHomepageIntelligence,
+        *,
+        market_movements: list | None = None,
     ) -> None:
         if self.supabase:
             try:
                 payload = self._run_to_row(run)
                 payload["homepage_payload"] = homepage.model_dump(mode="json")
+                payload["stage_outcomes"] = run.stage_outcomes
                 self.supabase._patch(
                     self.RUNS_TABLE,
                     {"run_id": f"eq.{run.run_id}"},
@@ -282,7 +291,14 @@ class WeeklyStorage:
                 return
             except SupabaseError:
                 pass
-        self.json.append_run_payload(run, player_snapshots, card_snapshots, signal, homepage)
+        self.json.append_run_payload(
+            run,
+            player_snapshots,
+            card_snapshots,
+            signal,
+            homepage,
+            market_movements=market_movements,
+        )
 
     def fetch_latest_completed_payload(self, league: str = "MLB") -> dict[str, Any] | None:
         if self.supabase:
@@ -418,6 +434,7 @@ class WeeklyStorage:
             "intelligence_records_created": run.intelligence_records_created,
             "warnings": run.warnings,
             "errors": run.errors,
+            "stage_outcomes": run.stage_outcomes,
         }
 
     def _row_to_run(self, row: dict[str, Any]) -> WeeklyIntelligenceRun:
@@ -444,6 +461,7 @@ class WeeklyStorage:
             intelligence_records_created=int(row.get("intelligence_records_created", 0)),
             warnings=row.get("warnings") or [],
             errors=row.get("errors") or [],
+            stage_outcomes=row.get("stage_outcomes") or [],
             created_at=row.get("created_at"),
         )
 
