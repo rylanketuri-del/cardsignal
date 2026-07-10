@@ -5599,3 +5599,134 @@ body.pi-modal-open {
     min-height: 360px;
   }
 }
+
+/* Sport availability + Coming Soon states */
+.sport-tab-availability {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.72;
+}
+
+.sport-tab.active .sport-tab-availability,
+.sport-tab.active-sport .sport-tab-availability {
+  opacity: 0.85;
+}
+
+.sport-availability-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-left: auto;
+}
+
+.sport-availability-badge--live {
+  background: rgba(47, 125, 74, 0.16);
+  color: #6BC48A;
+  border: 1px solid rgba(47, 125, 74, 0.35);
+}
+
+.sport-availability-badge--soon {
+  background: rgba(187, 132, 85, 0.14);
+  color: #D4A574;
+  border: 1px solid rgba(187, 132, 85, 0.35);
+}
+
+.sport-signal-card--coming-soon {
+  background: linear-gradient(180deg, #1A1A1B 0%, #201C18 100%);
+  border-color: rgba(187, 132, 85, 0.22);
+  justify-content: flex-start;
+  min-height: 220px;
+}
+
+.sport-signal-card--coming-soon:hover {
+  transform: translateY(-2px);
+}
+
+.sport-signal-card-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+
+.sport-coming-soon-body {
+  display: grid;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.sport-coming-soon-title {
+  margin: 0;
+  font-family: Cormorant, Georgia, serif;
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.05;
+  color: #F7F5F2;
+}
+
+.sport-coming-soon-subtitle {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: rgba(212, 165, 116, 0.95);
+}
+
+.sport-coming-soon-note {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: rgba(247, 245, 242, 0.55);
+}
+
+.sport-coming-soon-panel {
+  background: var(--panel);
+  border: 1px solid rgba(220, 214, 206, 0.9);
+  border-radius: 24px;
+  padding: 36px 28px;
+  box-shadow: var(--shadow-soft);
+  text-align: center;
+  display: grid;
+  gap: 10px;
+  justify-items: center;
+}
+
+.sport-coming-soon-panel-icon {
+  font-size: 36px;
+  line-height: 1;
+}
+
+.sport-coming-soon-panel .sport-coming-soon-title {
+  color: var(--charcoal);
+}
+
+.sport-coming-soon-panel .sport-coming-soon-subtitle {
+  color: var(--copper);
+}
+
+.sport-coming-soon-panel .sport-coming-soon-note {
+  color: var(--muted);
+  max-width: 420px;
+}
+
+.qi-pending-state {
+  grid-column: 1 / -1;
+  padding: 28px;
+  text-align: center;
+  border-radius: 22px;
+  border: 1px dashed rgba(220, 214, 206, 0.95);
+  background: rgba(255, 255, 255, 0.45);
+}
+
+.leaders-section-subtitle {
+  font-weight: 800;
+  color: var(--charcoal);
+}

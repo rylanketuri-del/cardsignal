@@ -57,6 +57,16 @@
 
 ## Current Milestone
 
+### Release v0.10.0 — Signal Center Multi-Sport Shell
+
+In progress. Do not merge or deploy until verification pass.
+
+- [x] Signal Center multi-sport shell (filters, three signal slots, section layout)
+- [x] MLB intelligence live (leaders, Signal of the Week, Quick Intelligence, search)
+- [ ] NBA performance adapter pending
+- [ ] NFL performance adapter pending
+- [ ] Combined Top 30 Overall pending until at least two sports are live
+
 ### Release v0.9.0 — Weekly Intelligence Pipeline
 
 In progress. Do not merge or deploy until verification pass.
@@ -74,9 +84,10 @@ In progress. Do not merge or deploy until verification pass.
 
 ### v1.0.0 — Multi-Sport Expansion
 
-- Enable NBA, NFL, NHL sport tabs
+- NBA performance adapter and live intelligence
+- NFL performance adapter and live intelligence
+- Combined Top 30 Overall once at least two sports are live
 - Sport-specific leaderboards and scoring adjustments
-- Cross-sport Signal Center filters
 
 ### v1.1.0 — Collection & Alerts UX
 

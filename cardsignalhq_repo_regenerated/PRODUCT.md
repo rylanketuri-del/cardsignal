@@ -66,12 +66,12 @@ Forecast language uses tentative phrasing (“suggests,” “may,” “could�
 
 Current production scope:
 
-- **MLB hitters only** (NBA, NFL, NHL tabs shown as coming soon)
+- **MLB hitters only** (NBA and NFL sport filters show Coming Soon; NHL removed)
 - MLB Stats API for performance
 - eBay Browse API for active listings
 - Supabase for leaderboard persistence, auth, watchlists, alerts, and notifications
 
-Placeholder intelligence (card rows, market metrics, forecast reasons) uses stable seeded values when backend fields are missing. Live card-market snapshots will replace placeholders in a future release.
+Placeholder intelligence (card rows, market metrics, forecast reasons) uses stable seeded values when backend fields are missing for **supported live sports only**. CardSignal never displays fabricated intelligence for an unsupported sport.
 
 ## Weekly Intelligence Principles
 
