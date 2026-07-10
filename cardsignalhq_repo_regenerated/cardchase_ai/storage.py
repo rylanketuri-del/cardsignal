@@ -573,3 +573,134 @@ class SupabaseStorage:
             },
         )
         return rows
+
+    def upsert_psa_card_matches(self, matches: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        if not matches:
+            return []
+
+        payload = []
+        for match in matches:
+            payload.append(
+                {
+                    "cs_card_id": match["cs_card_id"],
+                    "cs_player_id": match["cs_player_id"],
+                    "league": match.get("league", "MLB"),
+                    "provider": match.get("provider", "PSA"),
+                    "psa_subject_id": match.get("psa_subject_id"),
+                    "psa_set_id": match.get("psa_set_id"),
+                    "psa_card_id": match.get("psa_card_id"),
+                    "certification_number": match.get("certification_number"),
+                    "year": match.get("year", ""),
+                    "manufacturer": match.get("manufacturer", ""),
+                    "set_name": match.get("set_name", ""),
+                    "card_number": match.get("card_number", ""),
+                    "card_name": match.get("card_name", ""),
+                    "parallel": match.get("parallel", ""),
+                    "variety": match.get("variety", ""),
+                    "player_name": match.get("player_name", ""),
+                    "match_status": match.get("match_status", "UNMATCHED"),
+                    "match_confidence": match.get("match_confidence", "LOW"),
+                    "matched_at": match.get("matched_at"),
+                    "source_method": match.get("source_method", "manual_beta_seed"),
+                    "notes": match.get("notes", ""),
+                    "match_payload": match,
+                }
+            )
+
+        return self._post("psa_card_matches", payload, prefer="resolution=merge-duplicates,return=representation")
+
+    def fetch_psa_card_match(self, cs_card_id: str) -> dict[str, Any] | None:
+        rows = self._get(
+            "psa_card_matches",
+            {
+                "select": "id,created_at,updated_at,cs_card_id,cs_player_id,league,provider,psa_subject_id,psa_set_id,psa_card_id,certification_number,year,manufacturer,set_name,card_number,card_name,parallel,variety,player_name,match_status,match_confidence,matched_at,source_method,notes,match_payload",
+                "cs_card_id": f"eq.{cs_card_id}",
+                "provider": "eq.PSA",
+                "order": "updated_at.desc",
+                "limit": "1",
+            },
+        )
+        return rows[0] if rows else None
+
+    def insert_card_population_snapshots(self, snapshots: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        if not snapshots:
+            return []
+
+        payload = []
+        for snapshot in snapshots:
+            payload.append(
+                {
+                    "cs_card_id": snapshot["cs_card_id"],
+                    "cs_player_id": snapshot["cs_player_id"],
+                    "provider": snapshot.get("provider", "PSA"),
+                    "source_method": snapshot.get("source_method", "manual_beta_seed"),
+                    "captured_at": snapshot["captured_at"],
+                    "psa_card_id": snapshot.get("psa_card_id"),
+                    "algorithm_version": snapshot.get("algorithm_version", ""),
+                    "match_confidence": snapshot.get("match_confidence", "LOW"),
+                    "data_quality": snapshot.get("data_quality", "INSUFFICIENT"),
+                    "metrics": {
+                        "total_population": snapshot.get("total_population"),
+                        "population_by_grade": snapshot.get("population_by_grade", {}),
+                        "psa_10_population": snapshot.get("psa_10_population"),
+                        "psa_9_population": snapshot.get("psa_9_population"),
+                        "psa_8_population": snapshot.get("psa_8_population"),
+                        "higher_grade_population": snapshot.get("higher_grade_population"),
+                        "lower_grade_population": snapshot.get("lower_grade_population"),
+                        "grade_requested": snapshot.get("grade_requested"),
+                        "requested_grade_population": snapshot.get("requested_grade_population"),
+                        "gem_rate": snapshot.get("gem_rate"),
+                        "top_grade_rate": snapshot.get("top_grade_rate"),
+                        "provider_updated_at": snapshot.get("provider_updated_at"),
+                        "notes": snapshot.get("notes", ""),
+                        "league": snapshot.get("league", "MLB"),
+                        "scarcity": snapshot.get("scarcity"),
+                    },
+                }
+            )
+
+        return self._post("card_population_snapshots", payload, prefer="return=representation")
+
+    def fetch_latest_card_population_snapshot(self, cs_card_id: str) -> dict[str, Any] | None:
+        rows = self._get(
+            "card_population_snapshots",
+            {
+                "select": "id,created_at,cs_card_id,cs_player_id,provider,source_method,captured_at,psa_card_id,algorithm_version,match_confidence,data_quality,metrics",
+                "cs_card_id": f"eq.{cs_card_id}",
+                "order": "captured_at.desc",
+                "limit": "1",
+            },
+        )
+        return rows[0] if rows else None
+
+    def fetch_card_population_snapshot_history(self, cs_card_id: str, *, limit: int = 12) -> list[dict[str, Any]]:
+        fetch_limit = max(limit, 12)
+        rows = self._get(
+            "card_population_snapshots",
+            {
+                "select": "id,created_at,cs_card_id,cs_player_id,provider,source_method,captured_at,psa_card_id,algorithm_version,match_confidence,data_quality,metrics",
+                "cs_card_id": f"eq.{cs_card_id}",
+                "order": "captured_at.desc",
+                "limit": str(min(max(fetch_limit, 1), 120)),
+            },
+        )
+        if not rows:
+            return []
+        return list(reversed(rows))
+
+    def fetch_card_population_snapshots_for_player(self, cs_player_id: str, *, limit: int = 200) -> list[dict[str, Any]]:
+        rows = self._get(
+            "card_population_snapshots",
+            {
+                "select": "id,created_at,cs_card_id,cs_player_id,provider,source_method,captured_at,psa_card_id,algorithm_version,match_confidence,data_quality,metrics",
+                "cs_player_id": f"eq.{cs_player_id}",
+                "order": "captured_at.desc",
+                "limit": str(max(1, min(limit, 500))),
+            },
+        )
+        latest_by_card: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            card_id = str(row.get("cs_card_id") or "")
+            if card_id and card_id not in latest_by_card:
+                latest_by_card[card_id] = row
+        return list(latest_by_card.values())

@@ -74,25 +74,32 @@
   - [x] Market Activity chart wired to stored player snapshot history
   - [x] Signal Timeline uses stored player score history when available
 
+- **Sprint 8.6** — PSA Population Foundation (Release v0.9.0):
+  - [x] Reusable `PSACardMatch`, `CardPopulationSnapshot`, and `CardScarcityMetrics` models
+  - [x] `PopulationProvider` abstraction with PSA cert API stub and import/manual beta seed provider
+  - [x] Append-only population snapshots with Supabase storage and local JSON fallback
+  - [x] Deterministic PSA card matching with ambiguous-match safeguards
+  - [x] Population movement helpers and beta PSA Population Scarcity calculations
+  - [x] Isolated population snapshot pipeline step with beta card limits
+  - [x] `GET /api/cards/{cs_card_id}/population/latest` and `/population/history`
+  - [x] Player Intelligence Cards, Market, and Signals tabs surface labeled PSA population states
+
 ## Current Milestone
 
-### Sprint 8 — Real Card Intelligence
+### Sprint 8.7 — Scarcity UI and Card Intelligence Synthesis
 
-- **Sprint 8.1** — Player Card Registry (Release v0.9.0) — complete
-- **Sprint 8.2** — Foundation & Identity (Release v0.9.0) — complete
-- **Sprint 8.3** — eBay Market Snapshot Foundation (Release v0.9.0) — complete
-- **Sprint 8.4** — Real Card Market UI (Release v0.9.0) — complete
-- **Sprint 8.5** — Historical Price Movement (Release v0.9.0) — complete
+- Synthesize population, market, and performance signals into card-level intelligence rows
+- Expand scarcity presentation beyond beta PSA Population Scarcity
+- Improve card-match review workflows for ambiguous PSA matches
 
 ## Up Next
 
-### Sprint 8.6 — PSA Population Foundation
-
-- PSA population snapshots linked to `cs_card_id`
-- Population-aware collector demand inputs
-
 ### Future Sprint 8+ Work
 
+- Official PSA population integration approval
+- Beckett population adapter
+- Grading-company normalization
+- Population-growth alerts
 - Sold-comps integration
 - Buy Low Engine
 - Signal Accuracy tracking

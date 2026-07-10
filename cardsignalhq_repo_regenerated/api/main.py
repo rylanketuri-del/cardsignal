@@ -31,6 +31,13 @@ from cardchase_ai.market.movement import (
 )
 from cardchase_ai.market.player_market import aggregate_player_market, build_player_card_market_item
 from cardchase_ai.pipeline import run_pipeline
+from cardchase_ai.population.history import filter_card_population_history, load_local_population_history, load_local_psa_matches
+from cardchase_ai.population.import_loader import validate_import_rows
+from cardchase_ai.population.public import (
+    build_card_population_latest_response,
+    normalize_population_snapshot_row,
+    normalize_psa_match_row,
+)
 from cardchase_ai.storage import SupabaseError, SupabaseStorage
 
 
@@ -78,6 +85,10 @@ class AdminTrackedPlayerRequest(BaseModel):
     player_name: str
     notes: str = ""
     active: bool = True
+
+
+class PopulationImportRequest(BaseModel):
+    rows: list[dict[str, Any]]
 
 app = FastAPI(title="CardChase AI API", version="0.6.0")
 app.add_middleware(
@@ -419,6 +430,93 @@ def _load_player_card_market_history(cs_player_id: str) -> tuple[list[dict[str, 
     return [], None
 
 
+    return [], None
+
+
+def _load_latest_card_population_snapshots_from_file() -> list[dict[str, Any]]:
+    latest_path = _settings().output_dir / "latest_card_population_snapshots.json"
+    if not latest_path.exists():
+        return []
+    return json.loads(latest_path.read_text(encoding="utf-8"))
+
+
+def _try_load_latest_card_population_snapshot(cs_card_id: str) -> tuple[dict[str, Any] | None, str | None]:
+    storage = _storage()
+    if storage:
+        try:
+            row = storage.fetch_latest_card_population_snapshot(cs_card_id)
+            if row:
+                return normalize_population_snapshot_row(row), "supabase"
+        except SupabaseError:
+            pass
+
+    for item in _load_latest_card_population_snapshots_from_file():
+        if str(item.get("cs_card_id")) == cs_card_id:
+            return normalize_population_snapshot_row(item), "file"
+
+    return None, None
+
+
+def _try_load_psa_card_match(cs_card_id: str) -> dict[str, Any] | None:
+    storage = _storage()
+    if storage:
+        try:
+            row = storage.fetch_psa_card_match(cs_card_id)
+            if row:
+                return normalize_psa_match_row(row)
+        except SupabaseError:
+            pass
+
+    for item in load_local_psa_matches(_settings().output_dir):
+        if str(item.get("cs_card_id")) == cs_card_id:
+            return normalize_psa_match_row(item)
+    return None
+
+
+def _load_card_population_snapshot_history(cs_card_id: str, *, limit: int = 12) -> tuple[list[dict[str, Any]], str | None]:
+    storage = _storage()
+    if storage:
+        try:
+            rows = storage.fetch_card_population_snapshot_history(cs_card_id, limit=limit)
+            if rows:
+                return [normalize_population_snapshot_row(row) for row in rows], "supabase"
+        except SupabaseError:
+            pass
+
+    local_rows = filter_card_population_history(load_local_population_history(_settings().output_dir), cs_card_id, limit=limit)
+    if local_rows:
+        return [normalize_population_snapshot_row(row) for row in local_rows], "file"
+    return [], None
+
+
+def _load_player_card_population_snapshots(cs_player_id: str) -> tuple[dict[str, dict[str, Any]], str | None]:
+    snapshots_by_card: dict[str, dict[str, Any]] = {}
+    data_source: str | None = None
+
+    storage = _storage()
+    if storage:
+        try:
+            rows = storage.fetch_card_population_snapshots_for_player(cs_player_id)
+            for row in rows:
+                card_id = str(row.get("cs_card_id") or "")
+                if card_id:
+                    snapshots_by_card[card_id] = normalize_population_snapshot_row(row)
+            if snapshots_by_card:
+                return snapshots_by_card, "supabase"
+        except SupabaseError:
+            pass
+
+    for item in _load_latest_card_population_snapshots_from_file():
+        if str(item.get("cs_player_id")) != cs_player_id:
+            continue
+        card_id = str(item.get("cs_card_id") or "")
+        if card_id and card_id not in snapshots_by_card:
+            snapshots_by_card[card_id] = normalize_population_snapshot_row(item)
+            data_source = "file"
+
+    return snapshots_by_card, data_source
+
+
 def _card_identity_payload(card: dict[str, Any]) -> dict[str, Any]:
     return {
         "cs_card_id": card.get("cs_card_id"),
@@ -568,6 +666,144 @@ def get_player_card_market_activity(player_id: str, limit: int = 12) -> JSONResp
             "data_source": history_source or source,
         }
     )
+
+
+@app.get("/api/cards/{cs_card_id}/population/latest")
+def get_card_population_latest(cs_card_id: str) -> JSONResponse:
+    snapshot, source = _try_load_latest_card_population_snapshot(cs_card_id)
+    match = _try_load_psa_card_match(cs_card_id)
+    history, _ = _load_card_population_snapshot_history(cs_card_id, limit=12)
+
+    card_identity = {
+        "cs_card_id": cs_card_id,
+        "cs_player_id": snapshot.get("cs_player_id") if snapshot else (match or {}).get("cs_player_id"),
+    }
+    if snapshot:
+        card_identity.update(
+            {
+                "year": snapshot.get("year"),
+                "manufacturer": snapshot.get("manufacturer"),
+                "set_name": snapshot.get("set_name"),
+                "card_name": snapshot.get("card_name"),
+                "parallel": snapshot.get("parallel"),
+                "player_name": snapshot.get("player_name"),
+            }
+        )
+
+    if not snapshot and not match:
+        raise HTTPException(status_code=404, detail=f"No PSA population data found for card {cs_card_id}.")
+
+    response = build_card_population_latest_response(
+        card_identity=card_identity,
+        snapshot=snapshot,
+        match=match,
+        history=history,
+    )
+    response["data_source"] = source
+    response["disclaimer"] = "PSA population reflects graded examples, not total card supply."
+    return JSONResponse(response)
+
+
+@app.get("/api/cards/{cs_card_id}/population/history")
+def get_card_population_history(cs_card_id: str, limit: int = 12) -> JSONResponse:
+    bounded_limit = max(1, min(limit, 60))
+    rows, source = _load_card_population_snapshot_history(cs_card_id, limit=bounded_limit)
+    if not rows:
+        raise HTTPException(status_code=404, detail=f"No population history found for card {cs_card_id}.")
+    return JSONResponse(
+        {
+            "cs_card_id": cs_card_id,
+            "limit": bounded_limit,
+            "order": "oldest_to_newest",
+            "items": rows,
+            "data_source": source,
+            "disclaimer": "PSA population reflects graded examples, not total card supply.",
+        }
+    )
+
+
+@app.get("/api/players/{player_id}/cards/population/latest")
+def get_player_card_population_latest(player_id: str) -> JSONResponse:
+    payload, source = _load_player(player_id)
+    player = enrich_player_entry(payload)
+    cs_player_id = player.get("cs_player_id")
+    if not cs_player_id:
+        raise HTTPException(status_code=404, detail=f"Player identity not found for {player_id}.")
+
+    registry_cards = get_enriched_player_cards(player)
+    snapshots_by_card, snapshot_source = _load_player_card_population_snapshots(cs_player_id)
+
+    cards = []
+    for card in registry_cards:
+        card_id = str(card.get("cs_card_id") or "")
+        snapshot = snapshots_by_card.get(card_id)
+        match = _try_load_psa_card_match(card_id)
+        history, _ = _load_card_population_snapshot_history(card_id, limit=12)
+        cards.append(
+            build_card_population_latest_response(
+                card_identity=card,
+                snapshot=snapshot,
+                match=match,
+                history=history,
+            )
+        )
+
+    return JSONResponse(
+        {
+            "player_id": player.get("player_id") or player_id,
+            "cs_player_id": cs_player_id,
+            "cards": cards,
+            "data_source": snapshot_source or source,
+            "disclaimer": "PSA population reflects graded examples, not total card supply.",
+        }
+    )
+
+
+@app.post("/api/admin/population/import")
+def post_admin_population_import(payload: PopulationImportRequest, admin=Depends(_require_admin)) -> JSONResponse:
+    accepted, errors = validate_import_rows(payload.rows)
+    if not accepted and errors:
+        return JSONResponse({"status": "error", "accepted": 0, "errors": errors})
+
+    settings = _settings()
+    from cardchase_ai.population.import_provider import ImportPopulationProvider
+
+    provider = ImportPopulationProvider(accepted)
+    snapshots: list[dict[str, Any]] = []
+    matches: list[dict[str, Any]] = []
+
+    for row in accepted:
+        card_identity = {"cs_card_id": row["cs_card_id"], "cs_player_id": row.get("cs_player_id", ""), "league": "MLB"}
+        match_candidates = provider.search_card_matches({**row, **card_identity})
+        if not match_candidates:
+            errors.append({"row": row.get("cs_card_id"), "error": "Could not resolve PSA match"})
+            continue
+        match = match_candidates[0]
+        raw = provider.fetch_population(match)
+        if raw is None:
+            errors.append({"row": row.get("cs_card_id"), "error": "Population payload missing"})
+            continue
+        snapshot_payload = provider.normalize_population(raw, card_match=match, card_identity={**row, **card_identity})
+        snapshots.append(snapshot_payload)
+        matches.append(match.model_dump(mode="json"))
+
+    storage = _storage()
+    if storage and snapshots:
+        try:
+            if matches:
+                storage.upsert_psa_card_matches(matches)
+            storage.insert_card_population_snapshots(snapshots)
+        except SupabaseError as exc:
+            errors.append({"row": None, "error": str(exc)})
+
+    if snapshots:
+        from cardchase_ai.population.history import append_local_population_history, save_local_psa_matches
+
+        append_local_population_history(snapshots, settings.output_dir)
+        if matches:
+            save_local_psa_matches(matches, settings.output_dir)
+
+    return JSONResponse({"status": "ok", "accepted": len(snapshots), "errors": errors})
 
 
 @app.get("/api/me")

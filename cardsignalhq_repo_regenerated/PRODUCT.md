@@ -166,3 +166,17 @@ CardSignal card market snapshots capture **active eBay listing observations** fo
 - **Recommendations must cite supporting inputs** — BUY/HOLD/SELL and forecast language should reference the underlying snapshot quality and metrics, not imply guaranteed returns.
 
 Player-level market scoring from the leaderboard pipeline remains separate from card-level active listing snapshots until future sprints wire UI and recommendation logic to card snapshots.
+
+## PSA Population and Scarcity Principles
+
+CardSignal PSA population observations describe **graded examples reported by PSA**, linked to registry cards through deterministic `cs_card_id` matches.
+
+- **PSA population is graded population, not print run** — population counts reflect PSA-graded slabs entered into PSA’s population report, not original production or total ungraded supply.
+- **Population is not market supply** — graded population does not equal cards available for sale; active listing snapshots remain separate inputs.
+- **All observations require timestamps and source methods** — every stored snapshot includes `captured_at` and `source_method` (`official_api`, `approved_import`, or `manual_beta_seed`).
+- **Ambiguous card matches require review** — deterministic matching never silently chooses among equally scored PSA candidates; `AMBIGUOUS` matches must be reviewed.
+- **No scraping** — CardSignal does not scrape PSA web pages or undocumented endpoints.
+- **Scarcity recommendations require multiple signals** — beta PSA Population Scarcity is labeled separately and must not be presented as a complete universal scarcity score without listing and history inputs.
+- **Manual/imported beta data must be labeled** — the UI distinguishes Live PSA data, Imported PSA snapshot, and Beta seed data.
+
+When PSA population is unavailable, the Player Intelligence modal shows `PSA population pending` and `Population trend pending` — never fabricated counts.

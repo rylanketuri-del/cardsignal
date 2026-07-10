@@ -42,6 +42,13 @@ class Settings:
     card_market_movement_30d_tolerance_days: int
     card_market_movement_max_gap_7d_days: int
     card_market_movement_max_gap_30d_days: int
+    psa_api_base_url: str
+    psa_access_token: str
+    psa_population_enabled: bool
+    psa_population_provider: str
+    psa_population_card_limit: int
+    psa_population_import_path: Path | None
+    psa_population_beta_seed_path: Path | None
 
 
 def get_settings() -> Settings:
@@ -82,4 +89,23 @@ def get_settings() -> Settings:
         card_market_movement_30d_tolerance_days=int(os.getenv("CARD_MARKET_MOVEMENT_30D_TOLERANCE_DAYS", "7")),
         card_market_movement_max_gap_7d_days=int(os.getenv("CARD_MARKET_MOVEMENT_MAX_GAP_7D_DAYS", "10")),
         card_market_movement_max_gap_30d_days=int(os.getenv("CARD_MARKET_MOVEMENT_MAX_GAP_30D_DAYS", "14")),
+        psa_api_base_url=os.getenv("PSA_API_BASE_URL", "https://api.psacard.com/publicapi"),
+        psa_access_token=os.getenv("PSA_ACCESS_TOKEN", ""),
+        psa_population_enabled=os.getenv("PSA_POPULATION_ENABLED", "false").lower() in {"1", "true", "yes"},
+        psa_population_provider=os.getenv("PSA_POPULATION_PROVIDER", "import"),
+        psa_population_card_limit=int(os.getenv("PSA_POPULATION_CARD_LIMIT", "50")),
+        psa_population_import_path=_optional_path(os.getenv("PSA_POPULATION_IMPORT_PATH", "")),
+        psa_population_beta_seed_path=_optional_path(
+            os.getenv(
+                "PSA_POPULATION_BETA_SEED_PATH",
+                str(Path(__file__).resolve().parent.parent / "data" / "psa_population_beta_seed.json"),
+            )
+        ),
     )
+
+
+def _optional_path(value: str) -> Path | None:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    return Path(raw)

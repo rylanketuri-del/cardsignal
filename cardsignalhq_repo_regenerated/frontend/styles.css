@@ -5514,3 +5514,122 @@ body.pi-modal-open {
     flex-direction: column;
   }
 }
+
+/* Sprint 8.6 — PSA Population UI */
+.pi-card-row-population-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 12px;
+  margin-top: 10px;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.pi-card-row-population-metrics strong {
+  display: block;
+  color: var(--text);
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.pi-card-row-population-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin-top: 8px;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.pi-card-row-population-meta--pending {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.pi-card-row-disclaimer {
+  margin-top: 8px;
+  font-size: 0.74rem;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.cp-quality-badge,
+.cp-source-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--stone);
+  background: var(--panel);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.cp-quality-badge__desc,
+.cp-source-badge {
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: 600;
+}
+
+.cp-quality--high { color: var(--signal-green); }
+.cp-quality--medium { color: var(--copper); }
+.cp-quality--low { color: var(--bronze); }
+.cp-quality--insufficient { color: var(--muted); }
+
+.cp-source-badge--manual-beta-seed,
+.cp-source-badge--approved-import {
+  color: var(--bronze);
+}
+
+.cp-source-badge--official-api {
+  color: var(--signal-green);
+}
+
+.pi-population-scarcity {
+  margin-bottom: 16px;
+}
+
+.pi-population-scarcity--market {
+  margin-top: 16px;
+}
+
+.pi-population-scarcity-body {
+  display: grid;
+  gap: 10px;
+}
+
+.pi-population-scarcity-score {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.pi-population-scarcity-value {
+  font-family: "Cormorant", Georgia, serif;
+  font-size: 2rem;
+  line-height: 1;
+  color: var(--charcoal);
+}
+
+.pi-population-scarcity-caption,
+.pi-population-scarcity-copy,
+.pi-population-scarcity-source {
+  font-size: 0.88rem;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.pi-population-scarcity--pending .pi-population-scarcity-copy {
+  font-style: italic;
+}
+
+@media (max-width: 640px) {
+  .pi-card-row-population-metrics {
+    grid-template-columns: 1fr;
+  }
+}
