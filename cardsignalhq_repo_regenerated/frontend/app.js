@@ -17,6 +17,9 @@ let piActiveTab = "overview";
 let piModalEntry = null;
 let piModalIntel = null;
 let piModalKeydownHandler = null;
+let piCardMarketState = { status: "idle", data: null, movement: null, activity: null, error: null, playerKey: null };
+let piCardPopulationState = { status: "idle", data: null, error: null, playerKey: null };
+let piCardIntelligenceState = { status: "idle", data: null, error: null, playerKey: null };
 const PI_TABS = [
   { id: "overview", label: "Overview" },
   { id: "cards", label: "Cards" },
@@ -271,7 +274,6 @@ function buildCollectorInsight(entry) {
   return `${entry.player_name} is currently more of a watchlist candidate than an aggressive chase. The data shows some activity, but the collector signal needs either stronger performance or clearer market demand before moving higher.`;
 }
 
-const csIntelCache = new Map();
 function csIntelSafeToNumber(value) {
   const n = typeof value === "number" ? value : Number(value);
   return Number.isFinite(n) ? n : null;
@@ -279,48 +281,22 @@ function csIntelSafeToNumber(value) {
 function csIntelClamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
-function csIntelHashToUint32(str = "") {
-  let h = 2166136261;
-  for (let i = 0; i < str.length; i += 1) {
-    h ^= str.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return h >>> 0;
-}
-function csIntelMulberry32(seed) {
-  let t = seed >>> 0;
-  return function rng() {
-    t += 0x6D2B79F5;
-    let x = t;
-    x = Math.imul(x ^ (x >>> 15), x | 1);
-    x ^= x + Math.imul(x ^ (x >>> 7), x | 61);
-    return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
-  };
-}
-function csIntelPickConvictionTier(rng) {
-  if (rng >= 0.66) return "HIGH";
-  if (rng >= 0.33) return "MEDIUM";
-  return "LOW";
-}
-
-function csIntelRecommendationFromTier(tier) {
-  if (tier === "HIGH") return "BUY";
-  if (tier === "MEDIUM") return "HOLD";
-  return "SELL";
-}
-
 function csIntelRecommendationClass(action = "") {
   const key = String(action || "").toLowerCase();
   if (key === "buy") return "cs-recommendation--buy";
   if (key === "hold") return "cs-recommendation--hold";
   if (key === "sell") return "cs-recommendation--sell";
-  return "";
+  if (key === "watch") return "cs-recommendation--watch";
+  return "cs-recommendation--watch";
 }
 
 function csIntelConvictionClass(tier = "") {
-  if (tier === "HIGH") return "cs-conviction--high";
-  if (tier === "MEDIUM") return "cs-conviction--medium";
-  return "cs-conviction--low";
+  const key = String(tier || "").toUpperCase();
+  if (key === "HIGH") return "cs-conviction--high";
+  if (key === "MEDIUM") return "cs-conviction--medium";
+  if (key === "LOW") return "cs-conviction--low";
+  if (key === "INSUFFICIENT") return "cs-conviction--insufficient";
+  return "cs-conviction--insufficient";
 }
 function csIntelFormatPercent(value) {
   const n = csIntelSafeToNumber(value);
@@ -334,11 +310,45 @@ function csIntelFormatMoney(value) {
   return `$${n.toFixed(2)}`;
 }
 
+function enrichPlayerEntryIdentity(entry = {}) {
+  if (typeof CardSignalIdentity === "undefined") return entry;
+  if (entry.cs_player_id) return entry;
+  return CardSignalIdentity.enrichPlayerEntry(entry);
+}
+
+function enrichPlayerEntries(entries = []) {
+  return (entries || []).map((entry) => enrichPlayerEntryIdentity(entry));
+}
+
 function formatConvictionTier(tier = "") {
   const key = String(tier || "").toUpperCase();
   if (key === "HIGH") return "High";
   if (key === "MEDIUM") return "Medium";
-  return "Low";
+  if (key === "LOW") return "Low";
+  if (key === "INSUFFICIENT") return "Insufficient";
+  return "Insufficient";
+}
+
+const CARD_INTEL_INSUFFICIENT_SUMMARY =
+  "More market history is needed before CardSignal can issue a full recommendation.";
+
+function getSynthesizedCardRecommendationView(intelligenceState = {}) {
+  const forecast = CardIntelligenceUI.buildForecastView(intelligenceState?.data || {});
+  const evidenceSummary = (forecast.evidence || [])
+    .slice(0, 2)
+    .map((item) => `${item.label}: ${item.value}`)
+    .join(" · ");
+
+  return {
+    recommendation: forecast.recommendation || "WATCH",
+    conviction: forecast.conviction || "INSUFFICIENT",
+    summary: forecast.hasData
+      ? (evidenceSummary || forecast.summaryText || CARD_INTEL_INSUFFICIENT_SUMMARY)
+      : CARD_INTEL_INSUFFICIENT_SUMMARY,
+    hasData: forecast.hasData,
+    recommendationClass: CardIntelligenceUI.recommendationClass(forecast.recommendation),
+    convictionClass: CardIntelligenceUI.convictionClass(forecast.conviction),
+  };
 }
 
 function getCardSignalLabel(score = 0) {
@@ -384,120 +394,29 @@ function getSignalExplanation(type, score, entry = {}) {
   return `Momentum for ${name} appears to be cooling, which may temper near-term upside.`;
 }
 
-function buildWhySignalMatters(entry, intel) {
+function buildWhySignalMatters(entry, intel, intelligenceState = piCardIntelligenceState) {
   const name = entry.player_name || "This player";
   const score = intel.score || 0;
   const status = getSignalOfWeekStatus(entry);
-  const recommendation = csIntelRecommendationFromTier(intel.convictionTier);
+  const cardRec = getSynthesizedCardRecommendationView(intelligenceState);
 
-  if (recommendation === "BUY" && score >= 70) {
-    return `${name}'s CardSignal Score reflects a favorable blend of performance and collector demand. The ${status.label.toLowerCase()} status suggests buyers may still have a window before pricing fully catches up.`;
+  if (!cardRec.hasData) {
+    return `${name}'s player CardSignal Score is ${formatScore(score)} with ${status.label.toLowerCase()} status. Card-level synthesis is still pending — ${CARD_INTEL_INSUFFICIENT_SUMMARY.toLowerCase()}`;
   }
 
-  if (recommendation === "HOLD") {
-    return `${name} sits in a balanced signal zone where neither performance nor market activity is decisively leading. This profile may reward patience until a clearer catalyst emerges.`;
+  if (cardRec.recommendation === "BUY") {
+    return `${name}'s stored card intelligence suggests supportive market activity and demand inputs. The player CardSignal Score is ${formatScore(score)}; card-level evidence should be reviewed before acting.`;
   }
 
-  if (status.label === "COOLING") {
-    return `${name}'s signal is cooling, which may indicate fading chase pressure or softer market pricing. Watch for whether performance can re-ignite collector interest.`;
+  if (cardRec.recommendation === "SELL") {
+    return `${name}'s synthesized card signals show softer momentum or demand relative to recent observations. The player score is ${formatScore(score)} — card-level evidence is listed on the Forecast tab.`;
   }
 
-  return `${name}'s current CardSignal profile suggests caution — the score reflects weaker alignment across performance, market, and momentum inputs.`;
-}
-
-function buildMarketPlaceholders(entry, intel) {
-  const key = String(entry?.player_id ?? entry?.player_name ?? "unknown");
-  const seed = csIntelHashToUint32(`${key}_market`);
-  const rng = csIntelMulberry32(seed);
-
-  const avgSale = 18 + rng() * 185 + (intel.market / 100) * 45;
-  const salesVolume = Math.round(4 + rng() * 38 + (intel.momentum / 100) * 12);
-  const activeListings = Math.round(12 + rng() * 95 + (intel.collector / 100) * 20);
-  const priceMove = ((intel.momentum - 50) / 2.5) + (rng() - 0.5) * 4;
-
-  let liquidity = "Moderate";
-  if (intel.market >= 70 && salesVolume >= 20) liquidity = "High";
-  else if (intel.market < 45 || salesVolume < 10) liquidity = "Low";
-
-  const name = entry.player_name || "This player";
-  let summary = `${name}'s card market shows steady activity with pricing that has not fully reacted to recent signal movement.`;
-  if (liquidity === "High") {
-    summary = `${name}'s card market is active with supportive liquidity, suggesting buyers and sellers are both engaged at current levels.`;
-  } else if (liquidity === "Low") {
-    summary = `${name}'s card market appears thin, which may amplify price swings on individual sales.`;
+  if (cardRec.recommendation === "HOLD") {
+    return `${name}'s card intelligence is balanced across stored market inputs. The player CardSignal Score is ${formatScore(score)} with ${status.label.toLowerCase()} status.`;
   }
 
-  return {
-    avgSale,
-    salesVolume,
-    activeListings,
-    priceMove,
-    liquidity,
-    summary,
-  };
-}
-
-function getRiskLevel(intel) {
-  const conviction = String(intel.convictionTier || "").toUpperCase();
-  const score = intel.score || 0;
-  if (conviction === "HIGH" && score >= 75) return "Low";
-  if (conviction === "LOW" || score < 45) return "High";
-  return "Medium";
-}
-
-function buildForecastSummary(entry, intel) {
-  const name = entry.player_name || "This player";
-  const recommendation = csIntelRecommendationFromTier(intel.convictionTier).toLowerCase();
-
-  if (recommendation === "buy") {
-    return `Over the next 2–4 weeks, ${name}'s profile suggests continued collector interest could lift card values, though outcomes are never guaranteed.`;
-  }
-
-  if (recommendation === "sell") {
-    return `Over the next 2–4 weeks, ${name}'s signal may face headwinds as momentum and market inputs soften relative to recent peaks.`;
-  }
-
-  return `Over the next 2–4 weeks, ${name}'s signal appears balanced — the data suggests holding current positions while watching for a clearer directional catalyst.`;
-}
-
-function buildForecastReasons(entry, intel) {
-  const reasons = [];
-  const performance = intel.performance || 0;
-  const market = intel.market || 0;
-  const collector = intel.collector || 0;
-  const momentum = intel.momentum || 0;
-
-  if (performance >= 60) {
-    reasons.push("Recent performance suggests strengthening buyer interest.");
-  } else if (performance < 45) {
-    reasons.push("Recent performance may weigh on near-term collector sentiment.");
-  }
-
-  if (collector >= 60) {
-    reasons.push("Collector demand appears to be accelerating.");
-  } else if (collector < 45) {
-    reasons.push("Collector demand could remain soft without a performance catalyst.");
-  }
-
-  if (market < 55 && momentum >= 55) {
-    reasons.push("Market pricing may not have fully reacted to recent signal movement.");
-  } else if (market >= 65) {
-    reasons.push("Market pricing already reflects elevated activity around key cards.");
-  }
-
-  if (momentum >= 60) {
-    reasons.push("Momentum indicators suggest the signal could continue building.");
-  }
-
-  if (reasons.length < 3) {
-    reasons.push("Supply on recent listings appears limited relative to typical volume.");
-  }
-
-  if (reasons.length < 4) {
-    reasons.push("The overall signal mix suggests measured positioning rather than aggressive chasing.");
-  }
-
-  return reasons.slice(0, 4);
+  return `${name}'s player CardSignal Score is ${formatScore(score)}. Card-level synthesis remains limited — ${CARD_INTEL_INSUFFICIENT_SUMMARY.toLowerCase()}`;
 }
 
 const SECTION_DESCRIPTIONS = {
@@ -541,31 +460,188 @@ function movementClass(movement = "") {
 }
 
 /* Landing page — Quick Intelligence grid row */
+function formatQuickIntelPrice(item = {}) {
+  if (item.priceLabel) return item.priceLabel;
+  if (item.medianPrice) return item.medianPrice;
+  const n = csIntelSafeToNumber(item.price);
+  if (n === null) return "Snapshot pending";
+  return csIntelFormatMoney(n);
+}
+
+function formatQuickIntelScore(item = {}) {
+  if (item.scoreLabel) return item.scoreLabel;
+  if (item.cardSignalScoreLabel) return item.cardSignalScoreLabel;
+  if (item.score === null || item.score === undefined || item.score === "") return "Score pending";
+  return item.score;
+}
+
+function mapRowToQuickIntelItem(row = {}) {
+  const snap = row.market_snapshot || null;
+  const median = snap?.median_price;
+  const priceLabel = row.medianPrice
+    || (median != null ? csIntelFormatMoney(median) : "Snapshot pending");
+
+  return {
+    ...row,
+    name: row.name || CardRegistry.formatCardDisplayName(row),
+    year: row.year || "—",
+    setName: row.set_name || row.setName || "—",
+    parallel: row.parallel || "—",
+    price: median,
+    priceLabel,
+    movement: row.movement || "Movement pending",
+    score: row.cardSignalScore ?? row.score ?? null,
+    scoreLabel: row.cardSignalScoreLabel || (row.cardSignalScore != null ? String(Math.round(row.cardSignalScore)) : "Score pending"),
+  };
+}
+
+function buildHomepageRegistryQuickSections(entry = {}) {
+  const fallback = CardMarketUI.buildRegistryFallbackSections(entry);
+  return {
+    trendingCards: fallback.trendingCards.map(mapRowToQuickIntelItem),
+    biggestMovers: fallback.biggestMovers.map((row) =>
+      mapRowToQuickIntelItem({ ...row, movement: "Movement pending" })
+    ),
+    buyLowOpportunities: fallback.buyLowOpportunities.map((row) =>
+      mapRowToQuickIntelItem({
+        ...row,
+        movement: "Requires price-history confirmation",
+      })
+    ),
+    mostChased: fallback.mostChased.map(mapRowToQuickIntelItem),
+  };
+}
+
+function enrichHomepageSectionsWithIntelligence(sections, intelligencePayload = {}) {
+  const intelligenceMap = CardIntelligenceUI.intelligenceByCardId(intelligencePayload);
+  const enrichList = (items = []) =>
+    items.map((item) => {
+      const withIntel = CardIntelligenceUI.enrichCardRow(item, intelligenceMap.get(item.cs_card_id));
+      return mapRowToQuickIntelItem(withIntel);
+    });
+
+  const moversWithValidMovement = (sections.biggestMovers || []).filter(
+    (item) => item.movementDetail?.has_movement
+  );
+
+  return {
+    trendingCards: enrichList(sections.trendingCards),
+    biggestMovers: moversWithValidMovement.length ? enrichList(moversWithValidMovement) : [],
+    buyLowOpportunities: enrichList(sections.buyLowOpportunities).map((item) => ({
+      ...item,
+      movement: "Requires price-history confirmation",
+    })),
+    mostChased: enrichList(sections.mostChased),
+  };
+}
+
+async function loadHomepageCardSections(entry = {}) {
+  if (!entry?.player_id) {
+    return buildHomepageRegistryQuickSections(entry);
+  }
+
+  const [marketResult, intelligenceResult] = await Promise.all([
+    CardMarketUI.fetchPlayerCardMarketBundle(entry.player_id),
+    CardIntelligenceUI.fetchPlayerCardIntelligence(entry.player_id),
+  ]);
+
+  const intelligencePayload = intelligenceResult.status === "success" ? intelligenceResult.data : {};
+
+  if (marketResult.status === "success" && marketResult.data && CardMarketUI.hasSnapshots(marketResult.data)) {
+    const sections = CardMarketUI.buildCardSections(
+      marketResult.data.cards || [],
+      marketResult.movement
+    );
+    const enriched = enrichHomepageSectionsWithIntelligence(sections, intelligencePayload);
+
+    if (!enriched.biggestMovers.length) {
+      enriched.biggestMovers = buildHomepageRegistryQuickSections(entry).biggestMovers;
+    }
+
+    return enriched;
+  }
+
+  const registrySections = buildHomepageRegistryQuickSections(entry);
+  if (intelligencePayload?.cards?.length) {
+    const intelligenceMap = CardIntelligenceUI.intelligenceByCardId(intelligencePayload);
+    const enrichFallback = (items = []) =>
+      items.map((item) => {
+        const withIntel = CardIntelligenceUI.enrichCardRow(item, intelligenceMap.get(item.cs_card_id));
+        return mapRowToQuickIntelItem(withIntel);
+      });
+
+    return {
+      trendingCards: enrichFallback(registrySections.trendingCards),
+      biggestMovers: registrySections.biggestMovers,
+      buyLowOpportunities: registrySections.buyLowOpportunities,
+      mostChased: enrichFallback(registrySections.mostChased),
+    };
+  }
+
+  return registrySections;
+}
+
+function renderHomepageCardSectionLoading() {
+  const loadingRow = `
+    <div class="qi-row qi-row--pending" role="status">
+      <div class="qi-row-thumb" aria-hidden="true"></div>
+      <div class="qi-row-body">
+        <span class="qi-row-name">Loading card intelligence…</span>
+      </div>
+    </div>
+  `;
+
+  return ["trending", "movers", "buy-low", "chased"].map((modifier) => `
+    <article class="qi-card qi-card--${modifier} qi-card--loading">
+      <h3 class="qi-card-title">${modifier === "trending" ? "Trending Cards" : modifier === "movers" ? "Biggest Movers" : modifier === "buy-low" ? "Buy Low Watch" : "Most Chased"}</h3>
+      <div class="qi-card-list">${loadingRow}${loadingRow}${loadingRow}</div>
+    </article>
+  `).join("");
+}
+
 function renderCardIntelRow(item) {
   const moveClass = movementClass(item.movement);
+  const cardName = item.name || CardRegistry.formatCardDisplayName(item);
+  const priceLabel = formatQuickIntelPrice(item);
+  const scoreLabel = formatQuickIntelScore(item);
 
   return `
     <div class="qi-row">
       <div class="qi-row-thumb" aria-hidden="true"></div>
       <div class="qi-row-body">
-        <span class="qi-row-name">${item.name}</span>
+        <span class="qi-row-name">${cardName}</span>
+        <div class="qi-row-detail">
+          <span>${item.year || "—"}</span>
+          <span>${item.setName || "—"}</span>
+          <span>${item.parallel || "—"}</span>
+        </div>
         <div class="qi-row-metrics">
-          <span class="qi-price">${csIntelFormatMoney(item.price)}</span>
-          <span class="qi-move ${moveClass}">${item.movement}</span>
-          <span class="qi-score-pill">${item.score ?? "—"}</span>
+          <span class="qi-price">${priceLabel}</span>
+          <span class="qi-move ${moveClass}">${item.movement || "Movement pending"}</span>
+          <span class="qi-score-pill">${scoreLabel}</span>
         </div>
       </div>
     </div>
   `;
 }
 
-function renderCardIntelBox({ title, modifier, description, items }) {
+function renderCardIntelBox({ title, modifier, description, items, emptyLabel = "Not enough data" }) {
+  const listContent = items.length
+    ? items.slice(0, 3).map((item) => renderCardIntelRow(item)).join("")
+    : `
+      <div class="qi-row qi-row--pending" role="status">
+        <div class="qi-row-body">
+          <span class="qi-row-name">${emptyLabel}</span>
+        </div>
+      </div>
+    `;
+
   return `
     <article class="qi-card qi-card--${modifier}">
       <h3 class="qi-card-title">${title}</h3>
       <p class="qi-card-desc">${description}</p>
       <div class="qi-card-list">
-        ${items.slice(0, 3).map((item) => renderCardIntelRow(item)).join("")}
+        ${listContent}
       </div>
     </article>
   `;
@@ -581,34 +657,69 @@ function renderCardSection(entries = []) {
   if (!root) return;
 
   const entry = getCardSectionEntry(entries);
-  const intel = csIntelGetPlaceholders(entry);
+  root.innerHTML = renderHomepageCardSectionLoading();
 
-  root.innerHTML = `
-    ${renderCardIntelBox({
-      title: "Trending Cards",
-      modifier: "trending",
-      description: SECTION_DESCRIPTIONS.trending,
-      items: intel.trendingCards,
-    })}
-    ${renderCardIntelBox({
-      title: "Biggest Movers",
-      modifier: "movers",
-      description: SECTION_DESCRIPTIONS.movers,
-      items: intel.biggestMovers,
-    })}
-    ${renderCardIntelBox({
-      title: "Buy Low Watch",
-      modifier: "buy-low",
-      description: SECTION_DESCRIPTIONS.buyLow,
-      items: intel.buyLowOpportunities,
-    })}
-    ${renderCardIntelBox({
-      title: "Most Chased",
-      modifier: "chased",
-      description: SECTION_DESCRIPTIONS.chased,
-      items: intel.mostChased,
-    })}
-  `;
+  loadHomepageCardSections(entry)
+    .then((sections) => {
+      if (!root.isConnected) return;
+      root.innerHTML = `
+        ${renderCardIntelBox({
+          title: "Trending Cards",
+          modifier: "trending",
+          description: SECTION_DESCRIPTIONS.trending,
+          items: sections.trendingCards,
+        })}
+        ${renderCardIntelBox({
+          title: "Biggest Movers",
+          modifier: "movers",
+          description: SECTION_DESCRIPTIONS.movers,
+          items: sections.biggestMovers,
+          emptyLabel: "Movement pending",
+        })}
+        ${renderCardIntelBox({
+          title: "Buy Low Watch",
+          modifier: "buy-low",
+          description: SECTION_DESCRIPTIONS.buyLow,
+          items: sections.buyLowOpportunities,
+        })}
+        ${renderCardIntelBox({
+          title: "Most Chased",
+          modifier: "chased",
+          description: SECTION_DESCRIPTIONS.chased,
+          items: sections.mostChased,
+        })}
+      `;
+    })
+    .catch(() => {
+      if (!root.isConnected) return;
+      const fallback = buildHomepageRegistryQuickSections(entry);
+      root.innerHTML = `
+        ${renderCardIntelBox({
+          title: "Trending Cards",
+          modifier: "trending",
+          description: SECTION_DESCRIPTIONS.trending,
+          items: fallback.trendingCards,
+        })}
+        ${renderCardIntelBox({
+          title: "Biggest Movers",
+          modifier: "movers",
+          description: SECTION_DESCRIPTIONS.movers,
+          items: fallback.biggestMovers,
+        })}
+        ${renderCardIntelBox({
+          title: "Buy Low Watch",
+          modifier: "buy-low",
+          description: SECTION_DESCRIPTIONS.buyLow,
+          items: fallback.buyLowOpportunities,
+        })}
+        ${renderCardIntelBox({
+          title: "Most Chased",
+          modifier: "chased",
+          description: SECTION_DESCRIPTIONS.chased,
+          items: fallback.mostChased,
+        })}
+      `;
+    });
 }
 
 /* Signal Center — player identity row with headshot for featured sections */
@@ -644,200 +755,70 @@ function showChartPlaceholder(canvasId, placeholderId, show) {
   if (placeholder) placeholder.classList.toggle("hidden", !show);
 }
 function csIntelGetPlaceholders(entry) {
-  const key = String(entry?.player_id ?? entry?.player_name ?? "unknown");
-  if (csIntelCache.has(key)) return csIntelCache.get(key);
+  const identityEntry = enrichPlayerEntryIdentity(entry);
+  const cardRegistry = CardRegistry.getPlayerCardRegistry(identityEntry);
 
-  const storageKey = `cs_intel_placeholders_v1_${key}`;
-  try {
-    const raw = sessionStorage.getItem(storageKey);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed && (parsed.convictionTier || parsed.confidenceTier)) {
-        if (!parsed.convictionTier && parsed.confidenceTier) {
-          parsed.convictionTier = parsed.confidenceTier;
-        }
-        csIntelCache.set(key, parsed);
-        return parsed;
-      }
-    }
-  } catch (_) {
-    // ignore
-  }
-
-  const seed = csIntelHashToUint32(key);
-  const rng = csIntelMulberry32(seed);
-
-  const convictionTier = csIntelPickConvictionTier(rng());
-
-  // 0-100 "premium" placeholder scales (used when backend fields are missing).
-  const performance = csIntelClamp(22 + rng() * 78, 0, 100);
-  const market = csIntelClamp(18 + rng() * 82, 0, 100);
-  const collector = csIntelClamp(market * 0.62 + performance * 0.38 + (rng() - 0.5) * 12, 0, 100);
-  const momentum = csIntelClamp(((performance + market) / 2) * 0.92 + (rng() - 0.5) * 18, 0, 100);
-
-  const score = csIntelClamp(performance * 0.5 + market * 0.4 + momentum * 0.1 + (rng() - 0.5) * 10, 0, 100);
-
-  const trendingNamePool = [
-    "Auric Spark",
-    "Copper Drift",
-    "Midnight Prospect",
-    "Golden Curve",
-    "Sable Surge",
-    "Emerald Lift",
-    "Nova Demand",
-    "Ivory Velocity",
-    "Crimson Shelf",
-    "Sterling Swing",
-  ];
-
-  const moverNamePool = [
-    "1st Bowman Auto",
-    "Rookie Patch Parallel",
-    "Bowman Chrome Mojo",
-    "Vintage Select /25",
-    "Topps Chrome Sapphire",
-    "Heritage Black Gold",
-    "Bowman Draft Gold",
-    "Stadium Club Red Ink",
-    "Prizm Draft Stars",
-    "Museum Collection Gem",
-  ];
-
-  const buyLowNamePool = [
-    "Low-Ask Bowman Chrome",
-    "Undervalued Rookie Parallel",
-    "Quiet Liquidity Lot",
-    "Discounted Card Slice",
-    "Value Pocket Prospect",
-    "Supportive Supply Window",
-    "Stable Demand, Soft Prices",
-    "Inked Rookie Deal",
-    "Surprisingly Priced Parallel",
-    "Buyer-Ready Bargain",
-  ];
-
-  const chasedNamePool = [
-    "Hot Case Break",
-    "Chase-Grade Parallel",
-    "Bid-War Magnet",
-    "Collector Pressure Lot",
-    "Velocity Surge Card",
-    "Momentum Mirror",
-    "Rising Demand Select",
-    "Premium Parallels Feed",
-    "Frictionless Chase Copy",
-    "Scarcity-Driven Target",
-  ];
-
-  function pickThree(pool, { bias = 0, priceMin = 8, priceMax = 230, moveMin = 4, moveMax = 30 } = {}) {
-    const used = new Set();
-    const out = [];
-    while (out.length < 3 && used.size < pool.length) {
-      const idx = Math.floor(rng() * pool.length);
-      if (used.has(idx)) continue;
-      used.add(idx);
-      const price = priceMin + rng() * (priceMax - priceMin);
-      const magnitude = moveMin + rng() * (moveMax - moveMin);
-      // bias shifts expectation, but we still allow direction changes.
-      const direction = rng() > 0.5 ? 1 : -1;
-      const move = (direction * magnitude) + bias + (rng() - 0.5) * 5;
-      out.push({
-        name: pool[idx],
-        price,
-        movement: csIntelFormatPercent(move),
-        score: Math.round(40 + rng() * 55),
-        upside: csIntelFormatPercent((rng() - 0.35) * 28),
-      });
-    }
-    return out;
-  }
-
-  const trendingCards = pickThree(trendingNamePool, {
-    bias: (market - 50) / 8 + (momentum - 50) / 10,
-    priceMin: 12,
-    priceMax: 260,
-    moveMin: 8,
-    moveMax: 28,
-  });
-
-  const biggestMovers = pickThree(moverNamePool, {
-    bias: (performance - 50) / 10,
-    priceMin: 15,
-    priceMax: 310,
-    moveMin: 10,
-    moveMax: 38,
-  });
-
-  const buyLowOpportunities = pickThree(buyLowNamePool, {
-    bias: -6 + (market < 50 ? 3 : -2),
-    priceMin: 9,
-    priceMax: 170,
-    moveMin: 4,
-    moveMax: 22,
-  });
-
-  const mostChased = pickThree(chasedNamePool, {
-    bias: 5 + (momentum - 50) / 10,
-    priceMin: 18,
-    priceMax: 360,
-    moveMin: 8,
-    moveMax: 36,
-  });
-
-  const aiReasonPool = [
-    "Collector demand is increasing faster than current market pricing.",
-    "Performance momentum suggests a continued lift in buyer interest over the next 7 days.",
-    "Market liquidity remains supportive while supply tightens on recent listings.",
-    "Trading velocity is rising faster than average price, creating a favorable buy window.",
-    "Recent chase pressure indicates higher willingness to pay for comparable lots soon.",
-  ];
-
-  const aiReason = aiReasonPool[Math.floor(rng() * aiReasonPool.length)] || aiReasonPool[0];
-
-  const placeholders = {
-    convictionTier,
-    performance: csIntelClamp(performance, 0, 100),
-    market: csIntelClamp(market, 0, 100),
-    collector: csIntelClamp(collector, 0, 100),
-    momentum: csIntelClamp(momentum, 0, 100),
-    score: csIntelClamp(score, 0, 100),
-    trendingCards,
-    biggestMovers,
-    buyLowOpportunities,
-    mostChased,
-    aiRecommendation: {
-      action: csIntelRecommendationFromTier(convictionTier),
-      conviction: convictionTier,
-      reason: aiReason,
-    },
+  return {
+    convictionTier: "INSUFFICIENT",
+    performance: null,
+    market: null,
+    collector: null,
+    momentum: null,
+    score: null,
+    cardRegistry,
+    cardRegistryVersion: 1,
+    identityVersion: 1,
+    cs_player_id: identityEntry.cs_player_id,
+    source_player_id: identityEntry.source_player_id,
+    league: identityEntry.league,
+    sport: identityEntry.sport,
+    player_name: identityEntry.player_name,
+    cs_signal_id: identityEntry.cs_signal_id,
+    cs_forecast_id: identityEntry.cs_forecast_id,
   };
-
-  csIntelCache.set(key, placeholders);
-  try {
-    sessionStorage.setItem(storageKey, JSON.stringify(placeholders));
-  } catch (_) {
-    // ignore
-  }
-  return placeholders;
 }
 
 function buildPlayerIntel(entry) {
-  const hotness = entry.hotness || {};
-  const placeholders = csIntelGetPlaceholders(entry);
+  const identityEntry = enrichPlayerEntryIdentity(entry);
+  const hotness = identityEntry.hotness || {};
+  const placeholders = csIntelGetPlaceholders(identityEntry);
+  const cardRec = getSynthesizedCardRecommendationView(piCardIntelligenceState);
 
   return {
     ...placeholders,
-    performance: csIntelSafeToNumber(hotness.performance_score) ?? placeholders.performance,
-    market: csIntelSafeToNumber(hotness.market_score) ?? placeholders.market,
-    collector: csIntelSafeToNumber(hotness.collector_score) ?? placeholders.collector,
-    momentum: csIntelSafeToNumber(hotness.momentum_score) ?? placeholders.momentum,
-    score: csIntelSafeToNumber(hotness.total_score) ?? placeholders.score,
-    convictionTier: placeholders.convictionTier || placeholders.confidenceTier,
+    performance: csIntelSafeToNumber(hotness.performance_score),
+    market: csIntelSafeToNumber(hotness.market_score),
+    collector: csIntelSafeToNumber(hotness.collector_score),
+    momentum: csIntelSafeToNumber(hotness.momentum_score),
+    score: csIntelSafeToNumber(hotness.total_score),
+    convictionTier: cardRec.hasData ? cardRec.conviction : "INSUFFICIENT",
+    recommendation: cardRec.recommendation,
+    cs_player_id: placeholders.cs_player_id,
+    source_player_id: placeholders.source_player_id,
+    league: placeholders.league,
+    sport: placeholders.sport,
+    player_name: placeholders.player_name,
+    cs_signal_id: placeholders.cs_signal_id,
+    cs_forecast_id: placeholders.cs_forecast_id,
   };
 }
 
 function renderProgressRow(label, value, colorClass) {
-  const v = csIntelClamp(Number(value) || 0, 0, 100);
+  const n = csIntelSafeToNumber(value);
+  if (n === null) {
+    return `
+    <div class="cs-progress-row cs-progress-row--pending">
+      <div class="cs-progress-top">
+        <span class="cs-progress-label">${label}</span>
+        <span class="cs-progress-value">Score pending</span>
+      </div>
+      <div class="cs-progress-track cs-progress-track--pending" aria-hidden="true">
+        <span class="cs-progress-fill ${colorClass}" style="width:0%"></span>
+      </div>
+    </div>
+  `;
+  }
+  const v = csIntelClamp(n, 0, 100);
   return `
     <div class="cs-progress-row">
       <div class="cs-progress-top">
@@ -851,16 +832,109 @@ function renderProgressRow(label, value, colorClass) {
   `;
 }
 
+function renderPiCardMarketLoading(message = "Loading card-market intelligence…") {
+  return `
+    <div class="pi-card-market-state" role="status" aria-live="polite">
+      <div class="pi-card-market-spinner" aria-hidden="true"></div>
+      <p class="pi-card-market-state-copy">${message}</p>
+    </div>
+  `;
+}
+
+function renderPiCardMarketMessage(message, modifier = "") {
+  return `
+    <div class="pi-card-market-state pi-card-market-state--${modifier}" role="status" aria-live="polite">
+      <p class="pi-card-market-state-copy">${message}</p>
+    </div>
+  `;
+}
+
+function renderPiMarketCardRow(item) {
+  const qualityBadge = CardMarketUI.renderQualityBadge(item.dataQuality);
+  return `
+    <div class="pi-card-row pi-card-row--market">
+      <div class="pi-card-row-thumb" aria-hidden="true"></div>
+      <div class="pi-card-row-copy">
+        <div class="pi-card-row-name">${item.name}</div>
+        <div class="pi-card-row-detail">
+          <span>${item.year || "—"}</span>
+          <span>${item.manufacturer || "—"}</span>
+          <span>${item.set_name || "—"}</span>
+        </div>
+        <div class="pi-card-row-detail pi-card-row-detail--secondary">
+          <span>${item.card_name || "—"}</span>
+          <span>${item.parallel || "—"}</span>
+          <span>${item.grade || "—"}${item.grading_company ? ` · ${item.grading_company}` : ""}</span>
+        </div>
+        <div class="pi-card-row-market-metrics">
+          <span><strong>Median Active Price</strong> ${item.medianPrice}</span>
+          <span><strong>Average Active Price</strong> ${item.averagePrice}</span>
+          <span><strong>Active Listings</strong> ${item.activeListings}</span>
+          <span><strong>Auctions</strong> ${item.auctions}</span>
+        </div>
+        <div class="pi-card-row-population-metrics">
+          <span title="Total PSA graded examples in the population report"><strong>Total PSA Pop</strong> ${item.totalPsaPop || "PSA population pending"}</span>
+          <span title="PSA 10 graded population"><strong>PSA 10 Pop</strong> ${item.psa10Pop || "PSA population pending"}</span>
+          <span title="PSA 9 graded population"><strong>PSA 9 Pop</strong> ${item.psa9Pop || "PSA population pending"}</span>
+          <span title="PSA 10 population divided by total graded population"><strong>Gem Rate</strong> ${item.gemRate || "—"}</span>
+        </div>
+        <div class="pi-card-row-foot">
+          <span class="pi-card-row-snapshot-note">Active listing snapshot</span>
+          <span class="pi-card-row-move ${movementClass(item.movement)}">${item.movement}</span>
+        </div>
+        <div class="pi-card-row-foot pi-card-row-foot--movement">
+          <span class="pi-card-row-movement-label">${item.movementLabel || "7-day active listing movement"}</span>
+          ${item.movementAbs && item.movementAbs !== "—" ? `<span class="pi-card-row-movement-abs">${item.movementAbs}</span>` : ""}
+        </div>
+        <div class="pi-card-row-foot pi-card-row-foot--meta">
+          ${qualityBadge}
+          ${item.hasPopulationSnapshot ? CardPopulationUI.renderQualityBadge(item.populationDataQuality) : ""}
+          ${item.populationSourceMethod ? CardPopulationUI.renderSourceBadge(item.populationSourceMethod) : ""}
+          ${item.movementQuality && item.movementQuality !== "INSUFFICIENT"
+            ? `<span class="cm-quality-badge cm-quality--${String(item.movementQuality).toLowerCase()}">Movement ${item.movementQuality}</span>`
+            : ""}
+          <span class="pi-card-row-captured">${item.capturedLabel}</span>
+        </div>
+        <div class="pi-card-row-intelligence">
+          <span class="pi-card-intel-score" title="Card Signal Score">${item.cardSignalScoreLabel || "Score pending"}</span>
+          <span class="cs-recommendation-badge ${CardIntelligenceUI.recommendationClass(item.recommendation)} pi-card-intel-rec">${item.recommendation || "WATCH"}</span>
+          <span class="cs-conviction-badge ${CardIntelligenceUI.convictionClass(item.conviction)} pi-card-intel-conviction">${item.conviction || "INSUFFICIENT"}</span>
+          ${item.dataQualityLabel ? `<span class="cm-quality-badge cm-quality--${String(item.dataQualityLabel).toLowerCase()}">${item.dataQualityLabel}</span>` : ""}
+        </div>
+        ${!item.hasFullScore && item.missingInputs?.length
+          ? `<p class="pi-card-intel-missing">${item.missingInputs.includes("More market history is needed before CardSignal can issue a full card recommendation.")
+            ? "More market history is needed before CardSignal can issue a full card recommendation."
+            : "Score pending — additional stored observations required."}</p>`
+          : ""}
+        ${item.hasPopulationSnapshot
+          ? `<p class="pi-card-row-population-meta"><span>${item.populationCapturedLabel}</span><span>${item.populationTrendLabel}</span></p>`
+          : `<p class="pi-card-row-population-meta pi-card-row-population-meta--pending">PSA population pending</p>`}
+        <p class="pi-card-row-disclaimer">${item.populationDisclaimer || "PSA population reflects graded examples, not total card supply."}</p>
+        ${item.comparisonCapturedLabel && item.comparisonCapturedLabel !== "—"
+          ? `<p class="pi-card-row-comparison">Compared to ${item.comparisonCapturedLabel}</p>`
+          : ""}
+        ${item.betaNote ? `<p class="pi-card-row-beta-note">Requires price-history confirmation</p>` : ""}
+      </div>
+    </div>
+  `;
+}
+
 function renderPiCardRow(item) {
   const moveClass = movementClass(item.movement);
   const signalLabel = getCardSignalLabel(item.score);
   const signalClass = getCardSignalLabelClass(item.score);
+  const cardName = item.name || CardRegistry.formatCardDisplayName(item);
 
   return `
     <div class="pi-card-row">
       <div class="pi-card-row-thumb" aria-hidden="true"></div>
       <div class="pi-card-row-copy">
-        <div class="pi-card-row-name">${item.name}</div>
+        <div class="pi-card-row-name">${cardName}</div>
+        <div class="pi-card-row-detail">
+          <span class="pi-card-row-year">${item.year || "—"}</span>
+          <span class="pi-card-row-set">${item.setName || "—"}</span>
+          <span class="pi-card-row-parallel">${item.parallel || "—"}</span>
+        </div>
         <div class="pi-card-row-meta">
           <span class="pi-card-row-price">${csIntelFormatMoney(item.price)}</span>
           <span class="pi-card-row-move ${moveClass}">${item.movement}</span>
@@ -871,29 +945,31 @@ function renderPiCardRow(item) {
   `;
 }
 
-function renderPiPlayerSection(playerName, title, items) {
+function renderPiPlayerSection(playerName, title, items, { useMarketRows = false } = {}) {
+  const rowRenderer = useMarketRows ? renderPiMarketCardRow : renderPiCardRow;
   return `
     <section class="cs-premium-card pi-intel-section">
       <div class="cs-premium-head">
         <h3 class="cs-premium-title">${playerName} ${title}</h3>
       </div>
       <div class="cs-premium-card-list cs-premium-card-list--unified">
-        ${items.slice(0, 3).map((item) => renderPiCardRow(item)).join("")}
+        ${items.slice(0, 3).map((item) => rowRenderer(item)).join("")}
       </div>
     </section>
   `;
 }
 
-function renderPiOverviewTab(entry, intel) {
-  const convictionTier = intel.convictionTier;
-  const recommendation = csIntelRecommendationFromTier(convictionTier);
-  const recommendationClass = csIntelRecommendationClass(recommendation);
-  const convictionClass = csIntelConvictionClass(convictionTier);
-  const convictionLabel = formatConvictionTier(convictionTier);
+function renderPiOverviewTab(entry, intel, intelligenceState = piCardIntelligenceState) {
+  const cardRec = getSynthesizedCardRecommendationView(intelligenceState);
+  const recommendation = intelligenceState?.status === "loading" ? "WATCH" : cardRec.recommendation;
+  const conviction = intelligenceState?.status === "loading" ? "INSUFFICIENT" : cardRec.conviction;
+  const recommendationClass = cardRec.recommendationClass || CardIntelligenceUI.recommendationClass(recommendation);
+  const convictionClass = cardRec.convictionClass || CardIntelligenceUI.convictionClass(conviction);
+  const convictionLabel = formatConvictionTier(conviction);
   const movement = computeSignalOfWeekMovement(entry);
   const moveClass = movement.signed.startsWith("+") ? "metric-up" : movement.signed.startsWith("-") ? "metric-down" : "metric-flat";
   const status = getSignalOfWeekStatus(entry);
-  const whyMatters = buildWhySignalMatters(entry, intel);
+  const whyMatters = buildWhySignalMatters(entry, intel, intelligenceState);
 
   return `
     <div class="pi-tab-panel pi-tab-panel--overview" data-tab-panel="overview">
@@ -905,7 +981,7 @@ function renderPiOverviewTab(entry, intel) {
           <div class="cs-section-head-right">
             <div class="cs-recommendation-wrap">
               <div class="cs-recommendation-badge ${recommendationClass}">${recommendation}</div>
-              <small class="cs-recommendation-label">Recommendation</small>
+              <small class="cs-recommendation-label">Card Intelligence</small>
             </div>
             <div class="cs-conviction-wrap">
               <div class="cs-conviction-badge ${convictionClass}">${convictionLabel}</div>
@@ -951,51 +1027,190 @@ function renderPiOverviewTab(entry, intel) {
   `;
 }
 
-function renderPiCardsTab(entry, intel) {
+function enrichCardSectionsWithPopulation(sections, populationState = piCardPopulationState, intelligenceState = piCardIntelligenceState) {
+  const populationMap = CardPopulationUI.populationByCardId(populationState.data || {});
+  const intelligenceMap = CardIntelligenceUI.intelligenceByCardId(intelligenceState.data || {});
+  const enrichList = (items = []) =>
+    items.map((item) => {
+      const withPopulation = CardPopulationUI.enrichCardRow(item, populationMap.get(item.cs_card_id));
+      return CardIntelligenceUI.enrichCardRow(withPopulation, intelligenceMap.get(item.cs_card_id));
+    });
+
+  return {
+    trendingCards: enrichList(sections.trendingCards),
+    biggestMovers: enrichList(sections.biggestMovers),
+    buyLowOpportunities: enrichList(sections.buyLowOpportunities),
+    mostChased: enrichList(sections.mostChased),
+  };
+}
+
+function renderPiCardsTab(entry, intel, marketState = piCardMarketState, populationState = piCardPopulationState, intelligenceState = piCardIntelligenceState) {
   const playerName = entry.player_name || "Player";
+
+  if (marketState.status === "loading") {
+    return `
+      <div class="pi-tab-panel pi-tab-panel--cards" data-tab-panel="cards">
+        ${renderPiCardMarketLoading()}
+      </div>
+    `;
+  }
+
+  if (marketState.status === "error") {
+    const fallback = CardMarketUI.buildRegistryFallbackSections(entry);
+    return `
+      <div class="pi-tab-panel pi-tab-panel--cards" data-tab-panel="cards">
+        ${renderPiCardMarketMessage(marketState.error || "Card-market intelligence is temporarily unavailable.", "error")}
+        <div class="pi-cards-grid">
+          ${renderPiPlayerSection(playerName, "Trending Cards", fallback.trendingCards, { useMarketRows: true })}
+          ${renderPiPlayerSection(playerName, "Biggest Movers", fallback.biggestMovers, { useMarketRows: true })}
+          ${renderPiPlayerSection(playerName, "Buy Low Watch", fallback.buyLowOpportunities, { useMarketRows: true })}
+          ${renderPiPlayerSection(playerName, "Most Chased", fallback.mostChased, { useMarketRows: true })}
+        </div>
+      </div>
+    `;
+  }
+
+  if (marketState.status === "empty" || !marketState.data) {
+    const fallback = CardMarketUI.buildRegistryFallbackSections(entry);
+    return `
+      <div class="pi-tab-panel pi-tab-panel--cards" data-tab-panel="cards">
+        ${renderPiCardMarketMessage("No card-market snapshot is available for this player yet.", "empty")}
+        <div class="pi-cards-grid">
+          ${renderPiPlayerSection(playerName, "Trending Cards", fallback.trendingCards, { useMarketRows: true })}
+          ${renderPiPlayerSection(playerName, "Biggest Movers", fallback.biggestMovers, { useMarketRows: true })}
+          ${renderPiPlayerSection(playerName, "Buy Low Watch", fallback.buyLowOpportunities, { useMarketRows: true })}
+          ${renderPiPlayerSection(playerName, "Most Chased", fallback.mostChased, { useMarketRows: true })}
+        </div>
+      </div>
+    `;
+  }
+
+  const sections = enrichCardSectionsWithPopulation(
+    CardMarketUI.buildCardSections(marketState.data.cards || [], marketState.movement),
+    populationState,
+    intelligenceState
+  );
 
   return `
     <div class="pi-tab-panel pi-tab-panel--cards" data-tab-panel="cards">
+      <p class="pi-card-market-disclaimer">These values reflect active eBay listings, not confirmed sold transactions.</p>
       <div class="pi-cards-grid">
-        ${renderPiPlayerSection(playerName, "Trending Cards", intel.trendingCards)}
-        ${renderPiPlayerSection(playerName, "Biggest Movers", intel.biggestMovers)}
-        ${renderPiPlayerSection(playerName, "Buy Low Watch", intel.buyLowOpportunities)}
-        ${renderPiPlayerSection(playerName, "Most Chased", intel.mostChased)}
+        ${renderPiPlayerSection(playerName, "Trending Cards", sections.trendingCards, { useMarketRows: true })}
+        ${renderPiPlayerSection(playerName, "Biggest Movers", sections.biggestMovers, { useMarketRows: true })}
+        ${renderPiPlayerSection(playerName, "Buy Low Watch", sections.buyLowOpportunities, { useMarketRows: true })}
+        ${renderPiPlayerSection(playerName, "Most Chased", sections.mostChased, { useMarketRows: true })}
       </div>
     </div>
   `;
 }
 
-function renderPiMarketTab(entry, intel) {
-  const market = buildMarketPlaceholders(entry, intel);
-  const moveClass = market.priceMove > 0.01 ? "metric-up" : market.priceMove < -0.01 ? "metric-down" : "metric-flat";
-  const priceMoveFormatted = csIntelFormatPercent(market.priceMove);
+function renderPiMarketTab(entry, intel, marketState = piCardMarketState, populationState = piCardPopulationState, intelligenceState = piCardIntelligenceState) {
+  const playerName = entry.player_name || "Player";
+
+  if (marketState.status === "loading") {
+    return `
+      <div class="pi-tab-panel pi-tab-panel--market" data-tab-panel="market">
+        ${renderPiCardMarketLoading()}
+      </div>
+    `;
+  }
+
+  if (marketState.status === "error") {
+    return `
+      <div class="pi-tab-panel pi-tab-panel--market" data-tab-panel="market">
+        ${renderPiCardMarketMessage(marketState.error || "Card-market intelligence is temporarily unavailable.", "error")}
+      </div>
+    `;
+  }
+
+  if (marketState.status === "empty" || !marketState.data) {
+    return `
+      <div class="pi-tab-panel pi-tab-panel--market" data-tab-panel="market">
+        ${renderPiCardMarketMessage("No card-market snapshot is available for this player yet.", "empty")}
+      </div>
+    `;
+  }
+
+  const market = CardMarketUI.buildMarketView(marketState.data, playerName);
+  const populationSummary = CardPopulationUI.buildSignalsPopulationSummary(populationState.data?.cards || []);
+  const intelligenceCards = intelligenceState.data?.cards || [];
+  const movementSummary = CardIntelligenceUI.buildMarketMovementSummary(intelligenceCards);
+  const playerSummary = CardIntelligenceUI.buildPlayerSummaryView(intelligenceState.data?.summary || {});
 
   return `
     <div class="pi-tab-panel pi-tab-panel--market" data-tab-panel="market">
-      <div class="pi-market-grid">
+      <p class="pi-card-market-disclaimer">These values reflect active eBay listings, not confirmed sold transactions.</p>
+      <div class="pi-market-grid pi-market-grid--expanded">
         <div class="pi-market-stat">
-          <span class="pi-market-stat-value">${csIntelFormatMoney(market.avgSale)}</span>
-          <span class="pi-market-stat-label">Avg Sale</span>
+          <span class="pi-market-stat-value">${market.cardsObserved}</span>
+          <span class="pi-market-stat-label">Cards Observed</span>
         </div>
         <div class="pi-market-stat">
-          <span class="pi-market-stat-value">${market.salesVolume}</span>
-          <span class="pi-market-stat-label">Sales Volume</span>
-        </div>
-        <div class="pi-market-stat">
-          <span class="pi-market-stat-value">${market.activeListings}</span>
+          <span class="pi-market-stat-value">${market.totalActiveListings}</span>
           <span class="pi-market-stat-label">Active Listings</span>
         </div>
         <div class="pi-market-stat">
-          <span class="pi-market-stat-value ${moveClass}">${priceMoveFormatted}</span>
-          <span class="pi-market-stat-label">7-Day Price Move</span>
+          <span class="pi-market-stat-value">${market.totalAuctions}</span>
+          <span class="pi-market-stat-label">Auctions</span>
+        </div>
+        <div class="pi-market-stat">
+          <span class="pi-market-stat-value">${market.totalBuyItNow}</span>
+          <span class="pi-market-stat-label">Buy It Now</span>
+        </div>
+        <div class="pi-market-stat">
+          <span class="pi-market-stat-value">${market.listingsWithBids}</span>
+          <span class="pi-market-stat-label">Listings With Bids</span>
+        </div>
+        <div class="pi-market-stat">
+          <span class="pi-market-stat-value">${market.totalBids}</span>
+          <span class="pi-market-stat-label">Total Bids</span>
+        </div>
+        <div class="pi-market-stat">
+          <span class="pi-market-stat-value">${market.medianActivePrice}</span>
+          <span class="pi-market-stat-label">Median Active Price</span>
+        </div>
+        <div class="pi-market-stat">
+          <span class="pi-market-stat-value">${market.averageActivePrice}</span>
+          <span class="pi-market-stat-label">Average Active Price</span>
+        </div>
+        <div class="pi-market-stat">
+          <span class="pi-market-stat-value">${movementSummary.movement7dLabel}</span>
+          <span class="pi-market-stat-label">7-Day Movement</span>
+        </div>
+        <div class="pi-market-stat">
+          <span class="pi-market-stat-value">${movementSummary.movement30dLabel}</span>
+          <span class="pi-market-stat-label">30-Day Movement</span>
         </div>
       </div>
 
-      <div class="pi-market-liquidity">
-        <span class="pi-market-liquidity-label">Liquidity</span>
-        <span class="pi-market-liquidity-value">${market.liquidity}</span>
+      <div class="pi-market-liquidity pi-market-liquidity--split">
+        <div class="pi-market-liquidity-block">
+          <span class="pi-market-liquidity-label">Market Depth</span>
+          ${CardMarketUI.renderDepthBadge(market.marketDepth)}
+        </div>
+        <div class="pi-market-liquidity-block">
+          <span class="pi-market-liquidity-label">Data Quality</span>
+          ${CardMarketUI.renderQualityBadge(market.dataQuality)}
+        </div>
+        <div class="pi-market-liquidity-block pi-market-liquidity-block--wide">
+          <span class="pi-market-liquidity-label">Last Snapshot</span>
+          <span class="pi-market-captured">${market.capturedLabel}</span>
+        </div>
       </div>
+
+      <section class="cs-premium-card pi-population-scarcity pi-population-scarcity--market">
+        <div class="cs-premium-head">
+          <h3 class="cs-premium-title">${populationSummary.label}</h3>
+          ${populationSummary.available ? CardPopulationUI.renderQualityBadge(populationSummary.dataQuality) : ""}
+        </div>
+        <p class="pi-population-scarcity-copy">
+          ${populationSummary.available
+            ? `Beta score ${populationSummary.score} · ${populationSummary.explanation}`
+            : "PSA population pending"}
+        </p>
+        <p class="pi-population-scarcity-source">${populationSummary.sourceLabel}</p>
+        <p class="pi-card-row-disclaimer">PSA population reflects graded examples, not total card supply.</p>
+      </section>
 
       <section class="cs-premium-card pi-market-summary">
         <div class="cs-premium-head">
@@ -1004,9 +1219,38 @@ function renderPiMarketTab(entry, intel) {
         <p class="pi-market-summary-copy">${market.summary}</p>
       </section>
 
-      <div class="pi-market-placeholder-note">
-        Live card-market data will populate after pricing snapshots.
-      </div>
+      <section class="cs-premium-card pi-intelligence-summary">
+        <div class="cs-premium-head">
+          <h3 class="cs-premium-title">Card Intelligence Summary</h3>
+        </div>
+        <div class="pi-intelligence-summary-grid">
+          <div class="pi-intelligence-summary-item">
+            <span class="pi-intelligence-summary-value">${playerSummary.highestCardSignal}</span>
+            <span class="pi-intelligence-summary-label">Highest Card Signal</span>
+          </div>
+          <div class="pi-intelligence-summary-item">
+            <span class="pi-intelligence-summary-value">${playerSummary.strongestMarketActivity}</span>
+            <span class="pi-intelligence-summary-label">Strongest Market Activity</span>
+          </div>
+          <div class="pi-intelligence-summary-item">
+            <span class="pi-intelligence-summary-value">${playerSummary.strongestScarcity}</span>
+            <span class="pi-intelligence-summary-label">Strongest Scarcity</span>
+          </div>
+          <div class="pi-intelligence-summary-item">
+            <span class="pi-intelligence-summary-value">${playerSummary.mostBidActivity}</span>
+            <span class="pi-intelligence-summary-label">Most Bid Activity</span>
+          </div>
+          <div class="pi-intelligence-summary-item">
+            <span class="pi-intelligence-summary-value">${playerSummary.cardsWithEvidence}</span>
+            <span class="pi-intelligence-summary-label">Cards With Evidence</span>
+          </div>
+          <div class="pi-intelligence-summary-item">
+            <span class="pi-intelligence-summary-value">${playerSummary.cardsPending}</span>
+            <span class="pi-intelligence-summary-label">Cards Pending</span>
+          </div>
+        </div>
+        <p class="pi-intelligence-summary-note">Player-level summary aggregates independent card signals — cards do not necessarily move together.</p>
+      </section>
     </div>
   `;
 }
@@ -1027,11 +1271,50 @@ function renderPiSignalDetailRow(label, score, explanation, colorClass) {
   `;
 }
 
-function renderPiSignalsTab(entry, intel) {
+function renderPiSignalsTab(entry, intel, populationState = piCardPopulationState, intelligenceState = piCardIntelligenceState) {
+  const populationCards = populationState.data?.cards || [];
+  const populationSummary = CardPopulationUI.buildSignalsPopulationSummary(populationCards);
+  const dimensions = CardIntelligenceUI.aggregateSignalDimensions(intelligenceState.data?.cards || []);
+  const scarcityBlock = populationSummary.available
+    ? `
+      <section class="cs-premium-card pi-population-scarcity">
+        <div class="cs-premium-head">
+          <h3 class="cs-premium-title">${populationSummary.label}</h3>
+          ${CardPopulationUI.renderQualityBadge(populationSummary.dataQuality)}
+        </div>
+        <div class="pi-population-scarcity-body">
+          <div class="pi-population-scarcity-score">
+            <span class="pi-population-scarcity-value">${populationSummary.score ?? "—"}</span>
+            <span class="pi-population-scarcity-caption">Beta score · ${populationSummary.confidence} confidence</span>
+          </div>
+          <p class="pi-population-scarcity-copy">${populationSummary.explanation}</p>
+          <p class="pi-population-scarcity-source">${populationSummary.sourceLabel}</p>
+          <p class="pi-card-row-disclaimer">PSA population reflects graded examples, not total card supply.</p>
+        </div>
+      </section>
+    `
+    : `
+      <section class="cs-premium-card pi-population-scarcity pi-population-scarcity--pending">
+        <div class="cs-premium-head">
+          <h3 class="cs-premium-title">PSA Population Scarcity</h3>
+        </div>
+        <p class="pi-population-scarcity-copy">PSA population pending</p>
+        <p class="pi-card-row-disclaimer">PSA population reflects graded examples, not total card supply.</p>
+      </section>
+    `;
+
   return `
     <div class="pi-tab-panel pi-tab-panel--signals" data-tab-panel="signals">
+      <p class="pi-signals-card-level-note">${dimensions.cardLevelNote}</p>
+      <div class="pi-signals-list pi-signals-list--card-level">
+        ${CardIntelligenceUI.renderSignalDimensionBlock(dimensions.marketActivity)}
+        ${CardIntelligenceUI.renderSignalDimensionBlock(dimensions.demand)}
+        ${CardIntelligenceUI.renderSignalDimensionBlock(dimensions.momentum)}
+        ${CardIntelligenceUI.renderSignalDimensionBlock(dimensions.scarcity)}
+      </div>
+      ${scarcityBlock}
       <div class="pi-signals-intro">
-        <p class="eyebrow">Signal Analysis</p>
+        <p class="eyebrow">Player Signal Analysis</p>
         <h3 class="pi-signals-heading">Why does this player have this CardSignal Score?</h3>
       </div>
       <div class="pi-signals-list">
@@ -1064,16 +1347,18 @@ function renderPiSignalsTab(entry, intel) {
   `;
 }
 
-function renderPiForecastTab(entry, intel) {
-  const convictionTier = intel.convictionTier;
-  const recommendation = csIntelRecommendationFromTier(convictionTier);
-  const recommendationClass = csIntelRecommendationClass(recommendation);
-  const convictionClass = csIntelConvictionClass(convictionTier);
-  const convictionLabel = formatConvictionTier(convictionTier);
-  const risk = getRiskLevel(intel);
-  const riskClass = risk === "Low" ? "pi-risk--low" : risk === "High" ? "pi-risk--high" : "pi-risk--medium";
-  const summary = buildForecastSummary(entry, intel);
-  const reasons = buildForecastReasons(entry, intel);
+function renderPiForecastTab(entry, intel, intelligenceState = piCardIntelligenceState) {
+  const forecast = CardIntelligenceUI.buildForecastView(intelligenceState.data || {});
+  const recommendation = forecast.recommendation || "WATCH";
+  const conviction = forecast.conviction || "INSUFFICIENT";
+  const recommendationClass = CardIntelligenceUI.recommendationClass(recommendation);
+  const convictionClass = CardIntelligenceUI.convictionClass(conviction);
+  const convictionLabel = formatConvictionTier(conviction);
+  const risk = forecast.risk || "UNKNOWN";
+  const riskClass = risk === "LOW" ? "pi-risk--low" : risk === "HIGH" ? "pi-risk--high" : "pi-risk--medium";
+  const missingInputs = (forecast.missingInputs || []).filter(
+    (item) => item !== "More market history is needed before CardSignal can issue a full card recommendation."
+  );
 
   return `
     <div class="pi-tab-panel pi-tab-panel--forecast" data-tab-panel="forecast">
@@ -1088,7 +1373,7 @@ function renderPiForecastTab(entry, intel) {
             <small class="cs-conviction-label">Conviction</small>
           </div>
           <div class="pi-forecast-horizon">
-            <span class="pi-forecast-horizon-value">2–4 weeks</span>
+            <span class="pi-forecast-horizon-value">${forecast.timeHorizon || "Not available"}</span>
             <small class="pi-forecast-horizon-label">Time Horizon</small>
           </div>
           <div class="pi-forecast-risk">
@@ -1102,17 +1387,28 @@ function renderPiForecastTab(entry, intel) {
         <div class="cs-premium-head">
           <h3 class="cs-premium-title">Forecast Summary</h3>
         </div>
-        <p class="pi-forecast-summary-copy">${summary}</p>
+        <p class="pi-forecast-summary-copy">${forecast.summaryText}</p>
+        <p class="pi-forecast-algorithm">Algorithm: ${forecast.algorithmVersion || "CARD_INTELLIGENCE_V1"}</p>
       </section>
 
       <section class="cs-premium-card pi-forecast-reasons">
         <div class="cs-premium-head">
-          <h3 class="cs-premium-title">Key Factors</h3>
+          <h3 class="cs-premium-title">Evidence</h3>
         </div>
-        <ul class="pi-forecast-reasons-list">
-          ${reasons.map((reason) => `<li>${reason}</li>`).join("")}
-        </ul>
-        <p class="pi-forecast-disclaimer">Forecasts reflect current signal inputs and may change as new data arrives. They do not guarantee returns.</p>
+        ${CardIntelligenceUI.renderEvidenceList(forecast.evidence)}
+      </section>
+
+      <section class="cs-premium-card pi-forecast-missing">
+        <div class="cs-premium-head">
+          <h3 class="cs-premium-title">Missing Inputs</h3>
+        </div>
+        ${missingInputs.length
+          ? `<ul class="pi-forecast-reasons-list">${missingInputs.map((item) => `<li>${item}</li>`).join("")}</ul>`
+          : `<p class="pi-forecast-summary-copy">No additional missing inputs for the lead card.</p>`}
+        ${forecast.conviction === "INSUFFICIENT"
+          ? `<p class="pi-forecast-summary-copy">More market history is needed before CardSignal can issue a full card recommendation.</p>`
+          : ""}
+        <p class="pi-forecast-disclaimer">${forecast.disclaimer || "CardSignal provides market intelligence, not financial advice. Active listing data may differ from confirmed sale prices."}</p>
       </section>
     </div>
   `;
@@ -1131,11 +1427,12 @@ function renderPiModalTabs(activeTab) {
   `).join("");
 }
 
-function renderPiModalHeader(entry, intel) {
+function renderPiModalHeader(entry, intel, intelligenceState = piCardIntelligenceState) {
   const team = getTeamAbbrev(entry);
   const position = entry.position || "—";
-  const recommendation = csIntelRecommendationFromTier(intel.convictionTier);
-  const recommendationClass = csIntelRecommendationClass(recommendation);
+  const cardRec = getSynthesizedCardRecommendationView(intelligenceState);
+  const recommendation = intelligenceState?.status === "loading" ? "WATCH" : cardRec.recommendation;
+  const recommendationClass = cardRec.recommendationClass || CardIntelligenceUI.recommendationClass(recommendation);
   const status = getSignalOfWeekStatus(entry);
 
   return `
@@ -1162,7 +1459,7 @@ function renderPiModalHeader(entry, intel) {
         </div>
         <div class="pi-modal-stat">
           <span class="pi-modal-stat-value cs-recommendation-badge ${recommendationClass} pi-modal-rec-badge">${recommendation}</span>
-          <span class="pi-modal-stat-label">Recommendation</span>
+          <span class="pi-modal-stat-label">Card Intelligence</span>
         </div>
         <div class="pi-modal-stat">
           <span class="pi-modal-stat-value pi-status-pill ${status.className}">${status.label}</span>
@@ -1180,19 +1477,19 @@ function renderPiModalHeader(entry, intel) {
   `;
 }
 
-function renderPiModalBody(entry, intel, activeTab) {
+function renderPiModalBody(entry, intel, activeTab, marketState = piCardMarketState, populationState = piCardPopulationState, intelligenceState = piCardIntelligenceState) {
   switch (activeTab) {
     case "cards":
-      return renderPiCardsTab(entry, intel);
+      return renderPiCardsTab(entry, intel, marketState, populationState, intelligenceState);
     case "market":
-      return renderPiMarketTab(entry, intel);
+      return renderPiMarketTab(entry, intel, marketState, populationState, intelligenceState);
     case "signals":
-      return renderPiSignalsTab(entry, intel);
+      return renderPiSignalsTab(entry, intel, populationState, intelligenceState);
     case "forecast":
-      return renderPiForecastTab(entry, intel);
+      return renderPiForecastTab(entry, intel, intelligenceState);
     case "overview":
     default:
-      return renderPiOverviewTab(entry, intel);
+      return renderPiOverviewTab(entry, intel, intelligenceState);
   }
 }
 
@@ -1218,6 +1515,107 @@ function bindPiModalKeydown() {
     }
   };
   document.addEventListener("keydown", piModalKeydownHandler);
+}
+
+function refreshPiModalMarketTabs() {
+  if (!piModalEntry || !piModalIntel) return;
+
+  const header = document.getElementById("pi-modal-header");
+  if (header) {
+    header.innerHTML = renderPiModalHeader(piModalEntry, piModalIntel, piCardIntelligenceState);
+  }
+
+  if (!["cards", "market", "signals", "forecast", "overview"].includes(piActiveTab)) return;
+  const body = document.getElementById("pi-modal-body");
+  if (!body) return;
+  body.innerHTML = renderPiModalBody(
+    piModalEntry,
+    piModalIntel,
+    piActiveTab,
+    piCardMarketState,
+    piCardPopulationState,
+    piCardIntelligenceState
+  );
+}
+
+async function loadPiCardPopulation(entry, { force = false } = {}) {
+  const playerKey = CardPopulationUI.getCacheKey(entry);
+  if (!entry?.player_id) {
+    piCardPopulationState = { status: "empty", data: null, error: null, playerKey };
+    refreshPiModalMarketTabs();
+    return;
+  }
+
+  if (!force && piCardPopulationState.playerKey === playerKey && piCardPopulationState.status !== "idle") {
+    return;
+  }
+
+  piCardPopulationState = { status: "loading", data: null, error: null, playerKey };
+  refreshPiModalMarketTabs();
+
+  const result = await CardPopulationUI.fetchPlayerCardPopulation(entry.player_id, { force });
+  piCardPopulationState = {
+    status: result.status,
+    data: result.data,
+    error: result.error,
+    playerKey,
+  };
+  refreshPiModalMarketTabs();
+}
+
+async function loadPiCardIntelligence(entry, { force = false } = {}) {
+  const playerKey = CardIntelligenceUI.getCacheKey(entry);
+  if (!entry?.player_id) {
+    piCardIntelligenceState = { status: "empty", data: null, error: null, playerKey };
+    refreshPiModalMarketTabs();
+    return;
+  }
+
+  if (!force && piCardIntelligenceState.playerKey === playerKey && piCardIntelligenceState.status !== "idle") {
+    return;
+  }
+
+  piCardIntelligenceState = { status: "loading", data: null, error: null, playerKey };
+  refreshPiModalMarketTabs();
+
+  const result = await CardIntelligenceUI.fetchPlayerCardIntelligence(entry.player_id, { force });
+  piCardIntelligenceState = {
+    status: result.status,
+    data: result.data,
+    error: result.error,
+    playerKey,
+  };
+  refreshPiModalMarketTabs();
+}
+
+async function loadPiCardMarket(entry, { force = false } = {}) {
+  const playerKey = CardMarketUI.getCacheKey(entry);
+  if (!entry?.player_id) {
+    piCardMarketState = { status: "empty", data: null, movement: null, activity: null, error: null, playerKey };
+    refreshPiModalMarketTabs();
+    return;
+  }
+
+  if (!force && piCardMarketState.playerKey === playerKey && piCardMarketState.status !== "idle") {
+    return;
+  }
+
+  piCardMarketState = { status: "loading", data: null, movement: null, activity: null, error: null, playerKey };
+  refreshPiModalMarketTabs();
+
+  const result = await CardMarketUI.fetchPlayerCardMarketBundle(entry.player_id, { force });
+  piCardMarketState = {
+    status: result.status,
+    data: result.data || null,
+    movement: result.movement || null,
+    activity: result.activity || null,
+    error: result.error || null,
+    playerKey,
+  };
+  refreshPiModalMarketTabs();
+  if (entry.player_id) {
+    renderMarketActivity(entry);
+  }
 }
 
 function updatePiModalTabState() {
@@ -1247,7 +1645,17 @@ function setupPiTabNavigation() {
     updatePiModalTabState();
 
     const body = document.getElementById("pi-modal-body");
-    if (body) body.innerHTML = renderPiModalBody(piModalEntry, piModalIntel, piActiveTab);
+    if (body) body.innerHTML = renderPiModalBody(piModalEntry, piModalIntel, piActiveTab, piCardMarketState, piCardPopulationState, piCardIntelligenceState);
+
+    if ((tabId === "cards" || tabId === "market" || tabId === "signals" || tabId === "forecast") && piCardMarketState.status === "idle") {
+      loadPiCardMarket(piModalEntry);
+    }
+    if ((tabId === "cards" || tabId === "market" || tabId === "signals") && piCardPopulationState.status === "idle") {
+      loadPiCardPopulation(piModalEntry);
+    }
+    if ((tabId === "cards" || tabId === "market" || tabId === "signals" || tabId === "forecast") && piCardIntelligenceState.status === "idle") {
+      loadPiCardIntelligence(piModalEntry);
+    }
   });
 }
 
@@ -1278,6 +1686,9 @@ function closePlayerIntelligenceModal() {
   piActiveTab = "overview";
   piModalEntry = null;
   piModalIntel = null;
+  piCardMarketState = { status: "idle", data: null, movement: null, activity: null, error: null, playerKey: null };
+  piCardPopulationState = { status: "idle", data: null, error: null, playerKey: null };
+  piCardIntelligenceState = { status: "idle", data: null, error: null, playerKey: null };
 }
 
 async function openPlayerIntelligenceModal(entry) {
@@ -1297,10 +1708,13 @@ async function openPlayerIntelligenceModal(entry) {
     piModalEntry = player;
     piModalIntel = intel;
     piActiveTab = "overview";
+    piCardMarketState = { status: "idle", data: null, movement: null, activity: null, error: null, playerKey: null };
+    piCardPopulationState = { status: "idle", data: null, error: null, playerKey: null };
+    piCardIntelligenceState = { status: "idle", data: null, error: null, playerKey: null };
 
-    header.innerHTML = renderPiModalHeader(player, intel);
+    header.innerHTML = renderPiModalHeader(player, intel, piCardIntelligenceState);
     tabs.innerHTML = renderPiModalTabs(piActiveTab);
-    body.innerHTML = renderPiModalBody(player, intel, piActiveTab);
+    body.innerHTML = renderPiModalBody(player, intel, piActiveTab, piCardMarketState, piCardPopulationState, piCardIntelligenceState);
 
     wirePlayerActions();
     updatePiModalTabState();
@@ -1312,6 +1726,11 @@ async function openPlayerIntelligenceModal(entry) {
     requestAnimationFrame(() => {
       modal.querySelector(".pi-modal-close")?.focus();
     });
+
+    loadPiCardMarket(player);
+    loadPiCardPopulation(player);
+    loadPiCardIntelligence(player);
+    renderMarketActivity(player);
 
     if (player.player_id) {
       await renderScoreHistory(player.player_id);
@@ -1500,7 +1919,9 @@ async function renderScoreHistory(playerId) {
 
   try {
     const payload = await fetchPlayerHistory(playerId);
-    const items = payload.items || [];
+    const items = (payload.items || []).slice().sort(
+      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    );
 
     destroyChart(scoreChart);
 
@@ -1563,7 +1984,110 @@ async function renderScoreHistory(playerId) {
   }
 }
 
-async function renderLeaderboardHistory() {
+async function renderMarketActivity(entry = selectedPlayer) {
+  const canvas = document.getElementById("leaderboard-history-chart");
+  if (!canvas) return;
+
+  try {
+    destroyChart(leaderboardHistoryChart);
+
+    if (!entry?.player_id) {
+      await renderLeaderboardHistoryFallback();
+      return;
+    }
+
+    const cached = piCardMarketState.activity;
+    let activity = cached;
+    if (!activity || String(piCardMarketState.playerKey) !== String(entry.player_id)) {
+      const result = await CardMarketUI.fetchPlayerCardMarketActivity(entry.player_id);
+      activity = result.status === "success" ? result.data : null;
+    }
+
+    const points = activity?.points || [];
+    if (points.length < 2) {
+      showChartPlaceholder("leaderboard-history-chart", "leaderboard-history-placeholder", true);
+      const placeholder = document.getElementById("leaderboard-history-placeholder");
+      if (placeholder) {
+        placeholder.textContent = points.length
+          ? "More stored card-market history is needed to chart activity for this player."
+          : "Market activity will appear after additional card-market snapshots are captured.";
+      }
+      return;
+    }
+
+    showChartPlaceholder("leaderboard-history-chart", "leaderboard-history-placeholder", false);
+
+    leaderboardHistoryChart = new Chart(canvas, {
+      type: "line",
+      data: {
+        labels: points.map((point) =>
+          new Date(point.captured_at).toLocaleDateString(undefined, {
+            month: "short",
+            day: "numeric",
+          })
+        ),
+        datasets: [
+          {
+            label: "Median Active Price",
+            data: points.map((point) => Number(point.median_active_price || 0)),
+            borderColor: "#BB8455",
+            backgroundColor: "rgba(187, 132, 85, 0.10)",
+            borderWidth: 2.5,
+            tension: 0.35,
+            fill: true,
+            yAxisID: "y",
+            pointRadius: 3,
+          },
+          {
+            label: "Active Listings",
+            data: points.map((point) => Number(point.active_listing_count || 0)),
+            borderColor: "#8A6747",
+            backgroundColor: "rgba(138, 103, 71, 0.08)",
+            borderWidth: 2,
+            tension: 0.35,
+            fill: false,
+            yAxisID: "y1",
+            pointRadius: 2,
+          },
+          {
+            label: "Bid Activity",
+            data: points.map((point) => Number(point.total_bid_count || 0)),
+            borderColor: "#708A72",
+            backgroundColor: "rgba(112, 138, 114, 0.08)",
+            borderWidth: 2,
+            tension: 0.35,
+            fill: false,
+            yAxisID: "y1",
+            pointRadius: 2,
+          },
+        ],
+      },
+      options: {
+        ...getChartOptions("Market Activity"),
+        scales: {
+          x: getChartOptions("Market Activity").scales.x,
+          y: {
+            ...getChartOptions("Market Activity").scales.y,
+            position: "left",
+            title: { display: true, text: "Median Active Price (USD)" },
+          },
+          y1: {
+            beginAtZero: true,
+            position: "right",
+            grid: { drawOnChartArea: false },
+            ticks: { color: "#7D7873" },
+            title: { display: true, text: "Listings / Bids" },
+          },
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Market activity chart error:", error);
+    showChartPlaceholder("leaderboard-history-chart", "leaderboard-history-placeholder", true);
+  }
+}
+
+async function renderLeaderboardHistoryFallback() {
   const canvas = document.getElementById("leaderboard-history-chart");
   if (!canvas) return;
 
@@ -2010,40 +2534,20 @@ function openSignalOfWeekReport(entry) {
   selectPlayer(entry);
 }
 
-function renderSignalOfTheWeek(entries = []) {
-  const card = document.querySelector(".signal-of-week-card");
-  if (!card) return;
-
-  const topEntry = getSignalOfWeekTopEntry(entries);
-  const entry = topEntry || getSignalOfWeekPlaceholderEntry();
-
+function renderSignalOfWeekBannerMarkup(entry, cardRec = {}) {
   const score = Number(entry?.hotness?.total_score ?? 0);
   const movement = computeSignalOfWeekMovement(entry);
-
-  const placeholderKeyEntry = entry?.player_id
-    ? entry
-    : {
-      player_id: "signal_of_week_placeholder",
-      player_name: entry?.player_name || "Signal of the Week",
-    };
-
-  const placeholders = csIntelGetPlaceholders(placeholderKeyEntry);
-  const aiReason = placeholders?.aiRecommendation?.reason || "Collector demand is accelerating faster than market pricing.";
-  const aiReasonSentence = clampToOneSentence(aiReason) || "Collector demand is accelerating faster than market pricing.";
-
-  const convictionTier = placeholders?.convictionTier || placeholders?.confidenceTier || "MEDIUM";
-  const aiAction = csIntelRecommendationFromTier(convictionTier);
-
+  const recommendation = cardRec.recommendation || "WATCH";
+  const convictionLabel = cardRec.convictionLabel || formatConvictionTier(cardRec.conviction || "INSUFFICIENT");
+  const summary = clampToOneSentence(cardRec.summary || CARD_INTEL_INSUFFICIENT_SUMMARY)
+    || CARD_INTEL_INSUFFICIENT_SUMMARY;
+  const pillClass = cardRec.pillClass
+    || `signal-week-ai-pill--${String(recommendation).toLowerCase()}`;
   const team = getTeamAbbrev(entry);
   const position = entry.position || "—";
   const moveClass = movement.signed.startsWith("+") ? "metric-up" : movement.signed.startsWith("-") ? "metric-down" : "metric-flat";
 
-  card.classList.add("featured-signal-banner");
-  card.removeAttribute("role");
-  card.removeAttribute("tabindex");
-  card.removeAttribute("aria-label");
-
-  card.innerHTML = `
+  return `
     <div class="signal-week-banner">
       <div class="signal-week-media">
         ${renderSignalWeekPlayerImage(entry)}
@@ -2076,9 +2580,11 @@ function renderSignalOfTheWeek(entries = []) {
 
         <div class="signal-week-insight">
           <div class="signal-week-ai-row">
-            <span class="signal-week-ai-pill signal-week-ai-pill--${aiAction.toLowerCase()}">${aiAction}</span>
+            <span class="signal-week-ai-label">Card Intelligence</span>
+            <span class="signal-week-ai-pill ${pillClass}">${recommendation}</span>
+            <span class="signal-week-conviction">${convictionLabel}</span>
           </div>
-          <p class="signal-week-reason">${aiReasonSentence}</p>
+          <p class="signal-week-reason">${summary}</p>
         </div>
       </div>
 
@@ -2090,6 +2596,14 @@ function renderSignalOfTheWeek(entries = []) {
       </div>
     </div>
   `;
+}
+
+function mountSignalOfWeekBanner(card, entry, cardRec = {}) {
+  card.classList.add("featured-signal-banner");
+  card.removeAttribute("role");
+  card.removeAttribute("tabindex");
+  card.removeAttribute("aria-label");
+  card.innerHTML = renderSignalOfWeekBannerMarkup(entry, cardRec);
 
   const cta = card.querySelector("#signal-week-view-report");
   if (cta) {
@@ -2101,6 +2615,52 @@ function renderSignalOfTheWeek(entries = []) {
 
   card.onclick = null;
   card.onkeydown = null;
+}
+
+function renderSignalOfTheWeek(entries = []) {
+  const card = document.querySelector(".signal-of-week-card");
+  if (!card) return;
+
+  const topEntry = getSignalOfWeekTopEntry(entries);
+  const entry = topEntry || getSignalOfWeekPlaceholderEntry();
+
+  mountSignalOfWeekBanner(card, entry, {
+    recommendation: "WATCH",
+    conviction: "INSUFFICIENT",
+    convictionLabel: "Insufficient",
+    summary: entry?.player_id ? "Loading card intelligence…" : CARD_INTEL_INSUFFICIENT_SUMMARY,
+    pillClass: "signal-week-ai-pill--watch",
+  });
+
+  if (!entry?.player_id) return;
+
+  const playerId = entry.player_id;
+  CardIntelligenceUI.fetchPlayerCardIntelligence(playerId)
+    .then((result) => {
+      if (!card.isConnected) return;
+      const activeTop = getSignalOfWeekTopEntry(latestEntries);
+      const activeEntry = activeTop || getSignalOfWeekPlaceholderEntry();
+      if (activeEntry?.player_id !== playerId) return;
+
+      const cardRec = getSynthesizedCardRecommendationView(
+        result.status === "success" ? { data: result.data } : {}
+      );
+      mountSignalOfWeekBanner(card, entry, {
+        ...cardRec,
+        convictionLabel: formatConvictionTier(cardRec.conviction),
+        pillClass: `signal-week-ai-pill--${String(cardRec.recommendation).toLowerCase()}`,
+      });
+    })
+    .catch(() => {
+      if (!card.isConnected) return;
+      mountSignalOfWeekBanner(card, entry, {
+        recommendation: "WATCH",
+        conviction: "INSUFFICIENT",
+        convictionLabel: "Insufficient",
+        summary: CARD_INTEL_INSUFFICIENT_SUMMARY,
+        pillClass: "signal-week-ai-pill--watch",
+      });
+    });
 }
 
 /* Signal Center — main dashboard render pipeline */
@@ -2469,7 +3029,7 @@ async function init() {
       return res.json();
     });
 
-    const entries = payload.items || [];
+    const entries = enrichPlayerEntries(payload.items || []);
     latestEntries = entries;
     setupPlayerSearch();
     setupPlayerIntelligenceModal();
@@ -2493,7 +3053,12 @@ async function init() {
     } else {
       leaderboardRoot.innerHTML = `<div class="detail-empty">Leaderboard unavailable.</div>`;
     }
-    await renderLeaderboardHistory();
+    if (entries.length) {
+      selectedPlayer = entries[0];
+      await renderMarketActivity(entries[0]);
+    } else {
+      await renderLeaderboardHistoryFallback();
+    }
 
     status.textContent = `Loaded ${entries.length} players from ${payload.data_source || 'api'}`;
 
