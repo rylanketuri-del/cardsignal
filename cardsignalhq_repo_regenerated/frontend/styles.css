@@ -5272,3 +5272,330 @@ body.pi-modal-open {
     flex-direction: column;
   }
 }
+
+/* ===========================
+   v0.10.0 — Signal Center Redesign
+   Multi-sport market dashboard
+=========================== */
+
+.this-weeks-signals-section {
+  margin-bottom: 28px;
+}
+
+.this-weeks-signals-section .section-header {
+  margin-bottom: 18px;
+}
+
+.this-weeks-signals-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.sport-signal-card {
+  background: var(--charcoal-dark);
+  border: 1px solid rgba(187, 132, 85, 0.28);
+  border-radius: 24px;
+  padding: 20px;
+  box-shadow:
+    0 0 0 1px rgba(187, 132, 85, 0.1),
+    0 18px 48px rgba(15, 15, 16, 0.22);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+  transition: transform var(--transition-base), box-shadow var(--transition-base), border-color var(--transition-base);
+}
+
+.sport-signal-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(187, 132, 85, 0.42);
+  box-shadow:
+    0 0 0 1px rgba(187, 132, 85, 0.18),
+    0 24px 56px rgba(15, 15, 16, 0.3);
+}
+
+.sport-signal-card--empty {
+  background: linear-gradient(180deg, #1A1A1B 0%, #222018 100%);
+  justify-content: center;
+  min-height: 220px;
+}
+
+.sport-signal-card-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sport-signal-sport-icon {
+  font-size: 20px;
+  line-height: 1;
+}
+
+.sport-signal-sport-label {
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(187, 132, 85, 0.95);
+}
+
+.sport-signal-player {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.sport-signal-photo {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: linear-gradient(180deg, #2A2219, #171717);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 900;
+  color: var(--copper);
+  font-size: 18px;
+}
+
+.sport-signal-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.sport-signal-identity {
+  min-width: 0;
+}
+
+.sport-signal-name {
+  font-family: Cormorant, Georgia, serif;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.05;
+  color: #F7F5F2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sport-signal-team {
+  margin-top: 4px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(247, 245, 242, 0.55);
+}
+
+.sport-signal-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.sport-signal-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.sport-signal-metric-value {
+  font-family: Cormorant, Georgia, serif;
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1;
+  color: #F7F5F2;
+}
+
+.sport-signal-metric-label {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(247, 245, 242, 0.45);
+}
+
+.sport-signal-rec-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  width: fit-content;
+}
+
+.sport-signal-rec-pill--buy {
+  background: rgba(47, 125, 74, 0.22);
+  color: #6BC48A;
+  border: 1px solid rgba(47, 125, 74, 0.45);
+}
+
+.sport-signal-rec-pill--hold {
+  background: rgba(187, 132, 85, 0.18);
+  color: #D4A574;
+  border: 1px solid rgba(187, 132, 85, 0.4);
+}
+
+.sport-signal-rec-pill--sell {
+  background: rgba(154, 102, 86, 0.2);
+  color: #D4957F;
+  border: 1px solid rgba(154, 102, 86, 0.42);
+}
+
+.sport-signal-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: auto;
+  border: 1px solid rgba(187, 132, 85, 0.55);
+  border-radius: 999px;
+  background: var(--copper);
+  color: var(--charcoal);
+  padding: 11px 18px;
+  font-size: 12px;
+  font-weight: 900;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background var(--transition-fast), transform var(--transition-fast);
+}
+
+.sport-signal-cta:hover {
+  background: #C99563;
+}
+
+.sport-signal-cta-arrow {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.sport-signal-empty-copy {
+  margin: 0;
+  color: rgba(247, 245, 242, 0.55);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.leaders-section {
+  margin-bottom: 28px;
+}
+
+.market-leaders-table--v10 .leaders-table-head,
+.market-leaders-table--v10 .leader-table-row {
+  grid-template-columns: 40px minmax(120px, 1.5fr) 56px 64px 76px 72px 92px;
+  gap: 10px;
+}
+
+.leader-sport-icon {
+  font-size: 18px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.leader-team-cell {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.leader-rec-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+}
+
+.leader-rec-pill--buy {
+  background: rgba(47, 125, 74, 0.12);
+  color: var(--signal-green);
+  border: 1px solid rgba(47, 125, 74, 0.28);
+}
+
+.leader-rec-pill--hold {
+  background: rgba(187, 132, 85, 0.12);
+  color: var(--copper);
+  border: 1px solid rgba(187, 132, 85, 0.28);
+}
+
+.leader-rec-pill--sell {
+  background: rgba(154, 102, 86, 0.12);
+  color: var(--clay);
+  border: 1px solid rgba(154, 102, 86, 0.28);
+}
+
+.market-leaders-scroll {
+  max-height: 640px;
+}
+
+.qi-card {
+  min-height: 420px;
+}
+
+@media (max-width: 1100px) {
+  .this-weeks-signals-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .market-leaders-table--v10 .leaders-table-head,
+  .market-leaders-table--v10 .leader-table-row {
+    grid-template-columns: 36px minmax(100px, 1.3fr) 48px 56px 68px 64px 84px;
+    gap: 8px;
+  }
+}
+
+@media (max-width: 980px) {
+  .this-weeks-signals-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .sport-signal-metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .market-leaders-table--v10 .leaders-table-head {
+    display: none;
+  }
+
+  .market-leaders-table--v10 .leader-table-row {
+    grid-template-columns: 32px 1fr auto;
+    gap: 10px;
+    padding: 14px 16px;
+  }
+
+  .market-leaders-table--v10 .leader-table-row > .leader-team-cell,
+  .market-leaders-table--v10 .leader-table-row > .leader-number,
+  .market-leaders-table--v10 .leader-table-row > .leader-trend,
+  .market-leaders-table--v10 .leader-table-row > .leader-rec-pill {
+    grid-column: 2;
+    font-size: 12px;
+  }
+
+  .market-leaders-table--v10 .leader-report-pill {
+    grid-column: 3;
+    grid-row: 1 / span 5;
+    align-self: center;
+    font-size: 11px;
+    padding: 7px 10px;
+  }
+
+  .qi-card {
+    min-height: 360px;
+  }
+}

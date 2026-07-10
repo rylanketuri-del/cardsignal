@@ -27,12 +27,11 @@
         </div>
       </header>
 
-      <nav class="sport-tabs" aria-label="Sport filters">
-        <button class="sport-tab active" type="button">All</button>
-        <button class="sport-tab active-sport" type="button">MLB</button>
-        <button class="sport-tab disabled" type="button">NBA Soon</button>
-        <button class="sport-tab disabled" type="button">NFL Soon</button>
-        <button class="sport-tab disabled" type="button">NHL Soon</button>
+      <nav class="sport-tabs" id="sport-tabs" aria-label="Sport filters">
+        <button class="sport-tab active" type="button" data-sport="ALL">All</button>
+        <button class="sport-tab" type="button" data-sport="MLB">MLB</button>
+        <button class="sport-tab" type="button" data-sport="NBA">NBA</button>
+        <button class="sport-tab" type="button" data-sport="NFL">NFL</button>
       </nav>
 
       <nav class="product-nav">
@@ -65,62 +64,31 @@
         </div>
       </section>
 
-      <!-- Signal Center: primary dashboard sections -->
-      <section class="signal-center-hero" id="signal-center-hero" aria-label="Featured Signal">
-        <div class="signal-of-week-card featured-signal-banner"></div>
+      <!-- Signal Center: multi-sport market dashboard -->
+      <section class="this-weeks-signals-section" id="this-weeks-signals-section" aria-label="This Week's Signals">
+        <div class="section-header">
+          <div>
+            <p class="eyebrow">Market Signals</p>
+            <h2 class="leaders-section-title">This Week's Signals</h2>
+            <p class="section-desc">Top signal per sport this week — score, movement, and recommendation.</p>
+          </div>
+        </div>
+        <div class="this-weeks-signals-grid" id="this-weeks-signals-grid"></div>
       </section>
 
-      <section class="quick-intelligence-section sport-section sport-section--mlb" id="quick-intelligence-section" aria-label="Quick Intelligence" data-sport="mlb">
-        <div class="quick-intelligence-grid" id="quick-intelligence-grid"></div>
-      </section>
-
-      <section class="product-section leaders-report-section">
+      <section class="product-section leaders-section" id="leaders-section">
         <div id="leaderboard-table"></div>
-
-        <div class="player-report-shell player-intel-placeholder-shell">
-          <div class="section-header">
-            <div>
-              <p class="eyebrow">Player Intelligence</p>
-              <h2>Deep Dive</h2>
-            </div>
-          </div>
-
-          <div id="player-detail" class="detail-empty player-intel-placeholder">
-            Select a player to open their Intelligence Report.
-          </div>
-        </div>
       </section>
 
-      <section class="grid two-up charts-section">
-        <div class="panel light-panel">
-          <div class="panel-header">
-            <div>
-              <h2>Signal Timeline</h2>
-              <p class="section-desc">Selected player signal over recent weekly snapshots.</p>
-            </div>
-          </div>
-          <div class="chart-canvas-wrap" id="score-history-wrap">
-            <canvas id="score-history-chart" height="160"></canvas>
-            <div class="chart-placeholder hidden" id="score-history-placeholder">
-              Signal timeline will populate after weekly snapshots.
-            </div>
+      <section class="quick-intelligence-section" id="quick-intelligence-section" aria-label="Quick Intelligence">
+        <div class="section-header">
+          <div>
+            <p class="eyebrow">Quick Intelligence</p>
+            <h2 class="leaders-section-title">Market Pulse</h2>
+            <p class="section-desc">Trending cards, movers, value spots, and chase pressure across the selected sport.</p>
           </div>
         </div>
-
-        <div class="panel light-panel">
-          <div class="panel-header">
-            <div>
-              <h2>Market Activity</h2>
-              <p class="section-desc">Top leaderboard signal across recent pricing runs.</p>
-            </div>
-          </div>
-          <div class="chart-canvas-wrap" id="leaderboard-history-wrap">
-            <canvas id="leaderboard-history-chart" height="160"></canvas>
-            <div class="chart-placeholder hidden" id="leaderboard-history-placeholder">
-              Market activity will populate after card pricing snapshots.
-            </div>
-          </div>
-        </div>
+        <div class="quick-intelligence-grid" id="quick-intelligence-grid"></div>
       </section>
 
       <section class="grid four-up auth-layout">
