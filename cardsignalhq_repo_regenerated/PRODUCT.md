@@ -180,3 +180,17 @@ CardSignal PSA population observations describe **graded examples reported by PS
 - **Manual/imported beta data must be labeled** — the UI distinguishes Live PSA data, Imported PSA snapshot, and Beta seed data.
 
 When PSA population is unavailable, the Player Intelligence modal shows `PSA population pending` and `Population trend pending` — never fabricated counts.
+
+## Card Intelligence Principles
+
+CardSignal **card-level intelligence** synthesizes stored market observations, historical active-listing movement, and PSA population inputs into per-card recommendations. It is separate from the **player-level CardSignal Score** on the Overview tab.
+
+- **Card-level differs from player-level** — modal Cards, Market, Signals, and Forecast tabs consume `GET /api/players/{player_id}/card-intelligence`; the player score blends performance and leaderboard market inputs.
+- **Recommendations require multiple evidence types** — BUY/HOLD/SELL/WATCH are derived from market activity, demand, momentum, and scarcity components; weak evidence defaults to `WATCH`.
+- **Weak evidence defaults to WATCH** — when minimum evidence is not met, `card_signal_score` is null, conviction is `INSUFFICIENT`, and the UI explains missing inputs.
+- **Active listing prices are not sold comps** — median and average active prices, plus movement between snapshots, describe asking-price observations only.
+- **PSA population is graded population, not total supply** — scarcity inputs use PSA-graded counts; they must not be presented as print-run or ungraded supply.
+- **Evidence and missing inputs must be visible** — every synthesized card returns structured `evidence` and `missing_inputs` arrays.
+- **Algorithm versions must be stored** — beta synthesis uses `CARD_INTELLIGENCE_V1` and is returned on every card-intelligence response.
+
+Card Intelligence is recalculated from stored inputs during beta; synthesized results are not persisted separately from source snapshots.

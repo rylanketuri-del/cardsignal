@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from cardchase_ai.intelligence.public import build_player_card_intelligence_response
 from cardchase_ai.identity import enrich_player_entry
 from cardchase_ai.card_registry import get_enriched_player_cards
 from cardchase_ai.clients.mlb import MLBClient
@@ -430,9 +431,6 @@ def _load_player_card_market_history(cs_player_id: str) -> tuple[list[dict[str, 
     return [], None
 
 
-    return [], None
-
-
 def _load_latest_card_population_snapshots_from_file() -> list[dict[str, Any]]:
     latest_path = _settings().output_dir / "latest_card_population_snapshots.json"
     if not latest_path.exists():
@@ -757,6 +755,49 @@ def get_player_card_population_latest(player_id: str) -> JSONResponse:
             "disclaimer": "PSA population reflects graded examples, not total card supply.",
         }
     )
+
+
+@app.get("/api/players/{player_id}/card-intelligence")
+def get_player_card_intelligence(player_id: str) -> JSONResponse:
+    payload, source = _load_player(player_id)
+    player = enrich_player_entry(payload)
+    cs_player_id = player.get("cs_player_id")
+    if not cs_player_id:
+        raise HTTPException(status_code=404, detail=f"Player identity not found for {player_id}.")
+
+    registry_cards = get_enriched_player_cards(player)
+    market_snapshots_by_card, market_source = _load_player_card_market_snapshots(cs_player_id)
+    population_snapshots_by_card, population_source = _load_player_card_population_snapshots(cs_player_id)
+
+    history_rows, history_source = _load_player_card_market_history(cs_player_id)
+    market_history_by_card: dict[str, list[dict[str, Any]]] = {}
+    for row in history_rows:
+        card_id = str(row.get("cs_card_id") or "")
+        market_history_by_card.setdefault(card_id, []).append(row)
+
+    population_history_by_card: dict[str, list[dict[str, Any]]] = {}
+    psa_matches_by_card: dict[str, dict[str, Any]] = {}
+    for card in registry_cards:
+        card_id = str(card.get("cs_card_id") or "")
+        pop_history, _ = _load_card_population_snapshot_history(card_id, limit=12)
+        if pop_history:
+            population_history_by_card[card_id] = pop_history
+        match = _try_load_psa_card_match(card_id)
+        if match:
+            psa_matches_by_card[card_id] = match
+
+    response = build_player_card_intelligence_response(
+        player=player,
+        registry_cards=registry_cards,
+        market_snapshots_by_card=market_snapshots_by_card,
+        market_history_by_card=market_history_by_card,
+        population_snapshots_by_card=population_snapshots_by_card,
+        population_history_by_card=population_history_by_card,
+        psa_matches_by_card=psa_matches_by_card,
+        movement_config=_movement_tolerance_config(),
+        data_source=market_source or population_source or history_source or source,
+    )
+    return JSONResponse(response)
 
 
 @app.post("/api/admin/population/import")

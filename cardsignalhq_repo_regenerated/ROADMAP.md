@@ -84,26 +84,39 @@
   - [x] `GET /api/cards/{cs_card_id}/population/latest` and `/population/history`
   - [x] Player Intelligence Cards, Market, and Signals tabs surface labeled PSA population states
 
+- **Sprint 8.7** — Card Intelligence Synthesis (Release v0.9.0):
+  - [x] Reusable `CardIntelligence` model synthesizing identity, market, population, and derived scores
+  - [x] Conservative beta scoring (`CARD_INTELLIGENCE_V1`) with evidence, missing inputs, and algorithm version
+  - [x] `GET /api/players/{player_id}/card-intelligence` aggregated read endpoint (stored data only)
+  - [x] Player Intelligence Cards tab — card signal score, recommendation, conviction, data quality
+  - [x] Market tab — movement summaries, player-level card intelligence summary
+  - [x] Signals tab — card-level Market Activity, Demand, Momentum, and Scarcity dimensions
+  - [x] Forecast tab — synthesized recommendation, conviction, risk, horizon, evidence, disclaimer
+  - [x] Placeholder cleanup for modal intelligence tabs (no random prices, percentages, or BUY calls)
+
 ## Current Milestone
 
-### Sprint 8.7 — Scarcity UI and Card Intelligence Synthesis
+### Sprint 8.8 — Weekly Intelligence Pipeline
 
-- Synthesize population, market, and performance signals into card-level intelligence rows
-- Expand scarcity presentation beyond beta PSA Population Scarcity
-- Improve card-match review workflows for ambiguous PSA matches
+- Scheduled weekly snapshot capture for market and population observations
+- Pipeline orchestration for card-level intelligence refresh
+- Operational monitoring for sparse-history cards
 
 ## Up Next
 
 ### Future Sprint 8+ Work
 
-- Official PSA population integration approval
+- Sold comps integration
+- Collector behavior signals
 - Beckett population adapter
+- Algorithm accuracy tracking
+- Card-level alerts
+- Official PSA population integration approval
 - Grading-company normalization
 - Population-growth alerts
-- Sold-comps integration
 - Buy Low Engine
 - Signal Accuracy tracking
-- Weekly snapshot scheduler
+- Weekly snapshot scheduler (foundational work in Sprint 8.8)
 
 ### v1.0.0 — Multi-Sport Expansion
 

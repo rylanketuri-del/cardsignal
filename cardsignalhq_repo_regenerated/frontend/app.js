@@ -19,6 +19,7 @@ let piModalIntel = null;
 let piModalKeydownHandler = null;
 let piCardMarketState = { status: "idle", data: null, movement: null, activity: null, error: null, playerKey: null };
 let piCardPopulationState = { status: "idle", data: null, error: null, playerKey: null };
+let piCardIntelligenceState = { status: "idle", data: null, error: null, playerKey: null };
 const PI_TABS = [
   { id: "overview", label: "Overview" },
   { id: "cards", label: "Cards" },
@@ -886,6 +887,17 @@ function renderPiMarketCardRow(item) {
             : ""}
           <span class="pi-card-row-captured">${item.capturedLabel}</span>
         </div>
+        <div class="pi-card-row-intelligence">
+          <span class="pi-card-intel-score" title="Card Signal Score">${item.cardSignalScoreLabel || "Score pending"}</span>
+          <span class="cs-recommendation-badge ${CardIntelligenceUI.recommendationClass(item.recommendation)} pi-card-intel-rec">${item.recommendation || "WATCH"}</span>
+          <span class="cs-conviction-badge ${CardIntelligenceUI.convictionClass(item.conviction)} pi-card-intel-conviction">${item.conviction || "INSUFFICIENT"}</span>
+          ${item.dataQualityLabel ? `<span class="cm-quality-badge cm-quality--${String(item.dataQualityLabel).toLowerCase()}">${item.dataQualityLabel}</span>` : ""}
+        </div>
+        ${!item.hasFullScore && item.missingInputs?.length
+          ? `<p class="pi-card-intel-missing">${item.missingInputs.includes("More market history is needed before CardSignal can issue a full card recommendation.")
+            ? "More market history is needed before CardSignal can issue a full card recommendation."
+            : "Score pending — additional stored observations required."}</p>`
+          : ""}
         ${item.hasPopulationSnapshot
           ? `<p class="pi-card-row-population-meta"><span>${item.populationCapturedLabel}</span><span>${item.populationTrendLabel}</span></p>`
           : `<p class="pi-card-row-population-meta pi-card-row-population-meta--pending">PSA population pending</p>`}
@@ -1006,10 +1018,14 @@ function renderPiOverviewTab(entry, intel) {
   `;
 }
 
-function enrichCardSectionsWithPopulation(sections, populationState = piCardPopulationState) {
+function enrichCardSectionsWithPopulation(sections, populationState = piCardPopulationState, intelligenceState = piCardIntelligenceState) {
   const populationMap = CardPopulationUI.populationByCardId(populationState.data || {});
+  const intelligenceMap = CardIntelligenceUI.intelligenceByCardId(intelligenceState.data || {});
   const enrichList = (items = []) =>
-    items.map((item) => CardPopulationUI.enrichCardRow(item, populationMap.get(item.cs_card_id)));
+    items.map((item) => {
+      const withPopulation = CardPopulationUI.enrichCardRow(item, populationMap.get(item.cs_card_id));
+      return CardIntelligenceUI.enrichCardRow(withPopulation, intelligenceMap.get(item.cs_card_id));
+    });
 
   return {
     trendingCards: enrichList(sections.trendingCards),
@@ -1019,7 +1035,7 @@ function enrichCardSectionsWithPopulation(sections, populationState = piCardPopu
   };
 }
 
-function renderPiCardsTab(entry, intel, marketState = piCardMarketState, populationState = piCardPopulationState) {
+function renderPiCardsTab(entry, intel, marketState = piCardMarketState, populationState = piCardPopulationState, intelligenceState = piCardIntelligenceState) {
   const playerName = entry.player_name || "Player";
 
   if (marketState.status === "loading") {
@@ -1062,7 +1078,8 @@ function renderPiCardsTab(entry, intel, marketState = piCardMarketState, populat
 
   const sections = enrichCardSectionsWithPopulation(
     CardMarketUI.buildCardSections(marketState.data.cards || [], marketState.movement),
-    populationState
+    populationState,
+    intelligenceState
   );
 
   return `
@@ -1078,7 +1095,7 @@ function renderPiCardsTab(entry, intel, marketState = piCardMarketState, populat
   `;
 }
 
-function renderPiMarketTab(entry, intel, marketState = piCardMarketState, populationState = piCardPopulationState) {
+function renderPiMarketTab(entry, intel, marketState = piCardMarketState, populationState = piCardPopulationState, intelligenceState = piCardIntelligenceState) {
   const playerName = entry.player_name || "Player";
 
   if (marketState.status === "loading") {
@@ -1107,6 +1124,9 @@ function renderPiMarketTab(entry, intel, marketState = piCardMarketState, popula
 
   const market = CardMarketUI.buildMarketView(marketState.data, playerName);
   const populationSummary = CardPopulationUI.buildSignalsPopulationSummary(populationState.data?.cards || []);
+  const intelligenceCards = intelligenceState.data?.cards || [];
+  const movementSummary = CardIntelligenceUI.buildMarketMovementSummary(intelligenceCards);
+  const playerSummary = CardIntelligenceUI.buildPlayerSummaryView(intelligenceState.data?.summary || {});
 
   return `
     <div class="pi-tab-panel pi-tab-panel--market" data-tab-panel="market">
@@ -1143,6 +1163,14 @@ function renderPiMarketTab(entry, intel, marketState = piCardMarketState, popula
         <div class="pi-market-stat">
           <span class="pi-market-stat-value">${market.averageActivePrice}</span>
           <span class="pi-market-stat-label">Average Active Price</span>
+        </div>
+        <div class="pi-market-stat">
+          <span class="pi-market-stat-value">${movementSummary.movement7dLabel}</span>
+          <span class="pi-market-stat-label">7-Day Movement</span>
+        </div>
+        <div class="pi-market-stat">
+          <span class="pi-market-stat-value">${movementSummary.movement30dLabel}</span>
+          <span class="pi-market-stat-label">30-Day Movement</span>
         </div>
       </div>
 
@@ -1181,6 +1209,39 @@ function renderPiMarketTab(entry, intel, marketState = piCardMarketState, popula
         </div>
         <p class="pi-market-summary-copy">${market.summary}</p>
       </section>
+
+      <section class="cs-premium-card pi-intelligence-summary">
+        <div class="cs-premium-head">
+          <h3 class="cs-premium-title">Card Intelligence Summary</h3>
+        </div>
+        <div class="pi-intelligence-summary-grid">
+          <div class="pi-intelligence-summary-item">
+            <span class="pi-intelligence-summary-value">${playerSummary.highestCardSignal}</span>
+            <span class="pi-intelligence-summary-label">Highest Card Signal</span>
+          </div>
+          <div class="pi-intelligence-summary-item">
+            <span class="pi-intelligence-summary-value">${playerSummary.strongestMarketActivity}</span>
+            <span class="pi-intelligence-summary-label">Strongest Market Activity</span>
+          </div>
+          <div class="pi-intelligence-summary-item">
+            <span class="pi-intelligence-summary-value">${playerSummary.strongestScarcity}</span>
+            <span class="pi-intelligence-summary-label">Strongest Scarcity</span>
+          </div>
+          <div class="pi-intelligence-summary-item">
+            <span class="pi-intelligence-summary-value">${playerSummary.mostBidActivity}</span>
+            <span class="pi-intelligence-summary-label">Most Bid Activity</span>
+          </div>
+          <div class="pi-intelligence-summary-item">
+            <span class="pi-intelligence-summary-value">${playerSummary.cardsWithEvidence}</span>
+            <span class="pi-intelligence-summary-label">Cards With Evidence</span>
+          </div>
+          <div class="pi-intelligence-summary-item">
+            <span class="pi-intelligence-summary-value">${playerSummary.cardsPending}</span>
+            <span class="pi-intelligence-summary-label">Cards Pending</span>
+          </div>
+        </div>
+        <p class="pi-intelligence-summary-note">Player-level summary aggregates independent card signals — cards do not necessarily move together.</p>
+      </section>
     </div>
   `;
 }
@@ -1201,9 +1262,10 @@ function renderPiSignalDetailRow(label, score, explanation, colorClass) {
   `;
 }
 
-function renderPiSignalsTab(entry, intel, populationState = piCardPopulationState) {
+function renderPiSignalsTab(entry, intel, populationState = piCardPopulationState, intelligenceState = piCardIntelligenceState) {
   const populationCards = populationState.data?.cards || [];
   const populationSummary = CardPopulationUI.buildSignalsPopulationSummary(populationCards);
+  const dimensions = CardIntelligenceUI.aggregateSignalDimensions(intelligenceState.data?.cards || []);
   const scarcityBlock = populationSummary.available
     ? `
       <section class="cs-premium-card pi-population-scarcity">
@@ -1234,9 +1296,16 @@ function renderPiSignalsTab(entry, intel, populationState = piCardPopulationStat
 
   return `
     <div class="pi-tab-panel pi-tab-panel--signals" data-tab-panel="signals">
+      <p class="pi-signals-card-level-note">${dimensions.cardLevelNote}</p>
+      <div class="pi-signals-list pi-signals-list--card-level">
+        ${CardIntelligenceUI.renderSignalDimensionBlock(dimensions.marketActivity)}
+        ${CardIntelligenceUI.renderSignalDimensionBlock(dimensions.demand)}
+        ${CardIntelligenceUI.renderSignalDimensionBlock(dimensions.momentum)}
+        ${CardIntelligenceUI.renderSignalDimensionBlock(dimensions.scarcity)}
+      </div>
       ${scarcityBlock}
       <div class="pi-signals-intro">
-        <p class="eyebrow">Signal Analysis</p>
+        <p class="eyebrow">Player Signal Analysis</p>
         <h3 class="pi-signals-heading">Why does this player have this CardSignal Score?</h3>
       </div>
       <div class="pi-signals-list">
@@ -1269,16 +1338,18 @@ function renderPiSignalsTab(entry, intel, populationState = piCardPopulationStat
   `;
 }
 
-function renderPiForecastTab(entry, intel) {
-  const convictionTier = intel.convictionTier;
-  const recommendation = csIntelRecommendationFromTier(convictionTier);
-  const recommendationClass = csIntelRecommendationClass(recommendation);
-  const convictionClass = csIntelConvictionClass(convictionTier);
-  const convictionLabel = formatConvictionTier(convictionTier);
-  const risk = getRiskLevel(intel);
-  const riskClass = risk === "Low" ? "pi-risk--low" : risk === "High" ? "pi-risk--high" : "pi-risk--medium";
-  const summary = buildForecastSummary(entry, intel);
-  const reasons = buildForecastReasons(entry, intel);
+function renderPiForecastTab(entry, intel, intelligenceState = piCardIntelligenceState) {
+  const forecast = CardIntelligenceUI.buildForecastView(intelligenceState.data || {});
+  const recommendation = forecast.recommendation || "WATCH";
+  const conviction = forecast.conviction || "INSUFFICIENT";
+  const recommendationClass = CardIntelligenceUI.recommendationClass(recommendation);
+  const convictionClass = CardIntelligenceUI.convictionClass(conviction);
+  const convictionLabel = formatConvictionTier(conviction);
+  const risk = forecast.risk || "UNKNOWN";
+  const riskClass = risk === "LOW" ? "pi-risk--low" : risk === "HIGH" ? "pi-risk--high" : "pi-risk--medium";
+  const missingInputs = (forecast.missingInputs || []).filter(
+    (item) => item !== "More market history is needed before CardSignal can issue a full card recommendation."
+  );
 
   return `
     <div class="pi-tab-panel pi-tab-panel--forecast" data-tab-panel="forecast">
@@ -1293,7 +1364,7 @@ function renderPiForecastTab(entry, intel) {
             <small class="cs-conviction-label">Conviction</small>
           </div>
           <div class="pi-forecast-horizon">
-            <span class="pi-forecast-horizon-value">2–4 weeks</span>
+            <span class="pi-forecast-horizon-value">${forecast.timeHorizon || "Not available"}</span>
             <small class="pi-forecast-horizon-label">Time Horizon</small>
           </div>
           <div class="pi-forecast-risk">
@@ -1307,17 +1378,28 @@ function renderPiForecastTab(entry, intel) {
         <div class="cs-premium-head">
           <h3 class="cs-premium-title">Forecast Summary</h3>
         </div>
-        <p class="pi-forecast-summary-copy">${summary}</p>
+        <p class="pi-forecast-summary-copy">${forecast.summaryText}</p>
+        <p class="pi-forecast-algorithm">Algorithm: ${forecast.algorithmVersion || "CARD_INTELLIGENCE_V1"}</p>
       </section>
 
       <section class="cs-premium-card pi-forecast-reasons">
         <div class="cs-premium-head">
-          <h3 class="cs-premium-title">Key Factors</h3>
+          <h3 class="cs-premium-title">Evidence</h3>
         </div>
-        <ul class="pi-forecast-reasons-list">
-          ${reasons.map((reason) => `<li>${reason}</li>`).join("")}
-        </ul>
-        <p class="pi-forecast-disclaimer">Forecasts reflect current signal inputs and may change as new data arrives. They do not guarantee returns.</p>
+        ${CardIntelligenceUI.renderEvidenceList(forecast.evidence)}
+      </section>
+
+      <section class="cs-premium-card pi-forecast-missing">
+        <div class="cs-premium-head">
+          <h3 class="cs-premium-title">Missing Inputs</h3>
+        </div>
+        ${missingInputs.length
+          ? `<ul class="pi-forecast-reasons-list">${missingInputs.map((item) => `<li>${item}</li>`).join("")}</ul>`
+          : `<p class="pi-forecast-summary-copy">No additional missing inputs for the lead card.</p>`}
+        ${forecast.conviction === "INSUFFICIENT"
+          ? `<p class="pi-forecast-summary-copy">More market history is needed before CardSignal can issue a full card recommendation.</p>`
+          : ""}
+        <p class="pi-forecast-disclaimer">${forecast.disclaimer || "CardSignal provides market intelligence, not financial advice. Active listing data may differ from confirmed sale prices."}</p>
       </section>
     </div>
   `;
@@ -1385,16 +1467,16 @@ function renderPiModalHeader(entry, intel) {
   `;
 }
 
-function renderPiModalBody(entry, intel, activeTab, marketState = piCardMarketState, populationState = piCardPopulationState) {
+function renderPiModalBody(entry, intel, activeTab, marketState = piCardMarketState, populationState = piCardPopulationState, intelligenceState = piCardIntelligenceState) {
   switch (activeTab) {
     case "cards":
-      return renderPiCardsTab(entry, intel, marketState, populationState);
+      return renderPiCardsTab(entry, intel, marketState, populationState, intelligenceState);
     case "market":
-      return renderPiMarketTab(entry, intel, marketState, populationState);
+      return renderPiMarketTab(entry, intel, marketState, populationState, intelligenceState);
     case "signals":
-      return renderPiSignalsTab(entry, intel, populationState);
+      return renderPiSignalsTab(entry, intel, populationState, intelligenceState);
     case "forecast":
-      return renderPiForecastTab(entry, intel);
+      return renderPiForecastTab(entry, intel, intelligenceState);
     case "overview":
     default:
       return renderPiOverviewTab(entry, intel);
@@ -1427,10 +1509,17 @@ function bindPiModalKeydown() {
 
 function refreshPiModalMarketTabs() {
   if (!piModalEntry || !piModalIntel) return;
-  if (piActiveTab !== "cards" && piActiveTab !== "market" && piActiveTab !== "signals") return;
+  if (!["cards", "market", "signals", "forecast"].includes(piActiveTab)) return;
   const body = document.getElementById("pi-modal-body");
   if (!body) return;
-  body.innerHTML = renderPiModalBody(piModalEntry, piModalIntel, piActiveTab, piCardMarketState, piCardPopulationState);
+  body.innerHTML = renderPiModalBody(
+    piModalEntry,
+    piModalIntel,
+    piActiveTab,
+    piCardMarketState,
+    piCardPopulationState,
+    piCardIntelligenceState
+  );
 }
 
 async function loadPiCardPopulation(entry, { force = false } = {}) {
@@ -1450,6 +1539,31 @@ async function loadPiCardPopulation(entry, { force = false } = {}) {
 
   const result = await CardPopulationUI.fetchPlayerCardPopulation(entry.player_id, { force });
   piCardPopulationState = {
+    status: result.status,
+    data: result.data,
+    error: result.error,
+    playerKey,
+  };
+  refreshPiModalMarketTabs();
+}
+
+async function loadPiCardIntelligence(entry, { force = false } = {}) {
+  const playerKey = CardIntelligenceUI.getCacheKey(entry);
+  if (!entry?.player_id) {
+    piCardIntelligenceState = { status: "empty", data: null, error: null, playerKey };
+    refreshPiModalMarketTabs();
+    return;
+  }
+
+  if (!force && piCardIntelligenceState.playerKey === playerKey && piCardIntelligenceState.status !== "idle") {
+    return;
+  }
+
+  piCardIntelligenceState = { status: "loading", data: null, error: null, playerKey };
+  refreshPiModalMarketTabs();
+
+  const result = await CardIntelligenceUI.fetchPlayerCardIntelligence(entry.player_id, { force });
+  piCardIntelligenceState = {
     status: result.status,
     data: result.data,
     error: result.error,
@@ -1515,13 +1629,16 @@ function setupPiTabNavigation() {
     updatePiModalTabState();
 
     const body = document.getElementById("pi-modal-body");
-    if (body) body.innerHTML = renderPiModalBody(piModalEntry, piModalIntel, piActiveTab, piCardMarketState, piCardPopulationState);
+    if (body) body.innerHTML = renderPiModalBody(piModalEntry, piModalIntel, piActiveTab, piCardMarketState, piCardPopulationState, piCardIntelligenceState);
 
-    if ((tabId === "cards" || tabId === "market" || tabId === "signals") && piCardMarketState.status === "idle") {
+    if ((tabId === "cards" || tabId === "market" || tabId === "signals" || tabId === "forecast") && piCardMarketState.status === "idle") {
       loadPiCardMarket(piModalEntry);
     }
     if ((tabId === "cards" || tabId === "market" || tabId === "signals") && piCardPopulationState.status === "idle") {
       loadPiCardPopulation(piModalEntry);
+    }
+    if ((tabId === "cards" || tabId === "market" || tabId === "signals" || tabId === "forecast") && piCardIntelligenceState.status === "idle") {
+      loadPiCardIntelligence(piModalEntry);
     }
   });
 }
@@ -1555,6 +1672,7 @@ function closePlayerIntelligenceModal() {
   piModalIntel = null;
   piCardMarketState = { status: "idle", data: null, movement: null, activity: null, error: null, playerKey: null };
   piCardPopulationState = { status: "idle", data: null, error: null, playerKey: null };
+  piCardIntelligenceState = { status: "idle", data: null, error: null, playerKey: null };
 }
 
 async function openPlayerIntelligenceModal(entry) {
@@ -1576,10 +1694,11 @@ async function openPlayerIntelligenceModal(entry) {
     piActiveTab = "overview";
     piCardMarketState = { status: "idle", data: null, movement: null, activity: null, error: null, playerKey: null };
     piCardPopulationState = { status: "idle", data: null, error: null, playerKey: null };
+    piCardIntelligenceState = { status: "idle", data: null, error: null, playerKey: null };
 
     header.innerHTML = renderPiModalHeader(player, intel);
     tabs.innerHTML = renderPiModalTabs(piActiveTab);
-    body.innerHTML = renderPiModalBody(player, intel, piActiveTab, piCardMarketState, piCardPopulationState);
+    body.innerHTML = renderPiModalBody(player, intel, piActiveTab, piCardMarketState, piCardPopulationState, piCardIntelligenceState);
 
     wirePlayerActions();
     updatePiModalTabState();
@@ -1594,6 +1713,7 @@ async function openPlayerIntelligenceModal(entry) {
 
     loadPiCardMarket(player);
     loadPiCardPopulation(player);
+    loadPiCardIntelligence(player);
     renderMarketActivity(player);
 
     if (player.player_id) {
