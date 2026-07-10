@@ -3883,6 +3883,26 @@ button,
   text-overflow: ellipsis;
 }
 
+.qi-row-detail {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 3px;
+  flex-wrap: nowrap;
+  min-width: 0;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.qi-row-detail span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .qi-row-metrics {
   display: flex;
   align-items: center;
@@ -4918,6 +4938,26 @@ body.pi-modal-open {
   font-weight: 800;
   color: var(--charcoal);
   line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pi-card-row-detail {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 3px;
+  flex-wrap: nowrap;
+  min-width: 0;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.pi-card-row-detail span {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
