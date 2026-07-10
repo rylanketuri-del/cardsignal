@@ -57,6 +57,13 @@
   - [x] Append-only Supabase persistence and local JSON fallback
   - [x] `GET /api/cards/{cs_card_id}/market/latest` read endpoint
 
+- **Sprint 8.4** — Real Card Market UI (Release v0.9.0):
+  - [x] `GET /api/players/{player_id}/cards/market/latest` player-level snapshot endpoint
+  - [x] Cards tab surfaces real active-listing metrics per registry card
+  - [x] Market tab aggregates player-level listing depth and bid activity
+  - [x] Data-quality badges, active-listing disclaimers, and captured timestamps
+  - [x] Session cache for card-market fetches; graceful loading/empty/error states
+
 ## Current Milestone
 
 ### Sprint 8 — Real Card Intelligence
@@ -64,17 +71,12 @@
 - **Sprint 8.1** — Player Card Registry (Release v0.9.0) — complete
 - **Sprint 8.2** — Foundation & Identity (Release v0.9.0) — complete
 - **Sprint 8.3** — eBay Market Snapshot Foundation (Release v0.9.0) — complete
-- Wire Market tab to live pricing snapshots
+- **Sprint 8.4** — Real Card Market UI (Release v0.9.0) — complete
 - Populate Signal Timeline and Market Activity from live runs
 
 ## Up Next
 
-### Sprint 8.4 — Card Market UI
-
-- Surface live card market snapshots in Cards and Market tabs
-- Show data quality badges and active-listing disclaimers
-
-### Sprint 8.5 — Price History and Movement
+### Sprint 8.5 — Historical Price Movement
 
 - Historical active-listing trend lines per card identity
 - Movement metrics derived from snapshot history (not asking-price comps as sales)

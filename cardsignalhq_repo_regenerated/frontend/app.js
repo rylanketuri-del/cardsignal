@@ -17,6 +17,7 @@ let piActiveTab = "overview";
 let piModalEntry = null;
 let piModalIntel = null;
 let piModalKeydownHandler = null;
+let piCardMarketState = { status: "idle", data: null, error: null, playerKey: null };
 const PI_TABS = [
   { id: "overview", label: "Overview" },
   { id: "cards", label: "Cards" },
@@ -821,6 +822,60 @@ function renderProgressRow(label, value, colorClass) {
   `;
 }
 
+function renderPiCardMarketLoading(message = "Loading card-market intelligence…") {
+  return `
+    <div class="pi-card-market-state" role="status" aria-live="polite">
+      <div class="pi-card-market-spinner" aria-hidden="true"></div>
+      <p class="pi-card-market-state-copy">${message}</p>
+    </div>
+  `;
+}
+
+function renderPiCardMarketMessage(message, modifier = "") {
+  return `
+    <div class="pi-card-market-state pi-card-market-state--${modifier}" role="status" aria-live="polite">
+      <p class="pi-card-market-state-copy">${message}</p>
+    </div>
+  `;
+}
+
+function renderPiMarketCardRow(item) {
+  const qualityBadge = CardMarketUI.renderQualityBadge(item.dataQuality);
+  return `
+    <div class="pi-card-row pi-card-row--market">
+      <div class="pi-card-row-thumb" aria-hidden="true"></div>
+      <div class="pi-card-row-copy">
+        <div class="pi-card-row-name">${item.name}</div>
+        <div class="pi-card-row-detail">
+          <span>${item.year || "—"}</span>
+          <span>${item.manufacturer || "—"}</span>
+          <span>${item.set_name || "—"}</span>
+        </div>
+        <div class="pi-card-row-detail pi-card-row-detail--secondary">
+          <span>${item.card_name || "—"}</span>
+          <span>${item.parallel || "—"}</span>
+          <span>${item.grade || "—"}${item.grading_company ? ` · ${item.grading_company}` : ""}</span>
+        </div>
+        <div class="pi-card-row-market-metrics">
+          <span><strong>Median Active Price</strong> ${item.medianPrice}</span>
+          <span><strong>Average Active Price</strong> ${item.averagePrice}</span>
+          <span><strong>Active Listings</strong> ${item.activeListings}</span>
+          <span><strong>Auctions</strong> ${item.auctions}</span>
+        </div>
+        <div class="pi-card-row-foot">
+          <span class="pi-card-row-snapshot-note">Active listing snapshot</span>
+          <span class="pi-card-row-move metric-flat">${item.movement}</span>
+        </div>
+        <div class="pi-card-row-foot pi-card-row-foot--meta">
+          ${qualityBadge}
+          <span class="pi-card-row-captured">${item.capturedLabel}</span>
+        </div>
+        ${item.betaNote ? `<p class="pi-card-row-beta-note">Requires price-history confirmation</p>` : ""}
+      </div>
+    </div>
+  `;
+}
+
 function renderPiCardRow(item) {
   const moveClass = movementClass(item.movement);
   const signalLabel = getCardSignalLabel(item.score);
@@ -847,14 +902,15 @@ function renderPiCardRow(item) {
   `;
 }
 
-function renderPiPlayerSection(playerName, title, items) {
+function renderPiPlayerSection(playerName, title, items, { useMarketRows = false } = {}) {
+  const rowRenderer = useMarketRows ? renderPiMarketCardRow : renderPiCardRow;
   return `
     <section class="cs-premium-card pi-intel-section">
       <div class="cs-premium-head">
         <h3 class="cs-premium-title">${playerName} ${title}</h3>
       </div>
       <div class="cs-premium-card-list cs-premium-card-list--unified">
-        ${items.slice(0, 3).map((item) => renderPiCardRow(item)).join("")}
+        ${items.slice(0, 3).map((item) => rowRenderer(item)).join("")}
       </div>
     </section>
   `;
@@ -927,50 +983,142 @@ function renderPiOverviewTab(entry, intel) {
   `;
 }
 
-function renderPiCardsTab(entry, intel) {
+function renderPiCardsTab(entry, intel, marketState = piCardMarketState) {
   const playerName = entry.player_name || "Player";
+
+  if (marketState.status === "loading") {
+    return `
+      <div class="pi-tab-panel pi-tab-panel--cards" data-tab-panel="cards">
+        ${renderPiCardMarketLoading()}
+      </div>
+    `;
+  }
+
+  if (marketState.status === "error") {
+    const fallback = CardMarketUI.buildRegistryFallbackSections(entry);
+    return `
+      <div class="pi-tab-panel pi-tab-panel--cards" data-tab-panel="cards">
+        ${renderPiCardMarketMessage(marketState.error || "Card-market intelligence is temporarily unavailable.", "error")}
+        <div class="pi-cards-grid">
+          ${renderPiPlayerSection(playerName, "Trending Cards", fallback.trendingCards, { useMarketRows: true })}
+          ${renderPiPlayerSection(playerName, "Biggest Movers", fallback.biggestMovers, { useMarketRows: true })}
+          ${renderPiPlayerSection(playerName, "Buy Low Watch", fallback.buyLowOpportunities, { useMarketRows: true })}
+          ${renderPiPlayerSection(playerName, "Most Chased", fallback.mostChased, { useMarketRows: true })}
+        </div>
+      </div>
+    `;
+  }
+
+  if (marketState.status === "empty" || !marketState.data) {
+    const fallback = CardMarketUI.buildRegistryFallbackSections(entry);
+    return `
+      <div class="pi-tab-panel pi-tab-panel--cards" data-tab-panel="cards">
+        ${renderPiCardMarketMessage("No card-market snapshot is available for this player yet.", "empty")}
+        <div class="pi-cards-grid">
+          ${renderPiPlayerSection(playerName, "Trending Cards", fallback.trendingCards, { useMarketRows: true })}
+          ${renderPiPlayerSection(playerName, "Biggest Movers", fallback.biggestMovers, { useMarketRows: true })}
+          ${renderPiPlayerSection(playerName, "Buy Low Watch", fallback.buyLowOpportunities, { useMarketRows: true })}
+          ${renderPiPlayerSection(playerName, "Most Chased", fallback.mostChased, { useMarketRows: true })}
+        </div>
+      </div>
+    `;
+  }
+
+  const sections = CardMarketUI.buildCardSections(marketState.data.cards || []);
 
   return `
     <div class="pi-tab-panel pi-tab-panel--cards" data-tab-panel="cards">
+      <p class="pi-card-market-disclaimer">These values reflect active eBay listings, not confirmed sold transactions.</p>
       <div class="pi-cards-grid">
-        ${renderPiPlayerSection(playerName, "Trending Cards", intel.trendingCards)}
-        ${renderPiPlayerSection(playerName, "Biggest Movers", intel.biggestMovers)}
-        ${renderPiPlayerSection(playerName, "Buy Low Watch", intel.buyLowOpportunities)}
-        ${renderPiPlayerSection(playerName, "Most Chased", intel.mostChased)}
+        ${renderPiPlayerSection(playerName, "Trending Cards", sections.trendingCards, { useMarketRows: true })}
+        ${renderPiPlayerSection(playerName, "Biggest Movers", sections.biggestMovers, { useMarketRows: true })}
+        ${renderPiPlayerSection(playerName, "Buy Low Watch", sections.buyLowOpportunities, { useMarketRows: true })}
+        ${renderPiPlayerSection(playerName, "Most Chased", sections.mostChased, { useMarketRows: true })}
       </div>
     </div>
   `;
 }
 
-function renderPiMarketTab(entry, intel) {
-  const market = buildMarketPlaceholders(entry, intel);
-  const moveClass = market.priceMove > 0.01 ? "metric-up" : market.priceMove < -0.01 ? "metric-down" : "metric-flat";
-  const priceMoveFormatted = csIntelFormatPercent(market.priceMove);
+function renderPiMarketTab(entry, intel, marketState = piCardMarketState) {
+  const playerName = entry.player_name || "Player";
+
+  if (marketState.status === "loading") {
+    return `
+      <div class="pi-tab-panel pi-tab-panel--market" data-tab-panel="market">
+        ${renderPiCardMarketLoading()}
+      </div>
+    `;
+  }
+
+  if (marketState.status === "error") {
+    return `
+      <div class="pi-tab-panel pi-tab-panel--market" data-tab-panel="market">
+        ${renderPiCardMarketMessage(marketState.error || "Card-market intelligence is temporarily unavailable.", "error")}
+      </div>
+    `;
+  }
+
+  if (marketState.status === "empty" || !marketState.data) {
+    return `
+      <div class="pi-tab-panel pi-tab-panel--market" data-tab-panel="market">
+        ${renderPiCardMarketMessage("No card-market snapshot is available for this player yet.", "empty")}
+      </div>
+    `;
+  }
+
+  const market = CardMarketUI.buildMarketView(marketState.data, playerName);
 
   return `
     <div class="pi-tab-panel pi-tab-panel--market" data-tab-panel="market">
-      <div class="pi-market-grid">
+      <p class="pi-card-market-disclaimer">These values reflect active eBay listings, not confirmed sold transactions.</p>
+      <div class="pi-market-grid pi-market-grid--expanded">
         <div class="pi-market-stat">
-          <span class="pi-market-stat-value">${csIntelFormatMoney(market.avgSale)}</span>
-          <span class="pi-market-stat-label">Avg Sale</span>
+          <span class="pi-market-stat-value">${market.cardsObserved}</span>
+          <span class="pi-market-stat-label">Cards Observed</span>
         </div>
         <div class="pi-market-stat">
-          <span class="pi-market-stat-value">${market.salesVolume}</span>
-          <span class="pi-market-stat-label">Sales Volume</span>
-        </div>
-        <div class="pi-market-stat">
-          <span class="pi-market-stat-value">${market.activeListings}</span>
+          <span class="pi-market-stat-value">${market.totalActiveListings}</span>
           <span class="pi-market-stat-label">Active Listings</span>
         </div>
         <div class="pi-market-stat">
-          <span class="pi-market-stat-value ${moveClass}">${priceMoveFormatted}</span>
-          <span class="pi-market-stat-label">7-Day Price Move</span>
+          <span class="pi-market-stat-value">${market.totalAuctions}</span>
+          <span class="pi-market-stat-label">Auctions</span>
+        </div>
+        <div class="pi-market-stat">
+          <span class="pi-market-stat-value">${market.totalBuyItNow}</span>
+          <span class="pi-market-stat-label">Buy It Now</span>
+        </div>
+        <div class="pi-market-stat">
+          <span class="pi-market-stat-value">${market.listingsWithBids}</span>
+          <span class="pi-market-stat-label">Listings With Bids</span>
+        </div>
+        <div class="pi-market-stat">
+          <span class="pi-market-stat-value">${market.totalBids}</span>
+          <span class="pi-market-stat-label">Total Bids</span>
+        </div>
+        <div class="pi-market-stat">
+          <span class="pi-market-stat-value">${market.medianActivePrice}</span>
+          <span class="pi-market-stat-label">Median Active Price</span>
+        </div>
+        <div class="pi-market-stat">
+          <span class="pi-market-stat-value">${market.averageActivePrice}</span>
+          <span class="pi-market-stat-label">Average Active Price</span>
         </div>
       </div>
 
-      <div class="pi-market-liquidity">
-        <span class="pi-market-liquidity-label">Liquidity</span>
-        <span class="pi-market-liquidity-value">${market.liquidity}</span>
+      <div class="pi-market-liquidity pi-market-liquidity--split">
+        <div class="pi-market-liquidity-block">
+          <span class="pi-market-liquidity-label">Market Depth</span>
+          ${CardMarketUI.renderDepthBadge(market.marketDepth)}
+        </div>
+        <div class="pi-market-liquidity-block">
+          <span class="pi-market-liquidity-label">Data Quality</span>
+          ${CardMarketUI.renderQualityBadge(market.dataQuality)}
+        </div>
+        <div class="pi-market-liquidity-block pi-market-liquidity-block--wide">
+          <span class="pi-market-liquidity-label">Last Snapshot</span>
+          <span class="pi-market-captured">${market.capturedLabel}</span>
+        </div>
       </div>
 
       <section class="cs-premium-card pi-market-summary">
@@ -979,10 +1127,6 @@ function renderPiMarketTab(entry, intel) {
         </div>
         <p class="pi-market-summary-copy">${market.summary}</p>
       </section>
-
-      <div class="pi-market-placeholder-note">
-        Live card-market data will populate after pricing snapshots.
-      </div>
     </div>
   `;
 }
@@ -1156,12 +1300,12 @@ function renderPiModalHeader(entry, intel) {
   `;
 }
 
-function renderPiModalBody(entry, intel, activeTab) {
+function renderPiModalBody(entry, intel, activeTab, marketState = piCardMarketState) {
   switch (activeTab) {
     case "cards":
-      return renderPiCardsTab(entry, intel);
+      return renderPiCardsTab(entry, intel, marketState);
     case "market":
-      return renderPiMarketTab(entry, intel);
+      return renderPiMarketTab(entry, intel, marketState);
     case "signals":
       return renderPiSignalsTab(entry, intel);
     case "forecast":
@@ -1196,6 +1340,39 @@ function bindPiModalKeydown() {
   document.addEventListener("keydown", piModalKeydownHandler);
 }
 
+function refreshPiModalMarketTabs() {
+  if (!piModalEntry || !piModalIntel) return;
+  if (piActiveTab !== "cards" && piActiveTab !== "market") return;
+  const body = document.getElementById("pi-modal-body");
+  if (!body) return;
+  body.innerHTML = renderPiModalBody(piModalEntry, piModalIntel, piActiveTab, piCardMarketState);
+}
+
+async function loadPiCardMarket(entry, { force = false } = {}) {
+  const playerKey = CardMarketUI.getCacheKey(entry);
+  if (!entry?.player_id) {
+    piCardMarketState = { status: "empty", data: null, error: null, playerKey };
+    refreshPiModalMarketTabs();
+    return;
+  }
+
+  if (!force && piCardMarketState.playerKey === playerKey && piCardMarketState.status !== "idle") {
+    return;
+  }
+
+  piCardMarketState = { status: "loading", data: null, error: null, playerKey };
+  refreshPiModalMarketTabs();
+
+  const result = await CardMarketUI.fetchPlayerCardMarket(entry.player_id, { force });
+  piCardMarketState = {
+    status: result.status,
+    data: result.data || null,
+    error: result.error || null,
+    playerKey,
+  };
+  refreshPiModalMarketTabs();
+}
+
 function updatePiModalTabState() {
   const tabsRoot = document.getElementById("pi-modal-tabs");
   if (!tabsRoot) return;
@@ -1223,7 +1400,11 @@ function setupPiTabNavigation() {
     updatePiModalTabState();
 
     const body = document.getElementById("pi-modal-body");
-    if (body) body.innerHTML = renderPiModalBody(piModalEntry, piModalIntel, piActiveTab);
+    if (body) body.innerHTML = renderPiModalBody(piModalEntry, piModalIntel, piActiveTab, piCardMarketState);
+
+    if ((tabId === "cards" || tabId === "market") && piCardMarketState.status === "idle") {
+      loadPiCardMarket(piModalEntry);
+    }
   });
 }
 
@@ -1254,6 +1435,7 @@ function closePlayerIntelligenceModal() {
   piActiveTab = "overview";
   piModalEntry = null;
   piModalIntel = null;
+  piCardMarketState = { status: "idle", data: null, error: null, playerKey: null };
 }
 
 async function openPlayerIntelligenceModal(entry) {
@@ -1273,10 +1455,11 @@ async function openPlayerIntelligenceModal(entry) {
     piModalEntry = player;
     piModalIntel = intel;
     piActiveTab = "overview";
+    piCardMarketState = { status: "idle", data: null, error: null, playerKey: null };
 
     header.innerHTML = renderPiModalHeader(player, intel);
     tabs.innerHTML = renderPiModalTabs(piActiveTab);
-    body.innerHTML = renderPiModalBody(player, intel, piActiveTab);
+    body.innerHTML = renderPiModalBody(player, intel, piActiveTab, piCardMarketState);
 
     wirePlayerActions();
     updatePiModalTabState();
@@ -1288,6 +1471,8 @@ async function openPlayerIntelligenceModal(entry) {
     requestAnimationFrame(() => {
       modal.querySelector(".pi-modal-close")?.focus();
     });
+
+    loadPiCardMarket(player);
 
     if (player.player_id) {
       await renderScoreHistory(player.player_id);

@@ -34,7 +34,7 @@ Modal tabs:
 |-----|---------|
 | **Overview** | Score, recommendation, conviction, weekly movement, status, signal breakdown, why-it-matters summary |
 | **Cards** | Player-specific trending, movers, buy-low, and most-chased card rows |
-| **Market** | Placeholder sale volume, listings, liquidity, and market summary (live pricing snapshots pending) |
+| **Market** | Aggregated active-listing depth, bid activity, median/average asking prices, data quality, and player-specific market summary |
 | **Signals** | Performance, Market, Collector Demand, and Momentum explanations with scores and progress bars |
 | **Forecast** | BUY/HOLD/SELL recommendation, conviction, 2–4 week horizon, risk, summary, and bullet reasons |
 
@@ -71,13 +71,25 @@ Current production scope:
 - eBay Browse API for active listings
 - Supabase for leaderboard persistence, auth, watchlists, alerts, and notifications
 
-Placeholder intelligence (card rows, market metrics, forecast reasons) uses stable seeded values when backend fields are missing. Live card-market snapshots will replace placeholders in a future release.
+Placeholder intelligence (forecast reasons and homepage card intelligence rows) may still use stable seeded values when backend fields are missing. Player modal Cards and Market tabs consume stored card-market snapshots via `GET /api/players/{player_id}/cards/market/latest` when available.
 
 ## User Layers
 
 - **Anonymous** — browse Signal Center, search players, open Intelligence Reports
 - **Authenticated** — save watchlist players, configure alert preferences, per-player alert rules, notification center
 - **Admin** — hidden from public UI; protected by admin token for settings and tracked-player management
+
+## Card Market UI Principles
+
+CardSignal player modal **Cards** and **Market** tabs surface stored `CardMarketSnapshot` observations when available.
+
+- **Active listings are not sold comps** — median and average values describe current eBay asking prices; they must never be labeled as sold price, market value, confirmed value, or comp.
+- **No fake movement values** — price movement displays `Movement pending` until Sprint 8.5 historical comparisons exist.
+- **Data-quality labels are required** — every snapshot row and aggregate summary shows `HIGH`, `MEDIUM`, `LOW`, or `INSUFFICIENT` with readable descriptions.
+- **Timestamps must be visible** — each card row and market summary shows when the snapshot was captured in the user's local time.
+- **Recommendations require multiple supporting signal types** — BUY/HOLD/SELL and forecast language must not be derived from active listing asking prices alone.
+
+When snapshots are unavailable, the UI preserves the card registry and shows `Snapshot pending`, `Movement pending`, and `Not enough data` — never invented prices or percentages.
 
 ## Release Principles
 

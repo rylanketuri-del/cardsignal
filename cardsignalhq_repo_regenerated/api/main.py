@@ -11,8 +11,10 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from cardchase_ai.identity import enrich_player_entry
+from cardchase_ai.card_registry import get_enriched_player_cards
 from cardchase_ai.clients.mlb import MLBClient
 from cardchase_ai.config import get_settings
+from cardchase_ai.market.player_market import aggregate_player_market, build_player_card_market_item
 from cardchase_ai.pipeline import run_pipeline
 from cardchase_ai.storage import SupabaseError, SupabaseStorage
 
@@ -263,37 +265,77 @@ def get_player(player_id: str) -> JSONResponse:
     return JSONResponse(payload)
 
 
-def _load_latest_card_market_snapshot(cs_card_id: str) -> tuple[dict[str, Any], str]:
+def _normalize_card_market_snapshot_row(row: dict[str, Any]) -> dict[str, Any]:
+    metrics = row.get("metrics") or {}
+    return {
+        "cs_card_id": row["cs_card_id"],
+        "cs_player_id": row["cs_player_id"],
+        "league": metrics.get("league", "MLB"),
+        "source": row.get("source", "ebay"),
+        "query": row.get("query", ""),
+        "captured_at": row.get("captured_at") or row.get("created_at"),
+        "algorithm_version": row.get("algorithm_version", ""),
+        **metrics,
+    }
+
+
+def _load_latest_card_market_snapshots_from_file() -> list[dict[str, Any]]:
+    latest_path = _settings().output_dir / "latest_card_market_snapshots.json"
+    if not latest_path.exists():
+        return []
+    return json.loads(latest_path.read_text(encoding="utf-8"))
+
+
+def _try_load_latest_card_market_snapshot(cs_card_id: str) -> tuple[dict[str, Any] | None, str | None]:
     storage = _storage()
     if storage:
         try:
             row = storage.fetch_latest_card_market_snapshot(cs_card_id)
             if row:
-                metrics = row.get("metrics") or {}
-                return (
-                    {
-                        "cs_card_id": row["cs_card_id"],
-                        "cs_player_id": row["cs_player_id"],
-                        "league": metrics.get("league", "MLB"),
-                        "source": row.get("source", "ebay"),
-                        "query": row.get("query", ""),
-                        "captured_at": row.get("captured_at") or row.get("created_at"),
-                        "algorithm_version": row.get("algorithm_version", ""),
-                        **metrics,
-                    },
-                    "supabase",
-                )
+                return _normalize_card_market_snapshot_row(row), "supabase"
         except SupabaseError:
             pass
 
-    latest_path = _settings().output_dir / "latest_card_market_snapshots.json"
-    if latest_path.exists():
-        items = json.loads(latest_path.read_text(encoding="utf-8"))
-        for item in items:
-            if str(item.get("cs_card_id")) == cs_card_id:
-                return item, "file"
+    for item in _load_latest_card_market_snapshots_from_file():
+        if str(item.get("cs_card_id")) == cs_card_id:
+            return item, "file"
 
-    raise HTTPException(status_code=404, detail=f"No market snapshot found for card {cs_card_id}.")
+    return None, None
+
+
+def _load_player_card_market_snapshots(cs_player_id: str) -> tuple[dict[str, dict[str, Any]], str | None]:
+    snapshots_by_card: dict[str, dict[str, Any]] = {}
+    data_source: str | None = None
+
+    storage = _storage()
+    if storage:
+        try:
+            rows = storage.fetch_card_market_snapshots_for_player(cs_player_id)
+            for row in rows:
+                card_id = str(row.get("cs_card_id") or "")
+                if card_id:
+                    snapshots_by_card[card_id] = _normalize_card_market_snapshot_row(row)
+            if snapshots_by_card:
+                return snapshots_by_card, "supabase"
+        except SupabaseError:
+            pass
+
+    for item in _load_latest_card_market_snapshots_from_file():
+        if str(item.get("cs_player_id")) != cs_player_id:
+            continue
+        card_id = str(item.get("cs_card_id") or "")
+        if card_id and card_id not in snapshots_by_card:
+            snapshots_by_card[card_id] = item
+            data_source = "file"
+
+    return snapshots_by_card, data_source
+
+
+def _load_latest_card_market_snapshot(cs_card_id: str) -> tuple[dict[str, Any], str]:
+    payload, source = _try_load_latest_card_market_snapshot(cs_card_id)
+    if not payload or not source:
+        raise HTTPException(status_code=404, detail=f"No market snapshot found for card {cs_card_id}.")
+    return payload, source
 
 
 @app.get("/api/cards/{cs_card_id}/market/latest")
@@ -301,6 +343,31 @@ def get_card_market_latest(cs_card_id: str) -> JSONResponse:
     payload, source = _load_latest_card_market_snapshot(cs_card_id)
     payload["data_source"] = source
     return JSONResponse(payload)
+
+
+@app.get("/api/players/{player_id}/cards/market/latest")
+def get_player_card_market_latest(player_id: str) -> JSONResponse:
+    payload, source = _load_player(player_id)
+    player = enrich_player_entry(payload)
+    cs_player_id = player.get("cs_player_id")
+    if not cs_player_id:
+        raise HTTPException(status_code=404, detail=f"Player identity not found for {player_id}.")
+
+    registry_cards = get_enriched_player_cards(player)
+    snapshots_by_card, snapshot_source = _load_player_card_market_snapshots(cs_player_id)
+
+    cards = [
+        build_player_card_market_item(card, snapshots_by_card.get(str(card.get("cs_card_id") or "")))
+        for card in registry_cards
+    ]
+    response = {
+        "player_id": player.get("player_id") or player_id,
+        "cs_player_id": cs_player_id,
+        "cards": cards,
+        "aggregate": aggregate_player_market(cards),
+        "data_source": snapshot_source or source,
+    }
+    return JSONResponse(response)
 
 
 @app.get("/api/me")
