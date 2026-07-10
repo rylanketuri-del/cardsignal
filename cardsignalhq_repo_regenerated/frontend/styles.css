@@ -5597,12 +5597,34 @@ body.pi-modal-open {
 }
 
 .sr-card-meta,
-.sr-card-grade,
-.sr-card-query {
+.sr-card-grade {
   margin: 4px 0 0;
   font-size: 13px;
   line-height: 1.4;
   color: var(--muted);
+}
+
+.sr-card-number {
+  margin: 4px 0 0;
+  font-family: Cormorant, Georgia, serif;
+  font-size: 22px;
+  line-height: 1.1;
+  color: var(--charcoal);
+}
+
+.sr-recommendation-note {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: rgba(247, 245, 242, 0.82);
+  font-style: italic;
+}
+
+.sr-pending-pill {
+  background: rgba(125, 120, 115, 0.18);
+  border-color: rgba(125, 120, 115, 0.32);
+  color: var(--cream);
 }
 
 .sr-card-metrics {

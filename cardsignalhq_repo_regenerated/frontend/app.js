@@ -16,6 +16,7 @@ let leaderboardHistoryChart = null;
 let piModalEntry = null;
 let piModalIntel = null;
 let piModalWeeklySnap = null;
+let piModalCards = [];
 let piModalKeydownHandler = null;
 let weeklyIntelligence = null;
 const SCOUTING_REPORT_ALGO = "WEEKLY_INTELLIGENCE_V1";
@@ -71,6 +72,10 @@ async function fetchWeeklyLatest(league = 'MLB') {
 }
 async function fetchPlayerWeeklySignals(playerId) {
   return apiFetch(`/api/players/${playerId}/signals/weekly?limit=12`);
+}
+
+async function fetchCardWeeklyIntelligence(csCardId) {
+  return apiFetch(`/api/cards/${encodeURIComponent(csCardId)}/intelligence/weekly?limit=2`);
 }
 async function fetchPlayerSearch(query) {
   const response = await fetch(`${API_BASE_URL}/api/players/search?q=${encodeURIComponent(query)}`);
@@ -990,60 +995,95 @@ function resolveWeeklySnapshot(entry = {}, weeklyHistory = []) {
 }
 
 function deriveEvidenceTier(weeklySnap, entry = {}) {
-  if (!weeklySnap) {
-    const conviction = String(entry.conviction || "").toUpperCase();
-    if (conviction) return formatEvidenceTier(conviction);
-    return "INSUFFICIENT";
-  }
-  const missing = weeklySnap.missing_inputs || [];
-  const critical = ["stats_7d", "market_snapshots", "listing_volume"];
-  if (critical.some((key) => missing.includes(key)) || weeklySnap.card_signal_score == null) {
-    return "INSUFFICIENT";
-  }
-  const conviction = String(weeklySnap.conviction || entry.conviction || "").toUpperCase();
-  return formatEvidenceTier(conviction || "MEDIUM");
+  const stored = weeklySnap?.conviction || entry.conviction;
+  if (!stored) return "INSUFFICIENT";
+  return formatEvidenceTier(stored);
 }
 
 function resolveRecommendation(entry = {}, weeklySnap = null) {
   const rec = weeklySnap?.recommendation || entry.recommendation;
   if (rec) return String(rec).toUpperCase();
-  const evidence = deriveEvidenceTier(weeklySnap, entry);
-  if (evidence === "INSUFFICIENT") return "WATCH";
-  const score = weeklySnap?.card_signal_score ?? entry.hotness?.total_score;
-  if (score == null) return "WATCH";
-  if (score >= 75 && evidence === "HIGH") return "BUY";
-  if (score < 45 || evidence === "LOW") return "SELL";
-  if (score >= 55) return "HOLD";
   return "WATCH";
 }
 
-function getReportStatus(entry = {}, weeklySnap = null) {
-  const statusRaw = String(weeklySnap?.status || entry.hotness?.tag || "").toUpperCase();
-  const score = Number(weeklySnap?.card_signal_score ?? entry.hotness?.total_score ?? 0);
-  const evidence = deriveEvidenceTier(weeklySnap, entry);
+function hasStoredRecommendation(entry = {}, weeklySnap = null) {
+  return !!(weeklySnap?.recommendation || entry.recommendation);
+}
 
-  if (statusRaw.includes("COOL") || statusRaw.includes("COOLING")) {
-    return { label: "Cooling", emoji: "📉", className: "sr-status--cooling" };
-  }
-  if (evidence === "INSUFFICIENT" || statusRaw.includes("WATCH")) {
+function getReportStatus(entry = {}, weeklySnap = null) {
+  const statusRaw = String(weeklySnap?.status || entry.status || "").toUpperCase();
+  if (!statusRaw) {
     return { label: "Watch", emoji: "⚠", className: "sr-status--watch" };
   }
-  if (score >= 80 || statusRaw.includes("HOT") || statusRaw.includes("JUMP")) {
+  if (statusRaw.includes("COOL")) {
+    return { label: "Cooling", emoji: "📉", className: "sr-status--cooling" };
+  }
+  if (statusRaw.includes("HOT")) {
     return { label: "HOT", emoji: "🔥", className: "sr-status--hot" };
   }
-  if (statusRaw.includes("RISING") || statusRaw.includes("BUY")) {
+  if (statusRaw.includes("RISING")) {
     return { label: "Rising", emoji: "📈", className: "sr-status--rising" };
   }
-  return { label: "Rising", emoji: "📈", className: "sr-status--rising" };
+  if (statusRaw.includes("WATCH")) {
+    return { label: "Watch", emoji: "⚠", className: "sr-status--watch" };
+  }
+  return { label: "Watch", emoji: "⚠", className: "sr-status--watch" };
 }
 
 function deriveEvidenceQuality(score, missingKeys = [], requiredKey = null) {
   if (requiredKey && missingKeys.includes(requiredKey)) return "INSUFFICIENT";
-  const n = csIntelSafeToNumber(score);
-  if (n === null) return "INSUFFICIENT";
-  if (n >= 75) return "HIGH";
-  if (n >= 50) return "MEDIUM";
-  return "LOW";
+  if (csIntelSafeToNumber(score) === null) return "INSUFFICIENT";
+  return null;
+}
+
+function getCardIdentityFields(card = {}) {
+  const source = card.identity || card.registry || card;
+  return {
+    year: source.card_year ?? source.year ?? null,
+    brand: source.brand ?? null,
+    set: source.set ?? null,
+    parallel: source.parallel ?? null,
+    card_number: source.card_number ?? null,
+    grade: source.grade ?? null,
+    grading_company: source.grading_company ?? null,
+  };
+}
+
+function hasCardRegistryIdentity(card = {}) {
+  const fields = getCardIdentityFields(card);
+  return !!(fields.year || fields.brand || fields.set);
+}
+
+function formatCardIdentityHtml(card = {}) {
+  const fields = getCardIdentityFields(card);
+  if (!hasCardRegistryIdentity(card)) return null;
+
+  const titleParts = [fields.year, fields.brand, fields.set].filter((part) => part != null && part !== "");
+  const lines = [];
+
+  if (titleParts.length) {
+    lines.push(`<p class="sr-card-title">${titleParts.join(" ")}</p>`);
+  }
+  if (fields.parallel) {
+    lines.push(`<p class="sr-card-meta">${fields.parallel}</p>`);
+  }
+  if (fields.card_number) {
+    lines.push(`<p class="sr-card-number">#${fields.card_number}</p>`);
+  }
+  if (fields.grade) {
+    const gradeLine = [fields.grading_company, fields.grade].filter(Boolean).join(" ");
+    lines.push(`<p class="sr-card-grade">${gradeLine}</p>`);
+  } else if (fields.grading_company) {
+    lines.push(`<p class="sr-card-grade">${fields.grading_company}</p>`);
+  }
+
+  return lines.length ? lines.join("") : null;
+}
+
+function parseStoredContributorDirection(value, fallback = "up") {
+  const n = csIntelSafeToNumber(value);
+  if (n === null) return fallback;
+  return n >= 0 ? "up" : "down";
 }
 
 function buildStoredPlayerIntel(entry = {}, weeklySnap = null) {
@@ -1059,6 +1099,7 @@ function buildStoredPlayerIntel(entry = {}, weeklySnap = null) {
     scarcity: csIntelSafeToNumber(weeklySnap?.scarcity_score),
     evidenceTier: deriveEvidenceTier(weeklySnap, entry),
     recommendation: resolveRecommendation(entry, weeklySnap),
+    hasStoredRecommendation: hasStoredRecommendation(entry, weeklySnap),
     weeklyChange: csIntelSafeToNumber(weeklySnap?.weekly_change ?? entry.weekly_change),
     evidence: weeklySnap?.evidence || {},
     missingInputs: missing,
@@ -1137,80 +1178,93 @@ function renderPlayerSnapshot(intel) {
     </section>`;
 }
 
-function buildSignalContributors(entry, intel) {
+function buildSignalContributors(entry, intel, weeklySnap = null) {
   const contributors = [];
   const stats7d = intel.stats7d;
   const stats30d = intel.stats30d;
   const evidence = intel.evidence || {};
 
-  if (hasPerformanceStats(stats7d) && hasPerformanceStats(stats30d)) {
-    const avgDelta = stats7d.avg - stats30d.avg;
-    if (Number.isFinite(avgDelta) && Math.abs(avgDelta) >= 0.005) {
-      const dir = avgDelta >= 0 ? "up" : "down";
+  if (hasPerformanceStats(stats7d)) {
+    const avg = csIntelSafeToNumber(stats7d.avg);
+    if (avg !== null) {
       contributors.push({
-        label: "Batting Average",
-        direction: dir,
-        detail: `${avgDelta >= 0 ? "+" : ""}${avgDelta.toFixed(3)} vs 30-day baseline`,
+        label: "Last 7 Day AVG",
+        direction: hasPerformanceStats(stats30d) ? (avg >= stats30d.avg ? "up" : "down") : "up",
+        detail: avg.toFixed(3),
       });
     }
-    if (stats7d.home_runs > 0) {
+
+    const homeRuns = csIntelSafeToNumber(stats7d.home_runs);
+    if (homeRuns !== null && homeRuns > 0) {
       contributors.push({
         label: "Home Runs",
         direction: "up",
-        detail: `${stats7d.home_runs} in the last 7 days`,
+        detail: `${Math.round(homeRuns)} in the last 7 days`,
       });
     }
-    if (stats7d.ops > 0) {
+
+    const ops = csIntelSafeToNumber(stats7d.ops);
+    if (ops !== null && ops > 0) {
       contributors.push({
         label: "OPS",
-        direction: stats7d.ops >= stats30d.ops ? "up" : "down",
-        detail: stats7d.ops.toFixed(3),
+        direction: hasPerformanceStats(stats30d) ? (ops >= stats30d.ops ? "up" : "down") : "up",
+        detail: ops.toFixed(3),
+      });
+    }
+
+    const rbi = csIntelSafeToNumber(stats7d.rbi);
+    if (rbi !== null && rbi > 0) {
+      contributors.push({
+        label: "RBI",
+        direction: "up",
+        detail: `${Math.round(rbi)} in the last 7 days`,
       });
     }
   }
 
-  (evidence.performance_reasons || []).slice(0, 2).forEach((reason) => {
+  (evidence.performance_reasons || []).forEach((reason) => {
     contributors.push({ label: "Performance", direction: "up", detail: reason });
   });
 
-  const snapshots = Object.values(intel.marketSnapshots || {});
-  if (snapshots.length) {
-    const totalListings = snapshots.reduce((sum, s) => sum + (s.listings_count || 0), 0);
-    if (totalListings > 0) {
-      contributors.push({
-        label: "Active Listings",
-        direction: "up",
-        detail: `${totalListings} tracked listings`,
-      });
-    }
-    const avgPrices = snapshots.map((s) => s.avg_price).filter((p) => p != null);
-    if (avgPrices.length >= 2) {
-      const recent = avgPrices[avgPrices.length - 1];
-      const prior = avgPrices[0];
-      if (prior > 0) {
-        const pct = ((recent - prior) / prior) * 100;
+  (evidence.momentum_evidence || []).forEach((line) => {
+    const text = String(line);
+    const opsDelta = text.match(/ops_delta=([+-]?\d+(?:\.\d+)?)/);
+    if (opsDelta) {
+      const delta = Number(opsDelta[1]);
+      if (Number.isFinite(delta)) {
         contributors.push({
-          label: "Auction Activity",
-          direction: pct >= 0 ? "up" : "down",
-          detail: csIntelFormatPercent(pct),
+          label: "OPS Movement",
+          direction: parseStoredContributorDirection(delta),
+          detail: `${delta >= 0 ? "+" : ""}${delta.toFixed(3)} vs 30-day baseline`,
         });
+        return;
       }
     }
-  }
-
-  (evidence.momentum_evidence || []).slice(0, 1).forEach((line) => {
-    contributors.push({ label: "Momentum", direction: "up", detail: line });
+    contributors.push({ label: "Momentum", direction: "up", detail: text });
   });
 
-  (evidence.collector_evidence || []).slice(0, 1).forEach((line) => {
-    contributors.push({ label: "Collector Demand", direction: "up", detail: line });
+  const weeklyChange = csIntelSafeToNumber(weeklySnap?.weekly_change ?? intel.weeklyChange);
+  if (weeklyChange !== null && weeklyChange !== 0) {
+    contributors.push({
+      label: "CardSignal Score",
+      direction: parseStoredContributorDirection(weeklyChange),
+      detail: `${weeklyChange > 0 ? "+" : ""}${weeklyChange.toFixed(1)} weekly change`,
+    });
+  }
+
+  (evidence.collector_evidence || []).forEach((line) => {
+    contributors.push({ label: "Collector Demand", direction: "up", detail: String(line) });
+  });
+
+  (evidence.scarcity_evidence || []).forEach((line) => {
+    contributors.push({ label: "Scarcity", direction: "up", detail: String(line) });
   });
 
   return contributors;
 }
 
-function renderWhyThisSignal(entry, intel) {
-  const contributors = buildSignalContributors(entry, intel);
+function renderWhyThisSignal(entry, intel, weeklySnap = null) {
+  const contributors = buildSignalContributors(entry, intel, weeklySnap);
   const body = contributors.length
     ? `
       <div class="sr-contributors">
@@ -1234,7 +1288,7 @@ function renderWhyThisSignal(entry, intel) {
     </section>`;
 }
 
-function collectPlayerCards(entry, weeklySnap) {
+function collectPlayerCards(entry) {
   const csId = normalizeCsPlayerId(entry);
   const cardIntel = weeklyIntelligence?.card_intelligence || {};
   const sections = ["trending_cards", "biggest_movers", "buy_low_watch", "most_chased"];
@@ -1244,61 +1298,62 @@ function collectPlayerCards(entry, weeklySnap) {
   sections.forEach((key) => {
     (cardIntel[key] || []).forEach((row) => {
       if (csId && row.cs_player_id !== csId) return;
-      const id = row.cs_card_id || row.card_label;
-      if (!id || seen.has(id)) return;
-      seen.add(id);
+      if (!row.cs_card_id || seen.has(row.cs_card_id)) return;
+      seen.add(row.cs_card_id);
       cards.push(row);
     });
   });
 
-  if (!cards.length) {
-    Object.entries(entry.market_snapshots || {}).forEach(([queryName, snap]) => {
-      cards.push({
-        card_label: snap.query_name || queryName,
-        score: null,
-        recommendation: "WATCH",
-        evidence: {
-          query_name: queryName,
-          listings_count: snap.listings_count,
-          avg_price: snap.avg_price,
-          tags: snap.tags,
-        },
-        missing_inputs: snap.listings_count ? [] : ["listings"],
-      });
-    });
-  }
-
   return cards;
+}
+
+async function enrichPlayerCards(cards = []) {
+  const enriched = [];
+  for (const card of cards) {
+    if (!card.cs_card_id) continue;
+    try {
+      const data = await fetchCardWeeklyIntelligence(card.cs_card_id);
+      const items = data?.items || [];
+      const latest = items.length ? items[items.length - 1] : null;
+      enriched.push(latest ? { ...card, ...latest } : card);
+    } catch (_) {
+      enriched.push(card);
+    }
+  }
+  return enriched;
+}
+
+function resolveStoredCardRecommendation(card = {}) {
+  return card.recommendation ? String(card.recommendation).toUpperCase() : "WATCH";
 }
 
 function renderReportCardPanel(card) {
   const evidence = card.evidence || {};
   const tags = evidence.tags || {};
   const psaPop = tags.psa10_count != null ? formatStatCount(tags.psa10_count) : null;
-  const identityPending = !card.year && !card.brand;
-  const label = card.card_label || evidence.query_name || "Card";
-  const rec = card.recommendation || "WATCH";
+  const identityHtml = formatCardIdentityHtml(card);
+  const rec = resolveStoredCardRecommendation(card);
   const recClass = csIntelRecommendationClass(rec.toLowerCase());
+  const medianPrice = csIntelSafeToNumber(evidence.median_price ?? evidence.median_active_price);
+  const avgPrice = csIntelSafeToNumber(evidence.avg_price);
+  const activePrice = medianPrice != null ? csIntelFormatMoney(medianPrice)
+    : avgPrice != null ? csIntelFormatMoney(avgPrice) : null;
+  const priceLabel = medianPrice != null ? "Median Active Price" : "Average Active Price";
+  const movement = csIntelSafeToNumber(card.momentum_score ?? card.price_change_pct);
 
   return `
-    <article class="sr-card-panel">
+    <article class="sr-card-panel" data-cs-card-id="${card.cs_card_id || ""}">
       <div class="sr-card-identity">
-        ${identityPending
-    ? `<p class="sr-pending sr-pending--inline">Card identity pending.</p>`
-    : `
-          <p class="sr-card-title">${card.year || ""} ${card.brand || ""} ${card.set || label}</p>
-          <p class="sr-card-meta">${card.parallel || ""} ${card.card_number ? `#${card.card_number}` : ""}</p>
-          <p class="sr-card-grade">${card.grading_company || ""} ${card.grade || ""}</p>`}
-        <p class="sr-card-query">${label}</p>
+        ${identityHtml || `<p class="sr-pending">Card registry data is still being linked.</p>`}
       </div>
       <div class="sr-card-metrics">
         <div class="sr-card-metric">
-          <span class="sr-card-metric-label">Median Active Price</span>
-          <span class="sr-card-metric-value">${evidence.avg_price != null ? csIntelFormatMoney(evidence.avg_price) : "Movement pending."}</span>
+          <span class="sr-card-metric-label">${priceLabel}</span>
+          <span class="sr-card-metric-value">${activePrice || "Movement pending."}</span>
         </div>
         <div class="sr-card-metric">
           <span class="sr-card-metric-label">7-Day Movement</span>
-          <span class="sr-card-metric-value">${card.demand_score != null ? csIntelFormatPercent(card.demand_score) : "Movement pending."}</span>
+          <span class="sr-card-metric-value">${movement != null ? csIntelFormatPercent(movement) : "Movement pending."}</span>
         </div>
         <div class="sr-card-metric">
           <span class="sr-card-metric-label">Active Listings</span>
@@ -1310,7 +1365,7 @@ function renderReportCardPanel(card) {
         </div>
         <div class="sr-card-metric">
           <span class="sr-card-metric-label">CardSignal Score</span>
-          <span class="sr-card-metric-value">${card.score != null ? formatScore(card.score) : "—"}</span>
+          <span class="sr-card-metric-value">${card.card_signal_score != null ? formatScore(card.card_signal_score) : card.score != null ? formatScore(card.score) : "—"}</span>
         </div>
         <div class="sr-card-metric">
           <span class="sr-card-metric-label">Recommendation</span>
@@ -1320,14 +1375,13 @@ function renderReportCardPanel(card) {
       <p class="sr-card-evidence">
         <span class="sr-evidence-label">Evidence</span>
         ${evidence.listings_count
-    ? `Based on ${evidence.listings_count} active listing${evidence.listings_count === 1 ? "" : "s"} in this query window.`
+    ? `Based on ${evidence.listings_count} active listing${evidence.listings_count === 1 ? "" : "s"} in stored market snapshots.`
     : "Market history still building."}
       </p>
     </article>`;
 }
 
-function renderReportCards(entry, weeklySnap) {
-  const cards = collectPlayerCards(entry, weeklySnap);
+function renderReportCards(cards = []) {
   const body = cards.length
     ? `<div class="sr-cards-list">${cards.map((c) => renderReportCardPanel(c)).join("")}</div>`
     : `<p class="sr-pending">Card intelligence pending for this player.</p>`;
@@ -1335,7 +1389,7 @@ function renderReportCards(entry, weeklySnap) {
   return `
     <section class="sr-section">
       <h3 class="sr-section-title">Cards</h3>
-      <p class="sr-section-lead">Tracked card queries linked to this player's market activity.</p>
+      <p class="sr-section-lead">Tracked cards linked to this player through stored weekly intelligence.</p>
       ${body}
     </section>`;
 }
@@ -1359,25 +1413,19 @@ function aggregateMarketData(entry, intel) {
   return { avgPrice, medianPrice, listings, psa10, snapshotCount: snapshots.length };
 }
 
-function buildMarketSummary(market, intel) {
+function buildMarketSummary(market) {
   if (!market) return "Market history still building.";
   const parts = [];
-  if (market.listings >= 20) {
-    parts.push("Listing supply remains active across tracked card queries");
-  } else if (market.listings > 0) {
-    parts.push("Listing supply is limited but present across tracked queries");
+  if (market.listings > 0) {
+    parts.push(`${market.listings} active listings captured across ${market.snapshotCount} stored market snapshot${market.snapshotCount === 1 ? "" : "s"}`);
+  }
+  if (market.medianPrice != null) {
+    parts.push(`median active price at ${csIntelFormatMoney(market.medianPrice)}`);
   }
   if (market.psa10 > 0) {
-    parts.push("graded inventory is visible in current snapshots");
+    parts.push(`${market.psa10} PSA 10 listing${market.psa10 === 1 ? "" : "s"} visible in stored snapshots`);
   }
-  if (intel.momentum != null && intel.momentum >= 60) {
-    parts.push("auction participation appears to be increasing");
-  } else if (intel.momentum != null && intel.momentum < 45) {
-    parts.push("market momentum has softened relative to recent weeks");
-  }
-  return parts.length
-    ? `${parts[0].charAt(0).toUpperCase()}${parts[0].slice(1)}${parts.length > 1 ? ` while ${parts.slice(1).join(" and ")}.` : "."}`
-    : "Market activity is being tracked; additional snapshots will sharpen this summary.";
+  return parts.length ? `${parts.join("; ")}.` : "Market history still building.";
 }
 
 function renderReportMarket(entry, intel) {
@@ -1393,7 +1441,7 @@ function renderReportMarket(entry, intel) {
       </section>`;
   }
 
-  const summary = buildMarketSummary(market, intel);
+  const summary = buildMarketSummary(market);
 
   return `
     <section class="sr-section">
@@ -1438,6 +1486,13 @@ function renderReportMarket(entry, intel) {
 
 function renderSignalCategory(label, score, explanation, quality) {
   const v = csIntelSafeToNumber(score);
+  const evidenceHtml = quality
+    ? `<p class="sr-signal-category-evidence">
+        <span class="sr-evidence-label">Evidence</span>
+        <span class="cs-evidence-badge ${csIntelEvidenceClass(quality)}">${quality}</span>
+      </p>`
+    : "";
+
   return `
     <article class="sr-signal-category">
       <div class="sr-signal-category-head">
@@ -1445,58 +1500,47 @@ function renderSignalCategory(label, score, explanation, quality) {
         <span class="sr-signal-category-score">${v != null ? formatScore(v) : "—"}</span>
       </div>
       <p class="sr-signal-category-copy">${explanation}</p>
-      <p class="sr-signal-category-evidence">
-        <span class="sr-evidence-label">Evidence</span>
-        <span class="cs-evidence-badge ${csIntelEvidenceClass(quality)}">${quality}</span>
-      </p>
+      ${evidenceHtml}
     </article>`;
 }
 
 function renderSignalAnalysis(entry, intel) {
   const missing = intel.missingInputs || [];
+  const evidence = intel.evidence || {};
   const categories = [
     {
       label: "Performance",
       score: intel.performance,
-      explanation: intel.performance != null
-        ? getSignalExplanation("performance", intel.performance, entry)
-        : "Performance inputs are still being collected for this player.",
+      explanation: (evidence.performance_reasons || [])[0]
+        || (intel.performance != null ? "Performance score captured from stored weekly intelligence." : "Performance inputs are still being collected for this player."),
       quality: deriveEvidenceQuality(intel.performance, missing, "stats_7d"),
     },
     {
       label: "Market",
       score: intel.market,
-      explanation: intel.market != null
-        ? getSignalExplanation("market", intel.market, entry)
-        : "Market snapshots are not yet available for this reporting period.",
+      explanation: (evidence.market_reasons || evidence.collector_evidence || [])[0]
+        || (intel.market != null ? "Market score captured from stored weekly intelligence." : "Market snapshots are not yet available for this reporting period."),
       quality: deriveEvidenceQuality(intel.market, missing, "market_snapshots"),
     },
     {
       label: "Momentum",
       score: intel.momentum,
-      explanation: intel.momentum != null
-        ? getSignalExplanation("momentum", intel.momentum, entry)
-        : "Momentum history still building.",
+      explanation: (evidence.momentum_evidence || [])[0]
+        || (intel.momentum != null ? "Momentum score captured from stored weekly intelligence." : "Momentum history still building."),
       quality: deriveEvidenceQuality(intel.momentum, missing),
     },
     {
       label: "Scarcity",
       score: intel.scarcity,
-      explanation: intel.scarcity != null
-        ? (intel.scarcity >= 70
-          ? "Graded and numbered inventory appears relatively scarce in active listings."
-          : intel.scarcity >= 45
-            ? "PSA population and numbered parallels suggest moderate scarcity."
-            : "Current listing mix suggests supply is more available than scarce.")
-        : "PSA population pending.",
+      explanation: (evidence.scarcity_evidence || [])[0]
+        || (intel.scarcity != null ? "Scarcity score captured from stored weekly intelligence." : "PSA population pending."),
       quality: deriveEvidenceQuality(intel.scarcity, missing),
     },
     {
       label: "Collector Demand",
       score: intel.collector,
-      explanation: intel.collector != null
-        ? getSignalExplanation("collector", intel.collector, entry)
-        : "Collector demand signals are pending.",
+      explanation: (evidence.collector_evidence || [])[0]
+        || (intel.collector != null ? "Collector demand score captured from stored weekly intelligence." : "Collector demand signals are pending."),
       quality: deriveEvidenceQuality(intel.collector, missing, "market_snapshots"),
     },
   ];
@@ -1513,35 +1557,33 @@ function renderSignalAnalysis(entry, intel) {
 
 function buildOutlookSummary(entry, intel) {
   const name = entry.player_name || "This player";
-  const rec = intel.recommendation;
-  const recLower = rec.toLowerCase();
 
-  if (rec === "WATCH" || intel.evidenceTier === "INSUFFICIENT") {
-    return `Insufficient stored evidence prevents a directional call on ${name}. Monitor performance and market activity until the next weekly refresh.`;
+  if (!intel.hasStoredRecommendation || intel.recommendation === "WATCH") {
+    return "More evidence is required before CardSignal can issue a recommendation.";
   }
 
+  const rec = intel.recommendation;
   if (rec === "BUY") {
     return `Recent production and market activity currently support a BUY outlook for ${name}, though outcomes are never guaranteed.`;
   }
   if (rec === "SELL") {
-    return `Current performance and market inputs suggest caution on ${name}; the signal may face near-term headwinds.`;
+    return `Stored signal inputs currently support a SELL outlook for ${name}; near-term headwinds remain possible.`;
   }
-  return `Recent performance and market activity currently support a ${recLower} outlook for ${name} over the next reporting window.`;
+  return `Stored signal inputs currently support a HOLD outlook for ${name} over the next reporting window.`;
 }
 
-function deriveOutlookRisk(intel) {
-  if (intel.evidenceTier === "INSUFFICIENT") return "HIGH";
-  if (intel.evidenceTier === "HIGH" && (intel.score || 0) >= 75) return "LOW";
-  if (intel.evidenceTier === "LOW" || (intel.score || 0) < 45) return "HIGH";
-  return "MEDIUM";
+function resolveStoredRisk(weeklySnap = null) {
+  const risk = weeklySnap?.risk;
+  if (!risk) return null;
+  return String(risk).toUpperCase();
 }
 
-function renderOutlook(entry, intel) {
+function renderOutlook(entry, intel, weeklySnap = null) {
   const recommendation = intel.recommendation;
   const recommendationClass = csIntelRecommendationClass(recommendation.toLowerCase());
   const evidenceClass = csIntelEvidenceClass(intel.evidenceTier);
-  const risk = deriveOutlookRisk(intel);
-  const riskClass = risk === "LOW" ? "pi-risk--low" : risk === "HIGH" ? "pi-risk--high" : "pi-risk--medium";
+  const risk = resolveStoredRisk(weeklySnap);
+  const riskClass = risk === "LOW" ? "pi-risk--low" : risk === "HIGH" ? "pi-risk--high" : risk === "MEDIUM" ? "pi-risk--medium" : "";
   const summary = buildOutlookSummary(entry, intel);
 
   return `
@@ -1557,11 +1599,11 @@ function renderOutlook(entry, intel) {
           <span class="sr-outlook-label">Evidence</span>
         </div>
         <div class="sr-outlook-item">
-          <span class="pi-risk-badge ${riskClass}">${risk}</span>
+          <span class="pi-risk-badge ${riskClass || "sr-pending-pill"}">${risk || "Pending"}</span>
           <span class="sr-outlook-label">Risk</span>
         </div>
         <div class="sr-outlook-item">
-          <span class="sr-outlook-horizon">2–4 Weeks</span>
+          <span class="sr-outlook-horizon">${weeklySnap?.time_horizon || "Pending"}</span>
           <span class="sr-outlook-label">Time Horizon</span>
         </div>
       </div>
@@ -1620,6 +1662,10 @@ function renderScoutingReportHeader(entry, intel) {
         <span>${intel.algorithmVersion}</span>
       </div>
 
+      ${!intel.hasStoredRecommendation
+    ? `<p class="sr-recommendation-note">More evidence is required before CardSignal can issue a recommendation.</p>`
+    : ""}
+
       <div class="pi-modal-header-actions">
         <button type="button" id="watchlist-toggle-btn" class="player-save-btn pi-modal-save-btn">
           ${currentUser ? "Save to watchlist" : "Sign in to save"}
@@ -1629,15 +1675,15 @@ function renderScoutingReportHeader(entry, intel) {
     </div>`;
 }
 
-function renderScoutingReport(entry, intel) {
+function renderScoutingReport(entry, intel, cards = [], weeklySnap = null) {
   return `
     <div class="sr-report">
       ${renderPlayerSnapshot(intel)}
-      ${renderWhyThisSignal(entry, intel)}
-      ${renderReportCards(entry, piModalWeeklySnap)}
+      ${renderWhyThisSignal(entry, intel, weeklySnap)}
+      ${renderReportCards(cards)}
       ${renderReportMarket(entry, intel)}
       ${renderSignalAnalysis(entry, intel)}
-      ${renderOutlook(entry, intel)}
+      ${renderOutlook(entry, intel, weeklySnap)}
     </div>`;
 }
 
@@ -1695,6 +1741,7 @@ function closePlayerIntelligenceModal() {
   piModalEntry = null;
   piModalIntel = null;
   piModalWeeklySnap = null;
+  piModalCards = [];
 }
 
 async function openPlayerIntelligenceModal(entry) {
@@ -1720,13 +1767,16 @@ async function openPlayerIntelligenceModal(entry) {
     }
 
     const intel = buildPlayerIntel(player, weeklySnap);
+    const cardRows = collectPlayerCards(player);
+    const cards = await enrichPlayerCards(cardRows);
 
     piModalEntry = player;
     piModalIntel = intel;
     piModalWeeklySnap = weeklySnap;
+    piModalCards = cards;
 
     header.innerHTML = renderScoutingReportHeader(player, intel);
-    body.innerHTML = renderScoutingReport(player, intel);
+    body.innerHTML = renderScoutingReport(player, intel, cards, weeklySnap);
 
     wirePlayerActions();
 

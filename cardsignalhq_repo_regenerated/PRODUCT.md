@@ -59,7 +59,7 @@ The CardSignal Score (0–100) blends:
 
 Each player also receives:
 
-- **Recommendation** — BUY / HOLD / SELL / WATCH (derived from evidence tier and score)
+- **Recommendation** — BUY / HOLD / SELL / WATCH (from stored weekly or card intelligence only)
 - **Evidence** — HIGH / MEDIUM / LOW / INSUFFICIENT (replaces legacy Conviction/Confidence in the Scouting Report)
 - **Status** — HOT / RISING / COOLING
 
