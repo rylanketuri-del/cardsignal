@@ -27,28 +27,24 @@
 
 ### Player Intelligence Modal (Sprint 7.x)
 
-- **Sprint 7.1** — Player Intelligence modal foundation (backdrop, header, tab shell, open/close UX)
-- **Release v0.8.0** — Complete Intelligence Report tabs: Overview, Cards, Market, Signals, Forecast
+- **Sprint 7.1** — Player Intelligence modal complete (backdrop, header, tab shell, open/close UX, mobile drawer)
+- **Release v0.8.0** — Player Intelligence Report complete (placeholder beta):
+  - [x] **Overview** — score, recommendation, conviction, movement, status, breakdown, why-it-matters
+  - [x] **Cards** — player-specific trending, movers, buy-low, most-chased sections
+  - [x] **Market** — placeholder sale volume, listings, liquidity, summary
+  - [x] **Signals** — performance, market, collector demand, momentum explanations
+  - [x] **Forecast** — recommendation, conviction, horizon, risk, summary, bullet reasons
 
-## In Progress
+## Current Milestone
 
-### Release v0.8.0 — Player Intelligence Report
+### Sprint 8 — Real Card Intelligence
 
-- [x] Five-tab modal experience (Overview, Cards, Market, Signals, Forecast)
-- [x] Player-specific card intelligence placeholders
-- [x] Market tab placeholder state with pricing snapshot note
-- [x] Signals tab with per-dimension explanations
-- [x] Forecast tab replacing AI language with horizon, risk, and tentative copy
-- [ ] Merge to main after verification
-- [ ] Deploy after explicit approval
-
-## Up Next
-
-### v0.9.0 — Live Card-Market Data
-
-- Wire Market tab to real pricing snapshots
+- Wire Market tab to live pricing snapshots
 - Replace placeholder card rows with player-linked listing data
 - Populate Signal Timeline and Market Activity from live runs
+- Backend card-market endpoints for player-specific intelligence
+
+## Up Next
 
 ### v1.0.0 — Multi-Sport Expansion
 
