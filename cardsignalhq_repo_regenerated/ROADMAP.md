@@ -35,6 +35,18 @@
   - [x] **Signals** — performance, market, collector demand, momentum explanations
   - [x] **Forecast** — recommendation, conviction, horizon, risk, summary, bullet reasons
 
+### Scouting Report 2.0 (Sprint 9.x)
+
+- **Release v0.10.2 — Scouting Report 2.0**
+  - [x] Single-page editorial report replacing tabbed modal
+  - [x] Player Snapshot (Last 7 Days + Season Snapshot from stored stats)
+  - [x] Why This Signal contributors from real evidence
+  - [x] Cards section with stored card intelligence or pending states
+  - [x] Market research panel from stored snapshots
+  - [x] Signal Analysis (Performance, Market, Momentum, Scarcity, Collector Demand)
+  - [x] CardSignal Outlook with Evidence (replaces Conviction/Confidence)
+  - [x] No fabricated report data — pending states when intelligence unavailable
+
 ### Real Card Intelligence (Sprint 8.x)
 
 - **Sprint 8.7 — partial in this branch**
@@ -57,9 +69,22 @@
 
 ## Current Milestone
 
-### Release v0.9.0 — Weekly Intelligence Pipeline
+### Release v0.10.2 — Scouting Report 2.0
 
 In progress. Do not merge or deploy until verification pass.
+
+**Scouting Report** transforms the player modal into a premium single-page research experience:
+
+- Scrollable editorial report (no tabs): Header → Player Snapshot → Why This Signal → Cards → Market → Signal Analysis → Outlook
+- Real stored intelligence only — honest pending states when data is unavailable
+- Evidence replaces Conviction/Confidence throughout the report
+- Player performance from `stats_7d` / `stats_30d`; market from stored snapshots
+- Signal Analysis covers Performance, Market, Momentum, Scarcity, and Collector Demand
+- Homepage (Signal Center) unchanged
+
+### Release v0.9.0 — Weekly Intelligence Pipeline
+
+Shipped in prior release. Verification pass complete for weekly pipeline foundation.
 
 **Beta schedule (documented, idempotent guard):** Tuesday 6:00 AM America/New_York via external scheduler calling `POST /api/weekly/run` with admin token.
 
