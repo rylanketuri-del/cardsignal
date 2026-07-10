@@ -334,6 +334,16 @@ function csIntelFormatMoney(value) {
   return `$${n.toFixed(2)}`;
 }
 
+function enrichPlayerEntryIdentity(entry = {}) {
+  if (typeof CardSignalIdentity === "undefined") return entry;
+  if (entry.cs_player_id) return entry;
+  return CardSignalIdentity.enrichPlayerEntry(entry);
+}
+
+function enrichPlayerEntries(entries = []) {
+  return (entries || []).map((entry) => enrichPlayerEntryIdentity(entry));
+}
+
 function formatConvictionTier(tier = "") {
   const key = String(tier || "").toUpperCase();
   if (key === "HIGH") return "High";
@@ -543,12 +553,18 @@ function movementClass(movement = "") {
 /* Landing page — Quick Intelligence grid row */
 function renderCardIntelRow(item) {
   const moveClass = movementClass(item.movement);
+  const cardName = item.name || CardRegistry.formatCardDisplayName(item);
 
   return `
     <div class="qi-row">
       <div class="qi-row-thumb" aria-hidden="true"></div>
       <div class="qi-row-body">
-        <span class="qi-row-name">${item.name}</span>
+        <span class="qi-row-name">${cardName}</span>
+        <div class="qi-row-detail">
+          <span>${item.year || "—"}</span>
+          <span>${item.setName || "—"}</span>
+          <span>${item.parallel || "—"}</span>
+        </div>
         <div class="qi-row-metrics">
           <span class="qi-price">${csIntelFormatMoney(item.price)}</span>
           <span class="qi-move ${moveClass}">${item.movement}</span>
@@ -644,15 +660,16 @@ function showChartPlaceholder(canvasId, placeholderId, show) {
   if (placeholder) placeholder.classList.toggle("hidden", !show);
 }
 function csIntelGetPlaceholders(entry) {
-  const key = String(entry?.player_id ?? entry?.player_name ?? "unknown");
+  const identityEntry = enrichPlayerEntryIdentity(entry);
+  const key = String(identityEntry?.source_player_id ?? identityEntry?.player_id ?? identityEntry?.player_name ?? "unknown");
   if (csIntelCache.has(key)) return csIntelCache.get(key);
 
-  const storageKey = `cs_intel_placeholders_v1_${key}`;
+  const storageKey = `cs_intel_placeholders_v3_${key}`;
   try {
     const raw = sessionStorage.getItem(storageKey);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (parsed && (parsed.convictionTier || parsed.confidenceTier)) {
+      if (parsed && (parsed.convictionTier || parsed.confidenceTier) && parsed.identityVersion === 1) {
         if (!parsed.convictionTier && parsed.confidenceTier) {
           parsed.convictionTier = parsed.confidenceTier;
         }
@@ -677,82 +694,14 @@ function csIntelGetPlaceholders(entry) {
 
   const score = csIntelClamp(performance * 0.5 + market * 0.4 + momentum * 0.1 + (rng() - 0.5) * 10, 0, 100);
 
-  const trendingNamePool = [
-    "Auric Spark",
-    "Copper Drift",
-    "Midnight Prospect",
-    "Golden Curve",
-    "Sable Surge",
-    "Emerald Lift",
-    "Nova Demand",
-    "Ivory Velocity",
-    "Crimson Shelf",
-    "Sterling Swing",
-  ];
+  const cardRegistry = CardRegistry.getPlayerCardRegistry(identityEntry);
+  const sectionOptions = {
+    count: 3,
+    formatPercent: csIntelFormatPercent,
+  };
 
-  const moverNamePool = [
-    "1st Bowman Auto",
-    "Rookie Patch Parallel",
-    "Bowman Chrome Mojo",
-    "Vintage Select /25",
-    "Topps Chrome Sapphire",
-    "Heritage Black Gold",
-    "Bowman Draft Gold",
-    "Stadium Club Red Ink",
-    "Prizm Draft Stars",
-    "Museum Collection Gem",
-  ];
-
-  const buyLowNamePool = [
-    "Low-Ask Bowman Chrome",
-    "Undervalued Rookie Parallel",
-    "Quiet Liquidity Lot",
-    "Discounted Card Slice",
-    "Value Pocket Prospect",
-    "Supportive Supply Window",
-    "Stable Demand, Soft Prices",
-    "Inked Rookie Deal",
-    "Surprisingly Priced Parallel",
-    "Buyer-Ready Bargain",
-  ];
-
-  const chasedNamePool = [
-    "Hot Case Break",
-    "Chase-Grade Parallel",
-    "Bid-War Magnet",
-    "Collector Pressure Lot",
-    "Velocity Surge Card",
-    "Momentum Mirror",
-    "Rising Demand Select",
-    "Premium Parallels Feed",
-    "Frictionless Chase Copy",
-    "Scarcity-Driven Target",
-  ];
-
-  function pickThree(pool, { bias = 0, priceMin = 8, priceMax = 230, moveMin = 4, moveMax = 30 } = {}) {
-    const used = new Set();
-    const out = [];
-    while (out.length < 3 && used.size < pool.length) {
-      const idx = Math.floor(rng() * pool.length);
-      if (used.has(idx)) continue;
-      used.add(idx);
-      const price = priceMin + rng() * (priceMax - priceMin);
-      const magnitude = moveMin + rng() * (moveMax - moveMin);
-      // bias shifts expectation, but we still allow direction changes.
-      const direction = rng() > 0.5 ? 1 : -1;
-      const move = (direction * magnitude) + bias + (rng() - 0.5) * 5;
-      out.push({
-        name: pool[idx],
-        price,
-        movement: csIntelFormatPercent(move),
-        score: Math.round(40 + rng() * 55),
-        upside: csIntelFormatPercent((rng() - 0.35) * 28),
-      });
-    }
-    return out;
-  }
-
-  const trendingCards = pickThree(trendingNamePool, {
+  const trendingCards = CardRegistry.buildSectionCards(cardRegistry, "trending", rng, {
+    ...sectionOptions,
     bias: (market - 50) / 8 + (momentum - 50) / 10,
     priceMin: 12,
     priceMax: 260,
@@ -760,7 +709,8 @@ function csIntelGetPlaceholders(entry) {
     moveMax: 28,
   });
 
-  const biggestMovers = pickThree(moverNamePool, {
+  const biggestMovers = CardRegistry.buildSectionCards(cardRegistry, "movers", rng, {
+    ...sectionOptions,
     bias: (performance - 50) / 10,
     priceMin: 15,
     priceMax: 310,
@@ -768,7 +718,8 @@ function csIntelGetPlaceholders(entry) {
     moveMax: 38,
   });
 
-  const buyLowOpportunities = pickThree(buyLowNamePool, {
+  const buyLowOpportunities = CardRegistry.buildSectionCards(cardRegistry, "buyLow", rng, {
+    ...sectionOptions,
     bias: -6 + (market < 50 ? 3 : -2),
     priceMin: 9,
     priceMax: 170,
@@ -776,7 +727,8 @@ function csIntelGetPlaceholders(entry) {
     moveMax: 22,
   });
 
-  const mostChased = pickThree(chasedNamePool, {
+  const mostChased = CardRegistry.buildSectionCards(cardRegistry, "chased", rng, {
+    ...sectionOptions,
     bias: 5 + (momentum - 50) / 10,
     priceMin: 18,
     priceMax: 360,
@@ -801,6 +753,16 @@ function csIntelGetPlaceholders(entry) {
     collector: csIntelClamp(collector, 0, 100),
     momentum: csIntelClamp(momentum, 0, 100),
     score: csIntelClamp(score, 0, 100),
+    cardRegistry,
+    cardRegistryVersion: 1,
+    identityVersion: 1,
+    cs_player_id: identityEntry.cs_player_id,
+    source_player_id: identityEntry.source_player_id,
+    league: identityEntry.league,
+    sport: identityEntry.sport,
+    player_name: identityEntry.player_name,
+    cs_signal_id: identityEntry.cs_signal_id,
+    cs_forecast_id: identityEntry.cs_forecast_id,
     trendingCards,
     biggestMovers,
     buyLowOpportunities,
@@ -822,8 +784,9 @@ function csIntelGetPlaceholders(entry) {
 }
 
 function buildPlayerIntel(entry) {
-  const hotness = entry.hotness || {};
-  const placeholders = csIntelGetPlaceholders(entry);
+  const identityEntry = enrichPlayerEntryIdentity(entry);
+  const hotness = identityEntry.hotness || {};
+  const placeholders = csIntelGetPlaceholders(identityEntry);
 
   return {
     ...placeholders,
@@ -833,6 +796,13 @@ function buildPlayerIntel(entry) {
     momentum: csIntelSafeToNumber(hotness.momentum_score) ?? placeholders.momentum,
     score: csIntelSafeToNumber(hotness.total_score) ?? placeholders.score,
     convictionTier: placeholders.convictionTier || placeholders.confidenceTier,
+    cs_player_id: placeholders.cs_player_id,
+    source_player_id: placeholders.source_player_id,
+    league: placeholders.league,
+    sport: placeholders.sport,
+    player_name: placeholders.player_name,
+    cs_signal_id: placeholders.cs_signal_id,
+    cs_forecast_id: placeholders.cs_forecast_id,
   };
 }
 
@@ -855,12 +825,18 @@ function renderPiCardRow(item) {
   const moveClass = movementClass(item.movement);
   const signalLabel = getCardSignalLabel(item.score);
   const signalClass = getCardSignalLabelClass(item.score);
+  const cardName = item.name || CardRegistry.formatCardDisplayName(item);
 
   return `
     <div class="pi-card-row">
       <div class="pi-card-row-thumb" aria-hidden="true"></div>
       <div class="pi-card-row-copy">
-        <div class="pi-card-row-name">${item.name}</div>
+        <div class="pi-card-row-name">${cardName}</div>
+        <div class="pi-card-row-detail">
+          <span class="pi-card-row-year">${item.year || "—"}</span>
+          <span class="pi-card-row-set">${item.setName || "—"}</span>
+          <span class="pi-card-row-parallel">${item.parallel || "—"}</span>
+        </div>
         <div class="pi-card-row-meta">
           <span class="pi-card-row-price">${csIntelFormatMoney(item.price)}</span>
           <span class="pi-card-row-move ${moveClass}">${item.movement}</span>
@@ -2469,7 +2445,7 @@ async function init() {
       return res.json();
     });
 
-    const entries = payload.items || [];
+    const entries = enrichPlayerEntries(payload.items || []);
     latestEntries = entries;
     setupPlayerSearch();
     setupPlayerIntelligenceModal();

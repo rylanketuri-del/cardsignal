@@ -35,16 +35,59 @@
   - [x] **Signals** — performance, market, collector demand, momentum explanations
   - [x] **Forecast** — recommendation, conviction, horizon, risk, summary, bullet reasons
 
+### Player Card Registry (Sprint 8.x)
+
+- **Release v0.9.0** — Player Card Registry (Sprint 8.1):
+  - [x] Per-player card registry with realistic MLB product entries
+  - [x] Reusable pricing enrichment helpers for future eBay/PSA integration
+  - [x] Cards tab displays year, set, parallel, estimated price, movement, CardSignal mini-score
+  - [x] Homepage intelligence rows use real card product names
+
+- **Sprint 8.2** — CardSignal Identity Foundation (Release v0.9.0):
+  - [x] Deterministic CardSignal IDs for players, cards, weekly signals, and forecasts
+  - [x] Shared identity helpers in backend and frontend
+  - [x] Player model fields: `cs_player_id`, `source_player_id`, `league`, `sport`, `player_name`
+  - [x] Card registry extended with `cs_card_id` and normalized identity fields
+  - [x] Relationship model documented for future market and population snapshots
+
+- **Sprint 8.3** — eBay Market Snapshot Foundation (Release v0.9.0):
+  - [x] Reusable `CardMarketSnapshot` model for active listing observations
+  - [x] Deterministic registry card search queries and eBay listing normalization
+  - [x] Isolated card-market snapshot pipeline step with beta cost controls
+  - [x] Append-only Supabase persistence and local JSON fallback
+  - [x] `GET /api/cards/{cs_card_id}/market/latest` read endpoint
+
 ## Current Milestone
 
 ### Sprint 8 — Real Card Intelligence
 
+- **Sprint 8.1** — Player Card Registry (Release v0.9.0) — complete
+- **Sprint 8.2** — Foundation & Identity (Release v0.9.0) — complete
+- **Sprint 8.3** — eBay Market Snapshot Foundation (Release v0.9.0) — complete
 - Wire Market tab to live pricing snapshots
-- Replace placeholder card rows with player-linked listing data
 - Populate Signal Timeline and Market Activity from live runs
-- Backend card-market endpoints for player-specific intelligence
 
 ## Up Next
+
+### Sprint 8.4 — Card Market UI
+
+- Surface live card market snapshots in Cards and Market tabs
+- Show data quality badges and active-listing disclaimers
+
+### Sprint 8.5 — Price History and Movement
+
+- Historical active-listing trend lines per card identity
+- Movement metrics derived from snapshot history (not asking-price comps as sales)
+
+### Sprint 8.6 — PSA Population Foundation
+
+- PSA population snapshots linked to `cs_card_id`
+- Population-aware collector demand inputs
+
+### Future Sprint 8+ Work
+
+- Signal Accuracy tracking
+- Sold-comps integration beyond active eBay listings
 
 ### v1.0.0 — Multi-Sport Expansion
 

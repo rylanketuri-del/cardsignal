@@ -1,8 +1,11 @@
 import base64
 import time
-from typing import Any, Dict
+from datetime import datetime, timezone
+from typing import Any, Dict, List
 
 import requests
+
+from cardchase_ai.models.schemas import NormalizedActiveListing
 
 
 class EbayClient:
@@ -79,25 +82,98 @@ class EbayClient:
     def search_items(self, query: str, limit: int = 50, include_auctions: bool = True) -> Dict[str, Any]:
         return self.search(query=query, limit=limit, include_auctions=include_auctions)
 
-    def parse_listings(self, payload: Dict[str, Any]) -> list[Dict[str, Any]]:
+    def _parse_money(self, value: Any) -> float | None:
+        if value is None:
+            return None
+        if isinstance(value, dict):
+            raw = value.get("value")
+        else:
+            raw = value
+        try:
+            amount = float(raw)
+        except (TypeError, ValueError):
+            return None
+        if amount < 0:
+            return None
+        return round(amount, 2)
+
+    def _parse_listing_type(self, buying_options: list[str] | None) -> str:
+        options = {str(option).upper() for option in (buying_options or [])}
+        has_auction = "AUCTION" in options
+        has_fixed = "FIXED_PRICE" in options
+        if has_auction and not has_fixed:
+            return "auction"
+        if has_fixed and not has_auction:
+            return "buy_it_now"
+        if has_auction and has_fixed:
+            return "auction_or_buy_it_now"
+        return "unknown"
+
+    def parse_active_listings(
+        self,
+        payload: Dict[str, Any],
+        *,
+        captured_at: datetime | None = None,
+    ) -> List[NormalizedActiveListing]:
         items = payload.get("itemSummaries", []) or []
+        moment = captured_at or datetime.now(timezone.utc)
+        captured_iso = moment.isoformat()
+        listings: list[NormalizedActiveListing] = []
 
-        listings = []
         for item in items:
-            price = item.get("price") or {}
+            try:
+                price_block = item.get("price") or {}
+                price = self._parse_money(price_block)
+                currency = str(price_block.get("currency") or "USD")
 
-            listings.append({
-                "item_id": item.get("itemId", ""),
-                "title": item.get("title", ""),
-                "price": float(price.get("value", 0) or 0),
-                "currency": price.get("currency", "USD"),
-                "condition": item.get("condition", ""),
-                "created_at": item.get("itemCreationDate"),
-                "item_web_url": item.get("itemWebUrl", ""),
-                "tags": [],
-            })
+                shipping = None
+                shipping_options = item.get("shippingOptions") or []
+                if shipping_options:
+                    shipping = self._parse_money((shipping_options[0] or {}).get("shippingCost"))
+
+                total_price = None
+                if price is not None:
+                    total_price = round(price + (shipping or 0.0), 2)
+
+                image = item.get("image") or {}
+                seller = item.get("seller") or {}
+
+                listings.append(
+                    NormalizedActiveListing(
+                        source_listing_id=str(item.get("itemId") or ""),
+                        title=str(item.get("title") or ""),
+                        price=price,
+                        shipping=shipping,
+                        total_price=total_price,
+                        currency=currency,
+                        condition=str(item.get("condition") or "") or None,
+                        listing_type=self._parse_listing_type(item.get("buyingOptions")),
+                        bid_count=int(item.get("bidCount") or 0),
+                        item_url=str(item.get("itemWebUrl") or "") or None,
+                        image_url=str(image.get("imageUrl") or "") or None,
+                        seller=str(seller.get("username") or "") or None,
+                        captured_at=captured_iso,
+                    )
+                )
+            except Exception:
+                continue
 
         return listings
+
+    def parse_listings(self, payload: Dict[str, Any]) -> list[Dict[str, Any]]:
+        return [
+            {
+                "item_id": listing.source_listing_id,
+                "title": listing.title,
+                "price": listing.price or 0.0,
+                "currency": listing.currency,
+                "condition": listing.condition or "",
+                "created_at": listing.captured_at,
+                "item_web_url": listing.item_url or "",
+                "tags": [],
+            }
+            for listing in self.parse_active_listings(payload)
+        ]
         
     def get_market_data(self, player_name: str) -> Dict[str, Any]:
         searches = {
