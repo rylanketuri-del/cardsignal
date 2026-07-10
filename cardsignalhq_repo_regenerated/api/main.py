@@ -10,8 +10,26 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from cardchase_ai.identity import enrich_player_entry
+from cardchase_ai.card_registry import get_enriched_player_cards
 from cardchase_ai.clients.mlb import MLBClient
 from cardchase_ai.config import get_settings
+from cardchase_ai.market.history import (
+    build_player_market_activity_points,
+    filter_card_history,
+    filter_player_history,
+    history_to_public_snapshots,
+    load_local_card_market_history,
+)
+from cardchase_ai.market.movement import (
+    MovementToleranceConfig,
+    SUPPORTED_WINDOWS,
+    calculate_card_market_movement,
+    movement_to_public_dict,
+    normalize_snapshot_row,
+    sort_snapshots_asc,
+)
+from cardchase_ai.market.player_market import aggregate_player_market, build_player_card_market_item
 from cardchase_ai.pipeline import run_pipeline
 from cardchase_ai.storage import SupabaseError, SupabaseStorage
 
@@ -224,7 +242,8 @@ def get_public_config() -> JSONResponse:
 @app.get("/api/leaderboard/latest")
 def get_latest_leaderboard() -> JSONResponse:
     payload, source = _load_latest()
-    return JSONResponse({"data_source": source, "items": payload})
+    enriched = [enrich_player_entry(entry) for entry in payload]
+    return JSONResponse({"data_source": source, "items": enriched})
 
 
 @app.get("/api/runs/latest")
@@ -246,7 +265,8 @@ def search_players(q: str = "") -> JSONResponse:
 
     try:
         results = MLBClient().search_players(query, limit=10)
-        return JSONResponse(results)
+        enriched = [enrich_player_entry(result.model_dump()) for result in results]
+        return JSONResponse(enriched)
     except Exception:
         return JSONResponse([])
 
@@ -255,8 +275,299 @@ def search_players(q: str = "") -> JSONResponse:
 def get_player(player_id: str) -> JSONResponse:
     payload, source = _load_player(player_id)
     if isinstance(payload, dict):
+        payload = enrich_player_entry(payload)
         payload["data_source"] = source
     return JSONResponse(payload)
+
+
+def _normalize_card_market_snapshot_row(row: dict[str, Any]) -> dict[str, Any]:
+    metrics = row.get("metrics") or {}
+    return {
+        "cs_card_id": row["cs_card_id"],
+        "cs_player_id": row["cs_player_id"],
+        "league": metrics.get("league", "MLB"),
+        "source": row.get("source", "ebay"),
+        "query": row.get("query", ""),
+        "captured_at": row.get("captured_at") or row.get("created_at"),
+        "algorithm_version": row.get("algorithm_version", ""),
+        **metrics,
+    }
+
+
+def _load_latest_card_market_snapshots_from_file() -> list[dict[str, Any]]:
+    latest_path = _settings().output_dir / "latest_card_market_snapshots.json"
+    if not latest_path.exists():
+        return []
+    return json.loads(latest_path.read_text(encoding="utf-8"))
+
+
+def _try_load_latest_card_market_snapshot(cs_card_id: str) -> tuple[dict[str, Any] | None, str | None]:
+    storage = _storage()
+    if storage:
+        try:
+            row = storage.fetch_latest_card_market_snapshot(cs_card_id)
+            if row:
+                return _normalize_card_market_snapshot_row(row), "supabase"
+        except SupabaseError:
+            pass
+
+    for item in _load_latest_card_market_snapshots_from_file():
+        if str(item.get("cs_card_id")) == cs_card_id:
+            return item, "file"
+
+    return None, None
+
+
+def _load_player_card_market_snapshots(cs_player_id: str) -> tuple[dict[str, dict[str, Any]], str | None]:
+    snapshots_by_card: dict[str, dict[str, Any]] = {}
+    data_source: str | None = None
+
+    storage = _storage()
+    if storage:
+        try:
+            rows = storage.fetch_card_market_snapshots_for_player(cs_player_id)
+            for row in rows:
+                card_id = str(row.get("cs_card_id") or "")
+                if card_id:
+                    snapshots_by_card[card_id] = _normalize_card_market_snapshot_row(row)
+            if snapshots_by_card:
+                return snapshots_by_card, "supabase"
+        except SupabaseError:
+            pass
+
+    for item in _load_latest_card_market_snapshots_from_file():
+        if str(item.get("cs_player_id")) != cs_player_id:
+            continue
+        card_id = str(item.get("cs_card_id") or "")
+        if card_id and card_id not in snapshots_by_card:
+            snapshots_by_card[card_id] = item
+            data_source = "file"
+
+    return snapshots_by_card, data_source
+
+
+def _load_latest_card_market_snapshot(cs_card_id: str) -> tuple[dict[str, Any], str]:
+    payload, source = _try_load_latest_card_market_snapshot(cs_card_id)
+    if not payload or not source:
+        raise HTTPException(status_code=404, detail=f"No market snapshot found for card {cs_card_id}.")
+    return payload, source
+
+
+def _movement_tolerance_config() -> MovementToleranceConfig:
+    settings = _settings()
+    return MovementToleranceConfig(
+        tolerance_7d_days=settings.card_market_movement_7d_tolerance_days,
+        tolerance_30d_days=settings.card_market_movement_30d_tolerance_days,
+        max_gap_7d_days=settings.card_market_movement_max_gap_7d_days,
+        max_gap_30d_days=settings.card_market_movement_max_gap_30d_days,
+    )
+
+
+def _normalize_comparison_window(window: str = "7d") -> str:
+    normalized = str(window or "7d").strip().lower()
+    if normalized not in SUPPORTED_WINDOWS:
+        raise HTTPException(status_code=400, detail=f"Unsupported comparison window: {window}")
+    return normalized
+
+
+def _load_card_market_snapshot_history(cs_card_id: str, *, limit: int = 12) -> tuple[list[dict[str, Any]], str | None]:
+    storage = _storage()
+    if storage:
+        try:
+            rows = storage.fetch_card_market_snapshot_history(cs_card_id, limit=limit)
+            if rows:
+                normalized = [_normalize_card_market_snapshot_row(row) for row in rows]
+                return normalized, "supabase"
+        except SupabaseError:
+            pass
+
+    local_rows = filter_card_history(load_local_card_market_history(_settings().output_dir), cs_card_id, limit=limit)
+    if local_rows:
+        return local_rows, "file"
+    return [], None
+
+
+def _load_card_market_snapshots_for_movement(cs_card_id: str) -> tuple[list[dict[str, Any]], str | None]:
+    storage = _storage()
+    if storage:
+        try:
+            rows = storage.fetch_card_market_snapshot_history(cs_card_id, limit=120)
+            if rows:
+                return [_normalize_card_market_snapshot_row(row) for row in rows], "supabase"
+        except SupabaseError:
+            pass
+
+    local_rows = filter_card_history(load_local_card_market_history(_settings().output_dir), cs_card_id, limit=0)
+    if local_rows:
+        return local_rows, "file"
+    return [], None
+
+
+def _load_player_card_market_history(cs_player_id: str) -> tuple[list[dict[str, Any]], str | None]:
+    storage = _storage()
+    if storage:
+        try:
+            rows = storage.fetch_card_market_snapshots_for_player_history(cs_player_id)
+            if rows:
+                return [_normalize_card_market_snapshot_row(row) for row in rows], "supabase"
+        except SupabaseError:
+            pass
+
+    local_rows = filter_player_history(load_local_card_market_history(_settings().output_dir), cs_player_id)
+    if local_rows:
+        return local_rows, "file"
+    return [], None
+
+
+def _card_identity_payload(card: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "cs_card_id": card.get("cs_card_id"),
+        "year": card.get("year"),
+        "manufacturer": card.get("manufacturer"),
+        "set_name": card.get("set_name"),
+        "card_name": card.get("card_name") or card.get("card"),
+        "parallel": card.get("parallel"),
+        "grade": card.get("grade"),
+        "grading_company": card.get("grading_company"),
+    }
+
+
+@app.get("/api/cards/{cs_card_id}/market/latest")
+def get_card_market_latest(cs_card_id: str) -> JSONResponse:
+    payload, source = _load_latest_card_market_snapshot(cs_card_id)
+    payload["data_source"] = source
+    return JSONResponse(payload)
+
+
+@app.get("/api/players/{player_id}/cards/market/latest")
+def get_player_card_market_latest(player_id: str) -> JSONResponse:
+    payload, source = _load_player(player_id)
+    player = enrich_player_entry(payload)
+    cs_player_id = player.get("cs_player_id")
+    if not cs_player_id:
+        raise HTTPException(status_code=404, detail=f"Player identity not found for {player_id}.")
+
+    registry_cards = get_enriched_player_cards(player)
+    snapshots_by_card, snapshot_source = _load_player_card_market_snapshots(cs_player_id)
+
+    cards = [
+        build_player_card_market_item(card, snapshots_by_card.get(str(card.get("cs_card_id") or "")))
+        for card in registry_cards
+    ]
+    response = {
+        "player_id": player.get("player_id") or player_id,
+        "cs_player_id": cs_player_id,
+        "cards": cards,
+        "aggregate": aggregate_player_market(cards),
+        "data_source": snapshot_source or source,
+    }
+    return JSONResponse(response)
+
+
+@app.get("/api/cards/{cs_card_id}/market/history")
+def get_card_market_history(cs_card_id: str, limit: int = 12) -> JSONResponse:
+    bounded_limit = max(1, min(limit, 60))
+    rows, source = _load_card_market_snapshot_history(cs_card_id, limit=bounded_limit)
+    return JSONResponse(
+        {
+            "cs_card_id": cs_card_id,
+            "limit": bounded_limit,
+            "order": "oldest_to_newest",
+            "items": history_to_public_snapshots(rows),
+            "data_source": source,
+        }
+    )
+
+
+@app.get("/api/cards/{cs_card_id}/market/movement")
+def get_card_market_movement(cs_card_id: str, window: str = "7d") -> JSONResponse:
+    comparison_window = _normalize_comparison_window(window)
+    rows, source = _load_card_market_snapshots_for_movement(cs_card_id)
+    if not rows:
+        raise HTTPException(status_code=404, detail=f"No market history found for card {cs_card_id}.")
+
+    movement = calculate_card_market_movement(rows, window=comparison_window, config=_movement_tolerance_config())
+    if movement is None:
+        raise HTTPException(status_code=404, detail=f"No movement could be calculated for card {cs_card_id}.")
+
+    return JSONResponse(
+        {
+            "cs_card_id": cs_card_id,
+            "window": comparison_window,
+            "movement": movement_to_public_dict(movement),
+            "data_source": source,
+        }
+    )
+
+
+@app.get("/api/players/{player_id}/cards/market/movement")
+def get_player_card_market_movement(player_id: str, window: str = "7d") -> JSONResponse:
+    comparison_window = _normalize_comparison_window(window)
+    payload, source = _load_player(player_id)
+    player = enrich_player_entry(payload)
+    cs_player_id = player.get("cs_player_id")
+    if not cs_player_id:
+        raise HTTPException(status_code=404, detail=f"Player identity not found for {player_id}.")
+
+    registry_cards = get_enriched_player_cards(player)
+    history_rows, history_source = _load_player_card_market_history(cs_player_id)
+    history_by_card: dict[str, list[dict[str, Any]]] = {}
+    for row in history_rows:
+        card_id = str(row.get("cs_card_id") or "")
+        history_by_card.setdefault(card_id, []).append(row)
+
+    tolerance = _movement_tolerance_config()
+    cards_payload: list[dict[str, Any]] = []
+    for card in registry_cards:
+        card_id = str(card.get("cs_card_id") or "")
+        card_history = sort_snapshots_asc(history_by_card.get(card_id, []))
+        movement = calculate_card_market_movement(card_history, window=comparison_window, config=tolerance)
+        cards_payload.append(
+            {
+                "cs_card_id": card_id,
+                "card_identity": _card_identity_payload(card),
+                "movement": movement_to_public_dict(movement) if movement else None,
+            }
+        )
+
+    return JSONResponse(
+        {
+            "player_id": player.get("player_id") or player_id,
+            "cs_player_id": cs_player_id,
+            "window": comparison_window,
+            "cards": cards_payload,
+            "data_source": history_source or source,
+        }
+    )
+
+
+@app.get("/api/players/{player_id}/cards/market/activity")
+def get_player_card_market_activity(player_id: str, limit: int = 12) -> JSONResponse:
+    bounded_limit = max(2, min(limit, 30))
+    payload, source = _load_player(player_id)
+    player = enrich_player_entry(payload)
+    cs_player_id = player.get("cs_player_id")
+    if not cs_player_id:
+        raise HTTPException(status_code=404, detail=f"Player identity not found for {player_id}.")
+
+    history_rows, history_source = _load_player_card_market_history(cs_player_id)
+    normalized = []
+    for row in history_rows:
+        try:
+            normalized.append(normalize_snapshot_row(row))
+        except ValueError:
+            continue
+
+    points = build_player_market_activity_points(normalized, limit=bounded_limit)
+    return JSONResponse(
+        {
+            "player_id": player.get("player_id") or player_id,
+            "cs_player_id": cs_player_id,
+            "limit": bounded_limit,
+            "points": points,
+            "data_source": history_source or source,
+        }
+    )
 
 
 @app.get("/api/me")
@@ -341,7 +652,15 @@ def update_alerts(payload: AlertsUpdateRequest, auth=Depends(get_current_user)) 
 def trigger_pipeline(authorization: str | None = Header(default=None)) -> dict[str, str | int]:
     _authorize_pipeline_trigger(authorization)
     result = run_pipeline()
-    return {"status": "ok", "output_path": result.leaderboard_path, "run_id": result.run_id or 0, "alerts_created": result.alerts_created, "deliveries_attempted": result.deliveries_attempted}
+    return {
+        "status": "ok",
+        "output_path": result.leaderboard_path,
+        "run_id": result.run_id or 0,
+        "alerts_created": result.alerts_created,
+        "deliveries_attempted": result.deliveries_attempted,
+        "card_market_snapshot_count": result.card_market_snapshot_count,
+        "card_market_snapshot_path": result.card_market_snapshot_path or "",
+    }
 
 
 @app.get("/api/notifications")

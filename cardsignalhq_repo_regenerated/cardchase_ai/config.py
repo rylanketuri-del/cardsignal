@@ -33,6 +33,15 @@ class Settings:
     daily_digest_cooldown_hours: int
     notification_limit: int
     admin_api_token: str
+    card_market_scan_enabled: bool
+    card_market_player_limit: int
+    card_market_cards_per_player_limit: int
+    card_market_scan_limit: int
+    ebay_results_per_query_limit: int
+    card_market_movement_7d_tolerance_days: int
+    card_market_movement_30d_tolerance_days: int
+    card_market_movement_max_gap_7d_days: int
+    card_market_movement_max_gap_30d_days: int
 
 
 def get_settings() -> Settings:
@@ -64,4 +73,13 @@ def get_settings() -> Settings:
         daily_digest_cooldown_hours=int(os.getenv("DAILY_DIGEST_COOLDOWN_HOURS", "20")),
         notification_limit=int(os.getenv("NOTIFICATION_LIMIT", "50")),
         admin_api_token=os.getenv("ADMIN_API_TOKEN", ""),
+        card_market_scan_enabled=os.getenv("CARD_MARKET_SCAN_ENABLED", "false").lower() in {"1", "true", "yes"},
+        card_market_player_limit=int(os.getenv("CARD_MARKET_PLAYER_LIMIT", "100")),
+        card_market_cards_per_player_limit=int(os.getenv("CARD_MARKET_CARDS_PER_PLAYER_LIMIT", "4")),
+        card_market_scan_limit=int(os.getenv("CARD_MARKET_SCAN_LIMIT", "120")),
+        ebay_results_per_query_limit=int(os.getenv("EBAY_RESULTS_PER_QUERY_LIMIT", "25")),
+        card_market_movement_7d_tolerance_days=int(os.getenv("CARD_MARKET_MOVEMENT_7D_TOLERANCE_DAYS", "3")),
+        card_market_movement_30d_tolerance_days=int(os.getenv("CARD_MARKET_MOVEMENT_30D_TOLERANCE_DAYS", "7")),
+        card_market_movement_max_gap_7d_days=int(os.getenv("CARD_MARKET_MOVEMENT_MAX_GAP_7D_DAYS", "10")),
+        card_market_movement_max_gap_30d_days=int(os.getenv("CARD_MARKET_MOVEMENT_MAX_GAP_30D_DAYS", "14")),
     )
