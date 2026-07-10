@@ -274,7 +274,6 @@ function buildCollectorInsight(entry) {
   return `${entry.player_name} is currently more of a watchlist candidate than an aggressive chase. The data shows some activity, but the collector signal needs either stronger performance or clearer market demand before moving higher.`;
 }
 
-const csIntelCache = new Map();
 function csIntelSafeToNumber(value) {
   const n = typeof value === "number" ? value : Number(value);
   return Number.isFinite(n) ? n : null;
@@ -282,48 +281,22 @@ function csIntelSafeToNumber(value) {
 function csIntelClamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
-function csIntelHashToUint32(str = "") {
-  let h = 2166136261;
-  for (let i = 0; i < str.length; i += 1) {
-    h ^= str.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return h >>> 0;
-}
-function csIntelMulberry32(seed) {
-  let t = seed >>> 0;
-  return function rng() {
-    t += 0x6D2B79F5;
-    let x = t;
-    x = Math.imul(x ^ (x >>> 15), x | 1);
-    x ^= x + Math.imul(x ^ (x >>> 7), x | 61);
-    return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
-  };
-}
-function csIntelPickConvictionTier(rng) {
-  if (rng >= 0.66) return "HIGH";
-  if (rng >= 0.33) return "MEDIUM";
-  return "LOW";
-}
-
-function csIntelRecommendationFromTier(tier) {
-  if (tier === "HIGH") return "BUY";
-  if (tier === "MEDIUM") return "HOLD";
-  return "SELL";
-}
-
 function csIntelRecommendationClass(action = "") {
   const key = String(action || "").toLowerCase();
   if (key === "buy") return "cs-recommendation--buy";
   if (key === "hold") return "cs-recommendation--hold";
   if (key === "sell") return "cs-recommendation--sell";
-  return "";
+  if (key === "watch") return "cs-recommendation--watch";
+  return "cs-recommendation--watch";
 }
 
 function csIntelConvictionClass(tier = "") {
-  if (tier === "HIGH") return "cs-conviction--high";
-  if (tier === "MEDIUM") return "cs-conviction--medium";
-  return "cs-conviction--low";
+  const key = String(tier || "").toUpperCase();
+  if (key === "HIGH") return "cs-conviction--high";
+  if (key === "MEDIUM") return "cs-conviction--medium";
+  if (key === "LOW") return "cs-conviction--low";
+  if (key === "INSUFFICIENT") return "cs-conviction--insufficient";
+  return "cs-conviction--insufficient";
 }
 function csIntelFormatPercent(value) {
   const n = csIntelSafeToNumber(value);
@@ -351,7 +324,31 @@ function formatConvictionTier(tier = "") {
   const key = String(tier || "").toUpperCase();
   if (key === "HIGH") return "High";
   if (key === "MEDIUM") return "Medium";
-  return "Low";
+  if (key === "LOW") return "Low";
+  if (key === "INSUFFICIENT") return "Insufficient";
+  return "Insufficient";
+}
+
+const CARD_INTEL_INSUFFICIENT_SUMMARY =
+  "More market history is needed before CardSignal can issue a full recommendation.";
+
+function getSynthesizedCardRecommendationView(intelligenceState = {}) {
+  const forecast = CardIntelligenceUI.buildForecastView(intelligenceState?.data || {});
+  const evidenceSummary = (forecast.evidence || [])
+    .slice(0, 2)
+    .map((item) => `${item.label}: ${item.value}`)
+    .join(" · ");
+
+  return {
+    recommendation: forecast.recommendation || "WATCH",
+    conviction: forecast.conviction || "INSUFFICIENT",
+    summary: forecast.hasData
+      ? (evidenceSummary || forecast.summaryText || CARD_INTEL_INSUFFICIENT_SUMMARY)
+      : CARD_INTEL_INSUFFICIENT_SUMMARY,
+    hasData: forecast.hasData,
+    recommendationClass: CardIntelligenceUI.recommendationClass(forecast.recommendation),
+    convictionClass: CardIntelligenceUI.convictionClass(forecast.conviction),
+  };
 }
 
 function getCardSignalLabel(score = 0) {
@@ -397,120 +394,29 @@ function getSignalExplanation(type, score, entry = {}) {
   return `Momentum for ${name} appears to be cooling, which may temper near-term upside.`;
 }
 
-function buildWhySignalMatters(entry, intel) {
+function buildWhySignalMatters(entry, intel, intelligenceState = piCardIntelligenceState) {
   const name = entry.player_name || "This player";
   const score = intel.score || 0;
   const status = getSignalOfWeekStatus(entry);
-  const recommendation = csIntelRecommendationFromTier(intel.convictionTier);
+  const cardRec = getSynthesizedCardRecommendationView(intelligenceState);
 
-  if (recommendation === "BUY" && score >= 70) {
-    return `${name}'s CardSignal Score reflects a favorable blend of performance and collector demand. The ${status.label.toLowerCase()} status suggests buyers may still have a window before pricing fully catches up.`;
+  if (!cardRec.hasData) {
+    return `${name}'s player CardSignal Score is ${formatScore(score)} with ${status.label.toLowerCase()} status. Card-level synthesis is still pending — ${CARD_INTEL_INSUFFICIENT_SUMMARY.toLowerCase()}`;
   }
 
-  if (recommendation === "HOLD") {
-    return `${name} sits in a balanced signal zone where neither performance nor market activity is decisively leading. This profile may reward patience until a clearer catalyst emerges.`;
+  if (cardRec.recommendation === "BUY") {
+    return `${name}'s stored card intelligence suggests supportive market activity and demand inputs. The player CardSignal Score is ${formatScore(score)}; card-level evidence should be reviewed before acting.`;
   }
 
-  if (status.label === "COOLING") {
-    return `${name}'s signal is cooling, which may indicate fading chase pressure or softer market pricing. Watch for whether performance can re-ignite collector interest.`;
+  if (cardRec.recommendation === "SELL") {
+    return `${name}'s synthesized card signals show softer momentum or demand relative to recent observations. The player score is ${formatScore(score)} — card-level evidence is listed on the Forecast tab.`;
   }
 
-  return `${name}'s current CardSignal profile suggests caution — the score reflects weaker alignment across performance, market, and momentum inputs.`;
-}
-
-function buildMarketPlaceholders(entry, intel) {
-  const key = String(entry?.player_id ?? entry?.player_name ?? "unknown");
-  const seed = csIntelHashToUint32(`${key}_market`);
-  const rng = csIntelMulberry32(seed);
-
-  const avgSale = 18 + rng() * 185 + (intel.market / 100) * 45;
-  const salesVolume = Math.round(4 + rng() * 38 + (intel.momentum / 100) * 12);
-  const activeListings = Math.round(12 + rng() * 95 + (intel.collector / 100) * 20);
-  const priceMove = ((intel.momentum - 50) / 2.5) + (rng() - 0.5) * 4;
-
-  let liquidity = "Moderate";
-  if (intel.market >= 70 && salesVolume >= 20) liquidity = "High";
-  else if (intel.market < 45 || salesVolume < 10) liquidity = "Low";
-
-  const name = entry.player_name || "This player";
-  let summary = `${name}'s card market shows steady activity with pricing that has not fully reacted to recent signal movement.`;
-  if (liquidity === "High") {
-    summary = `${name}'s card market is active with supportive liquidity, suggesting buyers and sellers are both engaged at current levels.`;
-  } else if (liquidity === "Low") {
-    summary = `${name}'s card market appears thin, which may amplify price swings on individual sales.`;
+  if (cardRec.recommendation === "HOLD") {
+    return `${name}'s card intelligence is balanced across stored market inputs. The player CardSignal Score is ${formatScore(score)} with ${status.label.toLowerCase()} status.`;
   }
 
-  return {
-    avgSale,
-    salesVolume,
-    activeListings,
-    priceMove,
-    liquidity,
-    summary,
-  };
-}
-
-function getRiskLevel(intel) {
-  const conviction = String(intel.convictionTier || "").toUpperCase();
-  const score = intel.score || 0;
-  if (conviction === "HIGH" && score >= 75) return "Low";
-  if (conviction === "LOW" || score < 45) return "High";
-  return "Medium";
-}
-
-function buildForecastSummary(entry, intel) {
-  const name = entry.player_name || "This player";
-  const recommendation = csIntelRecommendationFromTier(intel.convictionTier).toLowerCase();
-
-  if (recommendation === "buy") {
-    return `Over the next 2–4 weeks, ${name}'s profile suggests continued collector interest could lift card values, though outcomes are never guaranteed.`;
-  }
-
-  if (recommendation === "sell") {
-    return `Over the next 2–4 weeks, ${name}'s signal may face headwinds as momentum and market inputs soften relative to recent peaks.`;
-  }
-
-  return `Over the next 2–4 weeks, ${name}'s signal appears balanced — the data suggests holding current positions while watching for a clearer directional catalyst.`;
-}
-
-function buildForecastReasons(entry, intel) {
-  const reasons = [];
-  const performance = intel.performance || 0;
-  const market = intel.market || 0;
-  const collector = intel.collector || 0;
-  const momentum = intel.momentum || 0;
-
-  if (performance >= 60) {
-    reasons.push("Recent performance suggests strengthening buyer interest.");
-  } else if (performance < 45) {
-    reasons.push("Recent performance may weigh on near-term collector sentiment.");
-  }
-
-  if (collector >= 60) {
-    reasons.push("Collector demand appears to be accelerating.");
-  } else if (collector < 45) {
-    reasons.push("Collector demand could remain soft without a performance catalyst.");
-  }
-
-  if (market < 55 && momentum >= 55) {
-    reasons.push("Market pricing may not have fully reacted to recent signal movement.");
-  } else if (market >= 65) {
-    reasons.push("Market pricing already reflects elevated activity around key cards.");
-  }
-
-  if (momentum >= 60) {
-    reasons.push("Momentum indicators suggest the signal could continue building.");
-  }
-
-  if (reasons.length < 3) {
-    reasons.push("Supply on recent listings appears limited relative to typical volume.");
-  }
-
-  if (reasons.length < 4) {
-    reasons.push("The overall signal mix suggests measured positioning rather than aggressive chasing.");
-  }
-
-  return reasons.slice(0, 4);
+  return `${name}'s player CardSignal Score is ${formatScore(score)}. Card-level synthesis remains limited — ${CARD_INTEL_INSUFFICIENT_SUMMARY.toLowerCase()}`;
 }
 
 const SECTION_DESCRIPTIONS = {
@@ -554,9 +460,150 @@ function movementClass(movement = "") {
 }
 
 /* Landing page — Quick Intelligence grid row */
+function formatQuickIntelPrice(item = {}) {
+  if (item.priceLabel) return item.priceLabel;
+  if (item.medianPrice) return item.medianPrice;
+  const n = csIntelSafeToNumber(item.price);
+  if (n === null) return "Snapshot pending";
+  return csIntelFormatMoney(n);
+}
+
+function formatQuickIntelScore(item = {}) {
+  if (item.scoreLabel) return item.scoreLabel;
+  if (item.cardSignalScoreLabel) return item.cardSignalScoreLabel;
+  if (item.score === null || item.score === undefined || item.score === "") return "Score pending";
+  return item.score;
+}
+
+function mapRowToQuickIntelItem(row = {}) {
+  const snap = row.market_snapshot || null;
+  const median = snap?.median_price;
+  const priceLabel = row.medianPrice
+    || (median != null ? csIntelFormatMoney(median) : "Snapshot pending");
+
+  return {
+    ...row,
+    name: row.name || CardRegistry.formatCardDisplayName(row),
+    year: row.year || "—",
+    setName: row.set_name || row.setName || "—",
+    parallel: row.parallel || "—",
+    price: median,
+    priceLabel,
+    movement: row.movement || "Movement pending",
+    score: row.cardSignalScore ?? row.score ?? null,
+    scoreLabel: row.cardSignalScoreLabel || (row.cardSignalScore != null ? String(Math.round(row.cardSignalScore)) : "Score pending"),
+  };
+}
+
+function buildHomepageRegistryQuickSections(entry = {}) {
+  const fallback = CardMarketUI.buildRegistryFallbackSections(entry);
+  return {
+    trendingCards: fallback.trendingCards.map(mapRowToQuickIntelItem),
+    biggestMovers: fallback.biggestMovers.map((row) =>
+      mapRowToQuickIntelItem({ ...row, movement: "Movement pending" })
+    ),
+    buyLowOpportunities: fallback.buyLowOpportunities.map((row) =>
+      mapRowToQuickIntelItem({
+        ...row,
+        movement: "Requires price-history confirmation",
+      })
+    ),
+    mostChased: fallback.mostChased.map(mapRowToQuickIntelItem),
+  };
+}
+
+function enrichHomepageSectionsWithIntelligence(sections, intelligencePayload = {}) {
+  const intelligenceMap = CardIntelligenceUI.intelligenceByCardId(intelligencePayload);
+  const enrichList = (items = []) =>
+    items.map((item) => {
+      const withIntel = CardIntelligenceUI.enrichCardRow(item, intelligenceMap.get(item.cs_card_id));
+      return mapRowToQuickIntelItem(withIntel);
+    });
+
+  const moversWithValidMovement = (sections.biggestMovers || []).filter(
+    (item) => item.movementDetail?.has_movement
+  );
+
+  return {
+    trendingCards: enrichList(sections.trendingCards),
+    biggestMovers: moversWithValidMovement.length ? enrichList(moversWithValidMovement) : [],
+    buyLowOpportunities: enrichList(sections.buyLowOpportunities).map((item) => ({
+      ...item,
+      movement: "Requires price-history confirmation",
+    })),
+    mostChased: enrichList(sections.mostChased),
+  };
+}
+
+async function loadHomepageCardSections(entry = {}) {
+  if (!entry?.player_id) {
+    return buildHomepageRegistryQuickSections(entry);
+  }
+
+  const [marketResult, intelligenceResult] = await Promise.all([
+    CardMarketUI.fetchPlayerCardMarketBundle(entry.player_id),
+    CardIntelligenceUI.fetchPlayerCardIntelligence(entry.player_id),
+  ]);
+
+  const intelligencePayload = intelligenceResult.status === "success" ? intelligenceResult.data : {};
+
+  if (marketResult.status === "success" && marketResult.data && CardMarketUI.hasSnapshots(marketResult.data)) {
+    const sections = CardMarketUI.buildCardSections(
+      marketResult.data.cards || [],
+      marketResult.movement
+    );
+    const enriched = enrichHomepageSectionsWithIntelligence(sections, intelligencePayload);
+
+    if (!enriched.biggestMovers.length) {
+      enriched.biggestMovers = buildHomepageRegistryQuickSections(entry).biggestMovers;
+    }
+
+    return enriched;
+  }
+
+  const registrySections = buildHomepageRegistryQuickSections(entry);
+  if (intelligencePayload?.cards?.length) {
+    const intelligenceMap = CardIntelligenceUI.intelligenceByCardId(intelligencePayload);
+    const enrichFallback = (items = []) =>
+      items.map((item) => {
+        const withIntel = CardIntelligenceUI.enrichCardRow(item, intelligenceMap.get(item.cs_card_id));
+        return mapRowToQuickIntelItem(withIntel);
+      });
+
+    return {
+      trendingCards: enrichFallback(registrySections.trendingCards),
+      biggestMovers: registrySections.biggestMovers,
+      buyLowOpportunities: registrySections.buyLowOpportunities,
+      mostChased: enrichFallback(registrySections.mostChased),
+    };
+  }
+
+  return registrySections;
+}
+
+function renderHomepageCardSectionLoading() {
+  const loadingRow = `
+    <div class="qi-row qi-row--pending" role="status">
+      <div class="qi-row-thumb" aria-hidden="true"></div>
+      <div class="qi-row-body">
+        <span class="qi-row-name">Loading card intelligence…</span>
+      </div>
+    </div>
+  `;
+
+  return ["trending", "movers", "buy-low", "chased"].map((modifier) => `
+    <article class="qi-card qi-card--${modifier} qi-card--loading">
+      <h3 class="qi-card-title">${modifier === "trending" ? "Trending Cards" : modifier === "movers" ? "Biggest Movers" : modifier === "buy-low" ? "Buy Low Watch" : "Most Chased"}</h3>
+      <div class="qi-card-list">${loadingRow}${loadingRow}${loadingRow}</div>
+    </article>
+  `).join("");
+}
+
 function renderCardIntelRow(item) {
   const moveClass = movementClass(item.movement);
   const cardName = item.name || CardRegistry.formatCardDisplayName(item);
+  const priceLabel = formatQuickIntelPrice(item);
+  const scoreLabel = formatQuickIntelScore(item);
 
   return `
     <div class="qi-row">
@@ -569,22 +616,32 @@ function renderCardIntelRow(item) {
           <span>${item.parallel || "—"}</span>
         </div>
         <div class="qi-row-metrics">
-          <span class="qi-price">${csIntelFormatMoney(item.price)}</span>
-          <span class="qi-move ${moveClass}">${item.movement}</span>
-          <span class="qi-score-pill">${item.score ?? "—"}</span>
+          <span class="qi-price">${priceLabel}</span>
+          <span class="qi-move ${moveClass}">${item.movement || "Movement pending"}</span>
+          <span class="qi-score-pill">${scoreLabel}</span>
         </div>
       </div>
     </div>
   `;
 }
 
-function renderCardIntelBox({ title, modifier, description, items }) {
+function renderCardIntelBox({ title, modifier, description, items, emptyLabel = "Not enough data" }) {
+  const listContent = items.length
+    ? items.slice(0, 3).map((item) => renderCardIntelRow(item)).join("")
+    : `
+      <div class="qi-row qi-row--pending" role="status">
+        <div class="qi-row-body">
+          <span class="qi-row-name">${emptyLabel}</span>
+        </div>
+      </div>
+    `;
+
   return `
     <article class="qi-card qi-card--${modifier}">
       <h3 class="qi-card-title">${title}</h3>
       <p class="qi-card-desc">${description}</p>
       <div class="qi-card-list">
-        ${items.slice(0, 3).map((item) => renderCardIntelRow(item)).join("")}
+        ${listContent}
       </div>
     </article>
   `;
@@ -600,34 +657,69 @@ function renderCardSection(entries = []) {
   if (!root) return;
 
   const entry = getCardSectionEntry(entries);
-  const intel = csIntelGetPlaceholders(entry);
+  root.innerHTML = renderHomepageCardSectionLoading();
 
-  root.innerHTML = `
-    ${renderCardIntelBox({
-      title: "Trending Cards",
-      modifier: "trending",
-      description: SECTION_DESCRIPTIONS.trending,
-      items: intel.trendingCards,
-    })}
-    ${renderCardIntelBox({
-      title: "Biggest Movers",
-      modifier: "movers",
-      description: SECTION_DESCRIPTIONS.movers,
-      items: intel.biggestMovers,
-    })}
-    ${renderCardIntelBox({
-      title: "Buy Low Watch",
-      modifier: "buy-low",
-      description: SECTION_DESCRIPTIONS.buyLow,
-      items: intel.buyLowOpportunities,
-    })}
-    ${renderCardIntelBox({
-      title: "Most Chased",
-      modifier: "chased",
-      description: SECTION_DESCRIPTIONS.chased,
-      items: intel.mostChased,
-    })}
-  `;
+  loadHomepageCardSections(entry)
+    .then((sections) => {
+      if (!root.isConnected) return;
+      root.innerHTML = `
+        ${renderCardIntelBox({
+          title: "Trending Cards",
+          modifier: "trending",
+          description: SECTION_DESCRIPTIONS.trending,
+          items: sections.trendingCards,
+        })}
+        ${renderCardIntelBox({
+          title: "Biggest Movers",
+          modifier: "movers",
+          description: SECTION_DESCRIPTIONS.movers,
+          items: sections.biggestMovers,
+          emptyLabel: "Movement pending",
+        })}
+        ${renderCardIntelBox({
+          title: "Buy Low Watch",
+          modifier: "buy-low",
+          description: SECTION_DESCRIPTIONS.buyLow,
+          items: sections.buyLowOpportunities,
+        })}
+        ${renderCardIntelBox({
+          title: "Most Chased",
+          modifier: "chased",
+          description: SECTION_DESCRIPTIONS.chased,
+          items: sections.mostChased,
+        })}
+      `;
+    })
+    .catch(() => {
+      if (!root.isConnected) return;
+      const fallback = buildHomepageRegistryQuickSections(entry);
+      root.innerHTML = `
+        ${renderCardIntelBox({
+          title: "Trending Cards",
+          modifier: "trending",
+          description: SECTION_DESCRIPTIONS.trending,
+          items: fallback.trendingCards,
+        })}
+        ${renderCardIntelBox({
+          title: "Biggest Movers",
+          modifier: "movers",
+          description: SECTION_DESCRIPTIONS.movers,
+          items: fallback.biggestMovers,
+        })}
+        ${renderCardIntelBox({
+          title: "Buy Low Watch",
+          modifier: "buy-low",
+          description: SECTION_DESCRIPTIONS.buyLow,
+          items: fallback.buyLowOpportunities,
+        })}
+        ${renderCardIntelBox({
+          title: "Most Chased",
+          modifier: "chased",
+          description: SECTION_DESCRIPTIONS.chased,
+          items: fallback.mostChased,
+        })}
+      `;
+    });
 }
 
 /* Signal Center — player identity row with headshot for featured sections */
@@ -664,98 +756,15 @@ function showChartPlaceholder(canvasId, placeholderId, show) {
 }
 function csIntelGetPlaceholders(entry) {
   const identityEntry = enrichPlayerEntryIdentity(entry);
-  const key = String(identityEntry?.source_player_id ?? identityEntry?.player_id ?? identityEntry?.player_name ?? "unknown");
-  if (csIntelCache.has(key)) return csIntelCache.get(key);
-
-  const storageKey = `cs_intel_placeholders_v3_${key}`;
-  try {
-    const raw = sessionStorage.getItem(storageKey);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed && (parsed.convictionTier || parsed.confidenceTier) && parsed.identityVersion === 1) {
-        if (!parsed.convictionTier && parsed.confidenceTier) {
-          parsed.convictionTier = parsed.confidenceTier;
-        }
-        csIntelCache.set(key, parsed);
-        return parsed;
-      }
-    }
-  } catch (_) {
-    // ignore
-  }
-
-  const seed = csIntelHashToUint32(key);
-  const rng = csIntelMulberry32(seed);
-
-  const convictionTier = csIntelPickConvictionTier(rng());
-
-  // 0-100 "premium" placeholder scales (used when backend fields are missing).
-  const performance = csIntelClamp(22 + rng() * 78, 0, 100);
-  const market = csIntelClamp(18 + rng() * 82, 0, 100);
-  const collector = csIntelClamp(market * 0.62 + performance * 0.38 + (rng() - 0.5) * 12, 0, 100);
-  const momentum = csIntelClamp(((performance + market) / 2) * 0.92 + (rng() - 0.5) * 18, 0, 100);
-
-  const score = csIntelClamp(performance * 0.5 + market * 0.4 + momentum * 0.1 + (rng() - 0.5) * 10, 0, 100);
-
   const cardRegistry = CardRegistry.getPlayerCardRegistry(identityEntry);
-  const sectionOptions = {
-    count: 3,
-    formatPercent: csIntelFormatPercent,
-  };
 
-  const trendingCards = CardRegistry.buildSectionCards(cardRegistry, "trending", rng, {
-    ...sectionOptions,
-    bias: (market - 50) / 8 + (momentum - 50) / 10,
-    priceMin: 12,
-    priceMax: 260,
-    moveMin: 8,
-    moveMax: 28,
-  });
-
-  const biggestMovers = CardRegistry.buildSectionCards(cardRegistry, "movers", rng, {
-    ...sectionOptions,
-    bias: (performance - 50) / 10,
-    priceMin: 15,
-    priceMax: 310,
-    moveMin: 10,
-    moveMax: 38,
-  });
-
-  const buyLowOpportunities = CardRegistry.buildSectionCards(cardRegistry, "buyLow", rng, {
-    ...sectionOptions,
-    bias: -6 + (market < 50 ? 3 : -2),
-    priceMin: 9,
-    priceMax: 170,
-    moveMin: 4,
-    moveMax: 22,
-  });
-
-  const mostChased = CardRegistry.buildSectionCards(cardRegistry, "chased", rng, {
-    ...sectionOptions,
-    bias: 5 + (momentum - 50) / 10,
-    priceMin: 18,
-    priceMax: 360,
-    moveMin: 8,
-    moveMax: 36,
-  });
-
-  const aiReasonPool = [
-    "Collector demand is increasing faster than current market pricing.",
-    "Performance momentum suggests a continued lift in buyer interest over the next 7 days.",
-    "Market liquidity remains supportive while supply tightens on recent listings.",
-    "Trading velocity is rising faster than average price, creating a favorable buy window.",
-    "Recent chase pressure indicates higher willingness to pay for comparable lots soon.",
-  ];
-
-  const aiReason = aiReasonPool[Math.floor(rng() * aiReasonPool.length)] || aiReasonPool[0];
-
-  const placeholders = {
-    convictionTier,
-    performance: csIntelClamp(performance, 0, 100),
-    market: csIntelClamp(market, 0, 100),
-    collector: csIntelClamp(collector, 0, 100),
-    momentum: csIntelClamp(momentum, 0, 100),
-    score: csIntelClamp(score, 0, 100),
+  return {
+    convictionTier: "INSUFFICIENT",
+    performance: null,
+    market: null,
+    collector: null,
+    momentum: null,
+    score: null,
     cardRegistry,
     cardRegistryVersion: 1,
     identityVersion: 1,
@@ -766,39 +775,24 @@ function csIntelGetPlaceholders(entry) {
     player_name: identityEntry.player_name,
     cs_signal_id: identityEntry.cs_signal_id,
     cs_forecast_id: identityEntry.cs_forecast_id,
-    trendingCards,
-    biggestMovers,
-    buyLowOpportunities,
-    mostChased,
-    aiRecommendation: {
-      action: csIntelRecommendationFromTier(convictionTier),
-      conviction: convictionTier,
-      reason: aiReason,
-    },
   };
-
-  csIntelCache.set(key, placeholders);
-  try {
-    sessionStorage.setItem(storageKey, JSON.stringify(placeholders));
-  } catch (_) {
-    // ignore
-  }
-  return placeholders;
 }
 
 function buildPlayerIntel(entry) {
   const identityEntry = enrichPlayerEntryIdentity(entry);
   const hotness = identityEntry.hotness || {};
   const placeholders = csIntelGetPlaceholders(identityEntry);
+  const cardRec = getSynthesizedCardRecommendationView(piCardIntelligenceState);
 
   return {
     ...placeholders,
-    performance: csIntelSafeToNumber(hotness.performance_score) ?? placeholders.performance,
-    market: csIntelSafeToNumber(hotness.market_score) ?? placeholders.market,
-    collector: csIntelSafeToNumber(hotness.collector_score) ?? placeholders.collector,
-    momentum: csIntelSafeToNumber(hotness.momentum_score) ?? placeholders.momentum,
-    score: csIntelSafeToNumber(hotness.total_score) ?? placeholders.score,
-    convictionTier: placeholders.convictionTier || placeholders.confidenceTier,
+    performance: csIntelSafeToNumber(hotness.performance_score),
+    market: csIntelSafeToNumber(hotness.market_score),
+    collector: csIntelSafeToNumber(hotness.collector_score),
+    momentum: csIntelSafeToNumber(hotness.momentum_score),
+    score: csIntelSafeToNumber(hotness.total_score),
+    convictionTier: cardRec.hasData ? cardRec.conviction : "INSUFFICIENT",
+    recommendation: cardRec.recommendation,
     cs_player_id: placeholders.cs_player_id,
     source_player_id: placeholders.source_player_id,
     league: placeholders.league,
@@ -810,7 +804,21 @@ function buildPlayerIntel(entry) {
 }
 
 function renderProgressRow(label, value, colorClass) {
-  const v = csIntelClamp(Number(value) || 0, 0, 100);
+  const n = csIntelSafeToNumber(value);
+  if (n === null) {
+    return `
+    <div class="cs-progress-row cs-progress-row--pending">
+      <div class="cs-progress-top">
+        <span class="cs-progress-label">${label}</span>
+        <span class="cs-progress-value">Score pending</span>
+      </div>
+      <div class="cs-progress-track cs-progress-track--pending" aria-hidden="true">
+        <span class="cs-progress-fill ${colorClass}" style="width:0%"></span>
+      </div>
+    </div>
+  `;
+  }
+  const v = csIntelClamp(n, 0, 100);
   return `
     <div class="cs-progress-row">
       <div class="cs-progress-top">
@@ -951,16 +959,17 @@ function renderPiPlayerSection(playerName, title, items, { useMarketRows = false
   `;
 }
 
-function renderPiOverviewTab(entry, intel) {
-  const convictionTier = intel.convictionTier;
-  const recommendation = csIntelRecommendationFromTier(convictionTier);
-  const recommendationClass = csIntelRecommendationClass(recommendation);
-  const convictionClass = csIntelConvictionClass(convictionTier);
-  const convictionLabel = formatConvictionTier(convictionTier);
+function renderPiOverviewTab(entry, intel, intelligenceState = piCardIntelligenceState) {
+  const cardRec = getSynthesizedCardRecommendationView(intelligenceState);
+  const recommendation = intelligenceState?.status === "loading" ? "WATCH" : cardRec.recommendation;
+  const conviction = intelligenceState?.status === "loading" ? "INSUFFICIENT" : cardRec.conviction;
+  const recommendationClass = cardRec.recommendationClass || CardIntelligenceUI.recommendationClass(recommendation);
+  const convictionClass = cardRec.convictionClass || CardIntelligenceUI.convictionClass(conviction);
+  const convictionLabel = formatConvictionTier(conviction);
   const movement = computeSignalOfWeekMovement(entry);
   const moveClass = movement.signed.startsWith("+") ? "metric-up" : movement.signed.startsWith("-") ? "metric-down" : "metric-flat";
   const status = getSignalOfWeekStatus(entry);
-  const whyMatters = buildWhySignalMatters(entry, intel);
+  const whyMatters = buildWhySignalMatters(entry, intel, intelligenceState);
 
   return `
     <div class="pi-tab-panel pi-tab-panel--overview" data-tab-panel="overview">
@@ -972,7 +981,7 @@ function renderPiOverviewTab(entry, intel) {
           <div class="cs-section-head-right">
             <div class="cs-recommendation-wrap">
               <div class="cs-recommendation-badge ${recommendationClass}">${recommendation}</div>
-              <small class="cs-recommendation-label">Recommendation</small>
+              <small class="cs-recommendation-label">Card Intelligence</small>
             </div>
             <div class="cs-conviction-wrap">
               <div class="cs-conviction-badge ${convictionClass}">${convictionLabel}</div>
@@ -1418,11 +1427,12 @@ function renderPiModalTabs(activeTab) {
   `).join("");
 }
 
-function renderPiModalHeader(entry, intel) {
+function renderPiModalHeader(entry, intel, intelligenceState = piCardIntelligenceState) {
   const team = getTeamAbbrev(entry);
   const position = entry.position || "—";
-  const recommendation = csIntelRecommendationFromTier(intel.convictionTier);
-  const recommendationClass = csIntelRecommendationClass(recommendation);
+  const cardRec = getSynthesizedCardRecommendationView(intelligenceState);
+  const recommendation = intelligenceState?.status === "loading" ? "WATCH" : cardRec.recommendation;
+  const recommendationClass = cardRec.recommendationClass || CardIntelligenceUI.recommendationClass(recommendation);
   const status = getSignalOfWeekStatus(entry);
 
   return `
@@ -1449,7 +1459,7 @@ function renderPiModalHeader(entry, intel) {
         </div>
         <div class="pi-modal-stat">
           <span class="pi-modal-stat-value cs-recommendation-badge ${recommendationClass} pi-modal-rec-badge">${recommendation}</span>
-          <span class="pi-modal-stat-label">Recommendation</span>
+          <span class="pi-modal-stat-label">Card Intelligence</span>
         </div>
         <div class="pi-modal-stat">
           <span class="pi-modal-stat-value pi-status-pill ${status.className}">${status.label}</span>
@@ -1479,7 +1489,7 @@ function renderPiModalBody(entry, intel, activeTab, marketState = piCardMarketSt
       return renderPiForecastTab(entry, intel, intelligenceState);
     case "overview":
     default:
-      return renderPiOverviewTab(entry, intel);
+      return renderPiOverviewTab(entry, intel, intelligenceState);
   }
 }
 
@@ -1509,7 +1519,13 @@ function bindPiModalKeydown() {
 
 function refreshPiModalMarketTabs() {
   if (!piModalEntry || !piModalIntel) return;
-  if (!["cards", "market", "signals", "forecast"].includes(piActiveTab)) return;
+
+  const header = document.getElementById("pi-modal-header");
+  if (header) {
+    header.innerHTML = renderPiModalHeader(piModalEntry, piModalIntel, piCardIntelligenceState);
+  }
+
+  if (!["cards", "market", "signals", "forecast", "overview"].includes(piActiveTab)) return;
   const body = document.getElementById("pi-modal-body");
   if (!body) return;
   body.innerHTML = renderPiModalBody(
@@ -1696,7 +1712,7 @@ async function openPlayerIntelligenceModal(entry) {
     piCardPopulationState = { status: "idle", data: null, error: null, playerKey: null };
     piCardIntelligenceState = { status: "idle", data: null, error: null, playerKey: null };
 
-    header.innerHTML = renderPiModalHeader(player, intel);
+    header.innerHTML = renderPiModalHeader(player, intel, piCardIntelligenceState);
     tabs.innerHTML = renderPiModalTabs(piActiveTab);
     body.innerHTML = renderPiModalBody(player, intel, piActiveTab, piCardMarketState, piCardPopulationState, piCardIntelligenceState);
 
@@ -2518,40 +2534,20 @@ function openSignalOfWeekReport(entry) {
   selectPlayer(entry);
 }
 
-function renderSignalOfTheWeek(entries = []) {
-  const card = document.querySelector(".signal-of-week-card");
-  if (!card) return;
-
-  const topEntry = getSignalOfWeekTopEntry(entries);
-  const entry = topEntry || getSignalOfWeekPlaceholderEntry();
-
+function renderSignalOfWeekBannerMarkup(entry, cardRec = {}) {
   const score = Number(entry?.hotness?.total_score ?? 0);
   const movement = computeSignalOfWeekMovement(entry);
-
-  const placeholderKeyEntry = entry?.player_id
-    ? entry
-    : {
-      player_id: "signal_of_week_placeholder",
-      player_name: entry?.player_name || "Signal of the Week",
-    };
-
-  const placeholders = csIntelGetPlaceholders(placeholderKeyEntry);
-  const aiReason = placeholders?.aiRecommendation?.reason || "Collector demand is accelerating faster than market pricing.";
-  const aiReasonSentence = clampToOneSentence(aiReason) || "Collector demand is accelerating faster than market pricing.";
-
-  const convictionTier = placeholders?.convictionTier || placeholders?.confidenceTier || "MEDIUM";
-  const aiAction = csIntelRecommendationFromTier(convictionTier);
-
+  const recommendation = cardRec.recommendation || "WATCH";
+  const convictionLabel = cardRec.convictionLabel || formatConvictionTier(cardRec.conviction || "INSUFFICIENT");
+  const summary = clampToOneSentence(cardRec.summary || CARD_INTEL_INSUFFICIENT_SUMMARY)
+    || CARD_INTEL_INSUFFICIENT_SUMMARY;
+  const pillClass = cardRec.pillClass
+    || `signal-week-ai-pill--${String(recommendation).toLowerCase()}`;
   const team = getTeamAbbrev(entry);
   const position = entry.position || "—";
   const moveClass = movement.signed.startsWith("+") ? "metric-up" : movement.signed.startsWith("-") ? "metric-down" : "metric-flat";
 
-  card.classList.add("featured-signal-banner");
-  card.removeAttribute("role");
-  card.removeAttribute("tabindex");
-  card.removeAttribute("aria-label");
-
-  card.innerHTML = `
+  return `
     <div class="signal-week-banner">
       <div class="signal-week-media">
         ${renderSignalWeekPlayerImage(entry)}
@@ -2584,9 +2580,11 @@ function renderSignalOfTheWeek(entries = []) {
 
         <div class="signal-week-insight">
           <div class="signal-week-ai-row">
-            <span class="signal-week-ai-pill signal-week-ai-pill--${aiAction.toLowerCase()}">${aiAction}</span>
+            <span class="signal-week-ai-label">Card Intelligence</span>
+            <span class="signal-week-ai-pill ${pillClass}">${recommendation}</span>
+            <span class="signal-week-conviction">${convictionLabel}</span>
           </div>
-          <p class="signal-week-reason">${aiReasonSentence}</p>
+          <p class="signal-week-reason">${summary}</p>
         </div>
       </div>
 
@@ -2598,6 +2596,14 @@ function renderSignalOfTheWeek(entries = []) {
       </div>
     </div>
   `;
+}
+
+function mountSignalOfWeekBanner(card, entry, cardRec = {}) {
+  card.classList.add("featured-signal-banner");
+  card.removeAttribute("role");
+  card.removeAttribute("tabindex");
+  card.removeAttribute("aria-label");
+  card.innerHTML = renderSignalOfWeekBannerMarkup(entry, cardRec);
 
   const cta = card.querySelector("#signal-week-view-report");
   if (cta) {
@@ -2609,6 +2615,52 @@ function renderSignalOfTheWeek(entries = []) {
 
   card.onclick = null;
   card.onkeydown = null;
+}
+
+function renderSignalOfTheWeek(entries = []) {
+  const card = document.querySelector(".signal-of-week-card");
+  if (!card) return;
+
+  const topEntry = getSignalOfWeekTopEntry(entries);
+  const entry = topEntry || getSignalOfWeekPlaceholderEntry();
+
+  mountSignalOfWeekBanner(card, entry, {
+    recommendation: "WATCH",
+    conviction: "INSUFFICIENT",
+    convictionLabel: "Insufficient",
+    summary: entry?.player_id ? "Loading card intelligence…" : CARD_INTEL_INSUFFICIENT_SUMMARY,
+    pillClass: "signal-week-ai-pill--watch",
+  });
+
+  if (!entry?.player_id) return;
+
+  const playerId = entry.player_id;
+  CardIntelligenceUI.fetchPlayerCardIntelligence(playerId)
+    .then((result) => {
+      if (!card.isConnected) return;
+      const activeTop = getSignalOfWeekTopEntry(latestEntries);
+      const activeEntry = activeTop || getSignalOfWeekPlaceholderEntry();
+      if (activeEntry?.player_id !== playerId) return;
+
+      const cardRec = getSynthesizedCardRecommendationView(
+        result.status === "success" ? { data: result.data } : {}
+      );
+      mountSignalOfWeekBanner(card, entry, {
+        ...cardRec,
+        convictionLabel: formatConvictionTier(cardRec.conviction),
+        pillClass: `signal-week-ai-pill--${String(cardRec.recommendation).toLowerCase()}`,
+      });
+    })
+    .catch(() => {
+      if (!card.isConnected) return;
+      mountSignalOfWeekBanner(card, entry, {
+        recommendation: "WATCH",
+        conviction: "INSUFFICIENT",
+        convictionLabel: "Insufficient",
+        summary: CARD_INTEL_INSUFFICIENT_SUMMARY,
+        pillClass: "signal-week-ai-pill--watch",
+      });
+    });
 }
 
 /* Signal Center — main dashboard render pipeline */

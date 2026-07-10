@@ -3458,6 +3458,30 @@ button,
   color: #D4A08E;
 }
 
+.signal-week-ai-pill--watch {
+  background: rgba(125, 120, 115, 0.16);
+  border-color: rgba(125, 120, 115, 0.35);
+  color: rgba(247, 245, 242, 0.72);
+}
+
+.signal-week-conviction {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(247, 245, 242, 0.55);
+}
+
+.qi-card--loading .qi-row-name,
+.qi-row--pending .qi-row-name {
+  color: var(--muted);
+}
+
+.cs-progress-row--pending .cs-progress-value {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .signal-week-reason {
   margin: 6px 0 0;
   font-size: 13px;
