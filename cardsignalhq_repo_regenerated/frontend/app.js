@@ -52,19 +52,66 @@ function renderRuleSummary(rule) {
   return `<span class="rule-chip">${parts.join(' • ') || 'custom rule'}</span>`;
 }
 
-async function apiFetch(path, options = {}) {
-  const headers = { ...(options.headers || {}) };
-  if (authToken) headers.Authorization = `Bearer ${authToken}`;
-  const response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
-  if (!response.ok) throw new Error(await response.text() || `Request failed for ${path}`);
-  return response.json();
+function apiInferContext(path = "") {
+  if (path.includes("/watchlist")) return COLLECTOR_ERROR_CONTEXT.WATCHLIST;
+  if (path.includes("/notifications")) return COLLECTOR_ERROR_CONTEXT.NOTIFICATIONS;
+  return COLLECTOR_ERROR_CONTEXT.GENERIC;
 }
+
+function safeUserMessage(error, context, fallback = null) {
+  if (typeof collectorUserMessage === "function") {
+    return collectorUserMessage(error, context, fallback);
+  }
+  return fallback || COLLECTOR_USER_MESSAGES?.[COLLECTOR_ERROR_CONTEXT.GENERIC]
+    || "CardSignal is temporarily unavailable. Please try again.";
+}
+
+function safeAuthErrorMessage(context) {
+  return COLLECTOR_USER_MESSAGES?.[context]
+    || COLLECTOR_USER_MESSAGES?.[COLLECTOR_ERROR_CONTEXT.AUTH_SIGN_IN]
+    || "We couldn't sign you in. Check your details and try again.";
+}
+
+async function apiFetch(path, options = {}) {
+  const { context: requestContext, ...fetchOptions } = options;
+  const context = requestContext || apiInferContext(path);
+  const headers = { ...(fetchOptions.headers || {}) };
+  if (authToken) headers.Authorization = `Bearer ${authToken}`;
+  try {
+    const response = await fetch(`${API_BASE_URL}${path}`, { ...fetchOptions, headers });
+    if (!response.ok) {
+      const bodyText = await response.text();
+      const error = createCollectorApiError(response, bodyText, context);
+      logCollectorError(error, context);
+      throw error;
+    }
+    return response.json();
+  } catch (error) {
+    if (error?.name === "CollectorApiError") throw error;
+    const networkError = createNetworkCollectorError(context);
+    logCollectorError(networkError, context);
+    throw networkError;
+  }
+}
+
 async function adminFetch(path, options = {}) {
   const headers = { ...(options.headers || {}) };
   if (adminToken) headers.Authorization = `Bearer ${adminToken}`;
-  const response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
-  if (!response.ok) throw new Error(await response.text() || `Admin request failed for ${path}`);
-  return response.json();
+  try {
+    const response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
+    if (!response.ok) {
+      const bodyText = await response.text();
+      const error = createCollectorApiError(response, bodyText, COLLECTOR_ERROR_CONTEXT.GENERIC);
+      logCollectorError(error, "admin");
+      throw error;
+    }
+    return response.json();
+  } catch (error) {
+    if (error?.name === "CollectorApiError") throw error;
+    const networkError = createNetworkCollectorError(COLLECTOR_ERROR_CONTEXT.GENERIC);
+    logCollectorError(networkError, "admin");
+    throw networkError;
+  }
 }
 async function fetchPlayer(playerId) { return apiFetch(`/api/players/${playerId}`); }
 async function fetchPlayerHistory(playerId) { return apiFetch(`/api/players/${playerId}/history?limit=14`); }
@@ -1900,7 +1947,9 @@ async function loadWatchlist() {
       await Promise.all([loadRules(), loadWatchlist()]);
     }));
     syncRuleForm();
-  } catch (error) { root.innerHTML = `<div class="detail-empty">${error.message}</div>`; }
+  } catch (error) {
+    root.innerHTML = `<div class="detail-empty">${safeUserMessage(error, COLLECTOR_ERROR_CONTEXT.WATCHLIST)}</div>`;
+  }
 }
 
 async function loadAlerts() {
@@ -1926,7 +1975,9 @@ async function loadNotifications() {
     const payload = await apiFetch('/api/notifications');
     notifications = payload.items || [];
     renderNotifications(notifications, payload.summary || {});
-  } catch (error) { root.innerHTML = `<div class="detail-empty">${error.message}</div>`; }
+  } catch (error) {
+    root.innerHTML = `<div class="detail-empty">${safeUserMessage(error, COLLECTOR_ERROR_CONTEXT.NOTIFICATIONS)}</div>`;
+  }
 }
 function destroyChart(instance) {
   if (instance) instance.destroy();
@@ -2150,7 +2201,7 @@ function wirePlayerActions() {
         await apiFetch('/api/watchlist', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ player_id: selectedPlayer.player_id, player_name: selectedPlayer.player_name }) });
         setAuthStatus(`${selectedPlayer.player_name} saved to your watchlist.`);
         await Promise.all([loadWatchlist(), loadRules()]);
-      } catch (error) { setAuthStatus(error.message, true); }
+      } catch (error) { setAuthStatus(safeUserMessage(error, COLLECTOR_ERROR_CONTEXT.WATCHLIST), true); }
     });
   }
 }
@@ -2175,14 +2226,14 @@ function bindAuthActions() {
     const email = document.getElementById('auth-email').value.trim();
     const password = document.getElementById('auth-password').value;
     const { error } = await supabaseClient.auth.signUp({ email, password });
-    setAuthStatus(error ? error.message : 'Check your email to confirm your account.', !!error);
+    setAuthStatus(error ? safeAuthErrorMessage(COLLECTOR_ERROR_CONTEXT.AUTH_SIGN_UP) : 'Check your email to confirm your account.', !!error);
   });
   document.getElementById('sign-in-btn').addEventListener('click', async () => {
     if (!supabaseClient) return setAuthStatus('Supabase auth is not configured.', true);
     const email = document.getElementById('auth-email').value.trim();
     const password = document.getElementById('auth-password').value;
     const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
-    if (error) return setAuthStatus(error.message, true);
+    if (error) return setAuthStatus(safeAuthErrorMessage(COLLECTOR_ERROR_CONTEXT.AUTH_SIGN_IN), true);
     authToken = data.session?.access_token || null;
     currentUser = data.user || null;
     setAuthStatus(`Signed in as ${currentUser?.email || currentUser?.id}`);
@@ -2206,7 +2257,7 @@ function bindAuthActions() {
         daily_digest_enabled: document.getElementById('alert-digest').checked,
       })});
       setAuthStatus('Alert preferences saved.');
-    } catch (error) { setAuthStatus(error.message, true); }
+    } catch (error) { setAuthStatus(safeUserMessage(error, COLLECTOR_ERROR_CONTEXT.WATCHLIST), true); }
   });
   document.getElementById('rule-player-name').addEventListener('change', syncRuleForm);
   document.getElementById('player-rule-form').addEventListener('submit', async (event) => {
@@ -2224,7 +2275,7 @@ function bindAuthActions() {
       })});
       setAuthStatus(`Saved rule for ${playerName}.`);
       await Promise.all([loadRules(), loadWatchlist()]);
-    } catch (error) { setAuthStatus(error.message, true); }
+    } catch (error) { setAuthStatus(safeUserMessage(error, COLLECTOR_ERROR_CONTEXT.WATCHLIST), true); }
   });
   document.getElementById('rule-delete-btn').addEventListener('click', async () => {
     if (!currentUser || !authToken) return setAuthStatus('Sign in first to manage player rules.', true);
@@ -2258,7 +2309,7 @@ function bindAdminActions() {
       })});
       setAdminStatus('Admin settings saved.');
       await loadAdmin();
-    } catch (error) { setAdminStatus(error.message, true); }
+    } catch (error) { setAdminStatus(safeUserMessage(error, COLLECTOR_ERROR_CONTEXT.GENERIC), true); }
   });
   document.getElementById('admin-player-form').addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -2272,7 +2323,7 @@ function bindAdminActions() {
       event.target.reset();
       document.getElementById('admin-player-active').checked = true;
       await loadAdmin();
-    } catch (error) { setAdminStatus(error.message, true); }
+    } catch (error) { setAdminStatus(safeUserMessage(error, COLLECTOR_ERROR_CONTEXT.GENERIC), true); }
   });
 }
 
@@ -2295,7 +2346,7 @@ async function loadAdmin() {
       await loadAdmin();
     }));
     setAdminStatus('Admin tools unlocked.');
-  } catch (error) { setAdminStatus(error.message, true); }
+  } catch (error) { setAdminStatus(safeUserMessage(error, COLLECTOR_ERROR_CONTEXT.GENERIC), true); }
 }
 /* ==========================================================
    Signal Center — UI Render Helpers
@@ -3075,8 +3126,11 @@ async function init() {
     if (nflDataAvailable) weeklyRequests.push(fetchWeeklyLatest('NFL').catch(() => null));
 
     const [payload, ...weeklyResults] = await Promise.all([
-      fetch(SOURCE_URL).then(res => {
-        if (!res.ok) throw new Error(`Could not load ${SOURCE_URL}.`);
+      fetch(SOURCE_URL).then(async (res) => {
+        if (!res.ok) {
+          const bodyText = await res.text();
+          throw createCollectorApiError(res, bodyText, COLLECTOR_ERROR_CONTEXT.APP_INIT);
+        }
         return res.json();
       }),
       ...weeklyRequests,
@@ -3128,9 +3182,9 @@ async function init() {
     if (adminToken) await loadAdmin();
 
   } catch (error) {
-    console.error("CardSignal load error:", error);
-
-    status.textContent = `Load failed: ${error.message}`;
+    logCollectorError(error, COLLECTOR_ERROR_CONTEXT.APP_INIT);
+    const initMessage = safeUserMessage(error, COLLECTOR_ERROR_CONTEXT.APP_INIT);
+    status.textContent = initMessage;
     status.style.color = '#9A6656';
 
     // Graceful fallback: still show Signal of the Week and card section.
@@ -3141,8 +3195,7 @@ async function init() {
 
     const leaderboardRoot = document.getElementById('leaderboard-table');
     if (leaderboardRoot) {
-      leaderboardRoot.innerHTML =
-        `<div class="detail-empty">Load failed: ${error.message}</div>`;
+      leaderboardRoot.innerHTML = `<div class="detail-empty">${initMessage}</div>`;
     }
   }
 }

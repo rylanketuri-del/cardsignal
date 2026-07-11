@@ -47,7 +47,8 @@ test("snapshotCount is never presented as Auction Count", () => {
     formatters
   );
   assert.strictEqual(metrics.auctionCount.label, "Auction Count");
-  assert.strictEqual(metrics.auctionCount.display, "Auction data pending");
+  assert.strictEqual(metrics.auctionCount.display, "Unavailable");
+  assert.strictEqual(metrics.auctionCount.title, "Auction data unavailable");
   assert.strictEqual(metrics.auctionCount.pending, true);
   assert.ok(!metrics.auctionCount.display.includes("12"));
   assert.ok(!metrics.auctionCount.display.includes("5"));
@@ -67,7 +68,8 @@ test("momentum_score is never formatted as a percentage in card metrics", () => 
   assert.strictEqual(metrics.momentumScore.label, "Momentum Score");
   assert.strictEqual(metrics.momentumScore.display, "68.0");
   assert.ok(!metrics.momentumScore.display.includes("%"));
-  assert.strictEqual(metrics.priceMovement7d.display, "Movement pending");
+  assert.strictEqual(metrics.priceMovement7d.display, "Unavailable");
+  assert.strictEqual(metrics.priceMovement7d.title, "Movement unavailable — available after the next market snapshot");
   assert.strictEqual(metrics.priceMovement7d.pending, true);
 });
 
@@ -81,19 +83,20 @@ test("7-Day Movement uses stored price change fields only", () => {
   assert.strictEqual(metrics.momentumScore.display, "80.0");
 });
 
-test("Median Active Price is pending when median_price is absent", () => {
+test("Median Active Price is unavailable when median_price is absent", () => {
   const market = srBuildMarketMetrics(
     { evidence: { avg_price: 42.5, listings_count: 18 } },
     null,
     formatters
   );
-  assert.strictEqual(market.medianActivePrice.display, "Median price pending");
+  assert.strictEqual(market.medianActivePrice.display, "Unavailable");
+  assert.ok(market.medianActivePrice.title.includes("Median price unavailable"));
   assert.strictEqual(market.medianActivePrice.pending, true);
   assert.strictEqual(market.averageActivePrice.display, "$42.50");
   assert.strictEqual(market.averageActivePrice.pending, false);
 
   const card = srBuildCardMetrics({ evidence: { avg_price: 30 } }, formatters);
-  assert.strictEqual(card.medianActivePrice.display, "Median price pending");
+  assert.strictEqual(card.medianActivePrice.display, "Unavailable");
   assert.strictEqual(card.averageActivePrice.display, "$30.00");
 });
 
@@ -103,13 +106,14 @@ test("Median Active Price uses stored median_price when present", () => {
   assert.strictEqual(metrics.medianActivePrice.pending, false);
 });
 
-test("Market Depth is pending when no stored value exists", () => {
+test("Market Depth is unavailable when no stored value exists", () => {
   const metrics = srBuildMarketMetrics(
     { evidence: { listings_count: 100, avg_price: 20 } },
     null,
     formatters
   );
-  assert.strictEqual(metrics.marketDepth.display, "Market depth pending");
+  assert.strictEqual(metrics.marketDepth.display, "Unavailable");
+  assert.strictEqual(metrics.marketDepth.title, "Market depth unavailable");
   assert.strictEqual(metrics.marketDepth.pending, true);
   assert.ok(!["Deep", "Moderate", "Thin"].includes(metrics.marketDepth.display));
 });
@@ -120,7 +124,7 @@ test("Market Depth uses stored market_depth when present", () => {
   assert.strictEqual(metrics.marketDepth.pending, false);
 });
 
-test("missing WAR and Runs show Pending rather than dash or zero", () => {
+test("missing WAR and Runs show Unavailable with context rather than dash or zero", () => {
   const stats = { games: 82, avg: 0.285, home_runs: 12, rbi: 40, ops: 0.82 };
   const war = srFormatPlayerStat(
     SRMetrics.SR_PLAYER_STAT_SPECS.season.find((s) => s.label === "WAR"),
@@ -133,11 +137,14 @@ test("missing WAR and Runs show Pending rather than dash or zero", () => {
     formatters
   );
   assert.strictEqual(war.display, SR_STAT_PENDING);
+  assert.strictEqual(war.title, "WAR is not available in the current snapshot");
   assert.strictEqual(war.pending, true);
   assert.strictEqual(runs.display, SR_STAT_PENDING);
+  assert.strictEqual(runs.title, "Runs total unavailable for this period");
   assert.strictEqual(runs.pending, true);
   assert.notStrictEqual(war.display, "—");
   assert.notStrictEqual(runs.display, "0");
+  assert.notStrictEqual(war.display, "Pending");
 });
 
 test("real zero values still display as 0", () => {

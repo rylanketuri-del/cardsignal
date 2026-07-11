@@ -56,26 +56,46 @@ const CardReportRouter = {
 };
 
 async function fetchCardReport(csCardId) {
+  if (typeof collectorFetch === "function") {
+    return collectorFetch(`${API_BASE_URL}/api/cards/${encodeURIComponent(csCardId)}`, {
+      context: COLLECTOR_ERROR_CONTEXT.CARD_REPORT,
+    });
+  }
   const response = await fetch(`${API_BASE_URL}/api/cards/${encodeURIComponent(csCardId)}`);
-  if (!response.ok) throw new Error(await response.text() || `Card report unavailable for ${csCardId}`);
+  if (!response.ok) throw createCollectorApiError(response, await response.text(), COLLECTOR_ERROR_CONTEXT.CARD_REPORT);
   return response.json();
 }
 
 async function fetchCardReportHistory(csCardId) {
+  if (typeof collectorFetch === "function") {
+    return collectorFetch(`${API_BASE_URL}/api/cards/${encodeURIComponent(csCardId)}/history`, {
+      context: COLLECTOR_ERROR_CONTEXT.CARD_REPORT,
+    });
+  }
   const response = await fetch(`${API_BASE_URL}/api/cards/${encodeURIComponent(csCardId)}/history`);
-  if (!response.ok) throw new Error(await response.text() || `Card history unavailable for ${csCardId}`);
+  if (!response.ok) throw createCollectorApiError(response, await response.text(), COLLECTOR_ERROR_CONTEXT.CARD_REPORT);
   return response.json();
 }
 
 async function fetchCardReportMarket(csCardId) {
+  if (typeof collectorFetch === "function") {
+    return collectorFetch(`${API_BASE_URL}/api/cards/${encodeURIComponent(csCardId)}/market`, {
+      context: COLLECTOR_ERROR_CONTEXT.CARD_REPORT,
+    });
+  }
   const response = await fetch(`${API_BASE_URL}/api/cards/${encodeURIComponent(csCardId)}/market`);
-  if (!response.ok) throw new Error(await response.text() || `Card market unavailable for ${csCardId}`);
+  if (!response.ok) throw createCollectorApiError(response, await response.text(), COLLECTOR_ERROR_CONTEXT.CARD_REPORT);
   return response.json();
 }
 
 async function fetchCardReportDrivers(csCardId) {
+  if (typeof collectorFetch === "function") {
+    return collectorFetch(`${API_BASE_URL}/api/cards/${encodeURIComponent(csCardId)}/drivers`, {
+      context: COLLECTOR_ERROR_CONTEXT.CARD_REPORT,
+    });
+  }
   const response = await fetch(`${API_BASE_URL}/api/cards/${encodeURIComponent(csCardId)}/drivers`);
-  if (!response.ok) throw new Error(await response.text() || `Card drivers unavailable for ${csCardId}`);
+  if (!response.ok) throw createCollectorApiError(response, await response.text(), COLLECTOR_ERROR_CONTEXT.CARD_REPORT);
   return response.json();
 }
 
@@ -222,28 +242,37 @@ function renderCardSnapshotSection(report = {}) {
     ? SRMetrics.srBuildCardMetrics(cardSource, formatters)
     : {};
 
-  const snapshotItem = (label, value, pending = false) => `
+  const snapshotItem = (label, value, pending = false, title = "") => {
+    const titleAttr = title ? ` title="${title}"` : "";
+    const aria = title ? ` aria-label="${title}"` : "";
+    return `
     <div class="sr-snapshot-stat">
-      <span class="sr-snapshot-stat-value${pending ? " sr-pending--inline" : ""}">${value}</span>
+      <span class="sr-snapshot-stat-value${pending ? " sr-pending--inline" : ""}"${titleAttr}${aria}>${value}</span>
       <span class="sr-snapshot-stat-label">${label}</span>
     </div>`;
+  };
 
-  const population = report.population?.psa_population;
-  const populationDisplay = population != null ? String(population) : "Pending";
-  const salesActivity = report.market?.sales_activity || "Pending";
-  const dataQuality = report.market?.data_quality || "Pending";
+  const populationState = typeof ccResolvePopulationDisplay === "function"
+    ? ccResolvePopulationDisplay(report.population || {}, report)
+    : { display: "Unavailable", title: "Population data pending", pending: true };
+  const salesState = typeof ccResolveScarcityField === "function"
+    ? ccResolveScarcityField("salesActivity", report.market?.sales_activity)
+    : { display: "Unavailable", title: "Sales activity unavailable", pending: true };
+  const qualityState = typeof ccResolveScarcityField === "function"
+    ? ccResolveScarcityField("dataQuality", report.market?.data_quality)
+    : { display: "Unavailable", title: "Data quality unavailable", pending: true };
 
   return `
     <section class="sr-section cr-section cr-market-snapshot">
       <h3 class="sr-section-title">Card Snapshot</h3>
       <p class="sr-section-lead">Stored market intelligence for this collectible — no recalculated scores.</p>
       <div class="sr-snapshot-grid cr-snapshot-grid">
-        ${snapshotItem("Median Price", metrics.medianActivePrice?.display || "Median price pending", metrics.medianActivePrice?.pending !== false)}
-        ${snapshotItem("Average Price", metrics.averageActivePrice?.display || "Average price pending", metrics.averageActivePrice?.pending !== false)}
-        ${snapshotItem("Active Listings", metrics.activeListings?.display || "Listing count pending", metrics.activeListings?.pending !== false)}
-        ${snapshotItem("Population", populationDisplay, population == null)}
-        ${snapshotItem("Sales Activity", salesActivity === "Pending" ? "Sales activity pending" : salesActivity, !report.market?.sales_activity)}
-        ${snapshotItem("Data Quality", dataQuality === "Pending" ? "Data quality pending" : dataQuality, !report.market?.data_quality)}
+        ${snapshotItem("Median Price", metrics.medianActivePrice?.display || "Unavailable", metrics.medianActivePrice?.pending !== false, metrics.medianActivePrice?.title || "Median price unavailable")}
+        ${snapshotItem("Average Price", metrics.averageActivePrice?.display || "Unavailable", metrics.averageActivePrice?.pending !== false, metrics.averageActivePrice?.title || "Average price unavailable")}
+        ${snapshotItem("Active Listings", metrics.activeListings?.display || "Unavailable", metrics.activeListings?.pending !== false, metrics.activeListings?.title || "Listing data unavailable")}
+        ${snapshotItem("Population", populationState.display, populationState.pending, populationState.title)}
+        ${snapshotItem("Sales Activity", salesState.display, salesState.pending, salesState.title)}
+        ${snapshotItem("Data Quality", qualityState.display, qualityState.pending, qualityState.title)}
       </div>
     </section>`;
 }
@@ -281,15 +310,26 @@ function renderCardMarketDriversSection(report = {}) {
 
 function renderCardScarcitySection(report = {}) {
   const pop = report.population || {};
-  const formatters = typeof srMetricFormatters === "function" ? srMetricFormatters() : {};
   const scarcityScore = pop.scarcity_score ?? report.scarcity_score;
-  const scoreDisplay = scarcityScore != null && typeof formatScore === "function"
-    ? formatScore(scarcityScore)
-    : "Pending";
+  const scoreState = typeof ccResolveScarcityScoreDisplay === "function"
+    ? ccResolveScarcityScoreDisplay(scarcityScore, typeof formatScore === "function" ? formatScore : null)
+    : { display: "Unavailable", title: "More population and supply data required", pending: true };
+  const populationState = typeof ccResolvePopulationDisplay === "function"
+    ? ccResolvePopulationDisplay(pop, report)
+    : { display: "Unavailable", title: "Population data pending", pending: true };
+  const serialState = typeof ccResolveSerialNumberDisplay === "function"
+    ? ccResolveSerialNumberDisplay(pop)
+    : { display: "Unavailable", title: "Serial-number data unavailable", pending: true };
+  const parallelState = typeof ccResolveScarcityField === "function"
+    ? ccResolveScarcityField("parallel", pop.parallel)
+    : { display: "Unavailable", title: "Parallel data unavailable", pending: true };
+  const printRunState = typeof ccResolveScarcityField === "function"
+    ? ccResolveScarcityField("printRun", pop.print_run)
+    : { display: "Unavailable", title: "Print-run data unavailable", pending: true };
 
-  const scarcityItem = (label, value, pending = false) => `
+  const scarcityItem = (label, state) => `
     <div class="sr-snapshot-stat">
-      <span class="sr-snapshot-stat-value${pending ? " sr-pending--inline" : ""}">${value}</span>
+      <span class="sr-snapshot-stat-value${state.pending ? " sr-pending--inline" : ""}"${state.title ? ` title="${state.title}" aria-label="${state.title}"` : ""}>${state.display}</span>
       <span class="sr-snapshot-stat-label">${label}</span>
     </div>`;
 
@@ -303,11 +343,11 @@ function renderCardScarcitySection(report = {}) {
       <h3 class="sr-section-title">Scarcity</h3>
       <p class="sr-section-lead">Population, parallel, and scarcity signals for this collectible.</p>
       <div class="sr-snapshot-grid cr-snapshot-grid">
-        ${scarcityItem("Population", pop.psa_population != null ? String(pop.psa_population) : "Pending", pop.psa_population == null)}
-        ${scarcityItem("Serial Number", pop.serial_number || "Pending", !pop.serial_number)}
-        ${scarcityItem("Parallel", pop.parallel || "Pending", !pop.parallel)}
-        ${scarcityItem("Print Run", pop.print_run || "Pending", !pop.print_run)}
-        ${scarcityItem("Scarcity Score", scoreDisplay, scarcityScore == null)}
+        ${scarcityItem("Population", populationState)}
+        ${scarcityItem("Serial Number", serialState)}
+        ${scarcityItem("Parallel", parallelState)}
+        ${scarcityItem("Print Run", printRunState)}
+        ${scarcityItem("Scarcity Score", scoreState)}
       </div>
       ${driverBody}
     </section>`;
@@ -423,9 +463,9 @@ async function openCardReportModal(csCardId, { updateRoute = true } = {}) {
     const fallback = typeof COLLECTOR_COPY !== "undefined"
       ? COLLECTOR_COPY.CARD_REPORT_UNAVAILABLE
       : "This Card Report could not be loaded.";
-    const message = typeof formatCollectorError === "function"
-      ? formatCollectorError(error, fallback)
-      : fallback;
+    const message = typeof collectorUserMessage === "function"
+      ? collectorUserMessage(error, COLLECTOR_ERROR_CONTEXT.CARD_REPORT, fallback)
+      : (typeof formatCollectorError === "function" ? formatCollectorError(error, fallback) : fallback);
     header.innerHTML = `
       <div class="sr-header cr-header">
         <div class="pi-modal-header-main">
