@@ -94,6 +94,24 @@ async function fetchPlayerSearch(query, sport = null) {
   return batches.flat().filter(Boolean);
 }
 
+async function fetchNflPlayer(playerId) {
+  const response = await fetch(`${API_BASE_URL}/api/nfl/players/${encodeURIComponent(playerId)}`);
+  if (!response.ok) throw new Error("NFL player not found.");
+  return response.json();
+}
+
+async function fetchNflPerformance(playerId) {
+  const response = await fetch(`${API_BASE_URL}/api/nfl/players/${encodeURIComponent(playerId)}/performance`);
+  if (!response.ok) return null;
+  return response.json();
+}
+
+function resolveSearchEntryByPlayerId(matches, playerId) {
+  const needle = String(playerId || "");
+  if (!needle) return null;
+  return matches.find((item) => String(SRNfl.srNflResolvePlayerId(item) || item.player_id || "") === needle) || null;
+}
+
 async function fetchNflStatus() {
   try {
     const response = await fetch(`${API_BASE_URL}/api/nfl/status`);
@@ -1088,6 +1106,8 @@ function buildStoredPlayerIntel(entry = {}, weeklySnap = null) {
   const hotness = entry.hotness || {};
   const missing = weeklySnap?.missing_inputs || [];
   const snapEvidence = weeklySnap?.evidence || {};
+  const isNfl = isNflEntry(entry) || weeklySnap?.league === 'NFL' || weeklySnap?.sport === 'FOOTBALL';
+  const nflReport = isNfl ? SRNfl.srNflMapScoutingReport(entry, weeklySnap) : null;
 
   return {
     score: csIntelSafeToNumber(weeklySnap?.card_signal_score ?? hotness.total_score),
@@ -1104,11 +1124,12 @@ function buildStoredPlayerIntel(entry = {}, weeklySnap = null) {
     missingInputs: missing,
     algorithmVersion: weeklySnap?.algorithm_version || weeklyIntelligence?.run?.algorithm_version || SCOUTING_REPORT_ALGO,
     capturedAt: weeklySnap?.captured_at || entry.generated_at || weeklyIntelligence?.run?.completed_at,
-    stats7d: entry.stats_7d || entry.nfl_recent_stats || snapEvidence.nfl_recent_stats || null,
-    stats30d: entry.stats_30d || entry.nfl_season_stats || snapEvidence.nfl_season_stats || null,
+    stats7d: nflReport?.recentStats || entry.stats_7d || snapEvidence.nfl_recent_stats || null,
+    stats30d: nflReport?.seasonStats || entry.stats_30d || snapEvidence.nfl_season_stats || null,
     marketSnapshots: entry.market_snapshots || {},
-    isNfl: isNflEntry(entry) || weeklySnap?.league === 'NFL' || weeklySnap?.sport === 'FOOTBALL',
-    nflSeasonPhase: entry.nfl_season_phase || snapEvidence.nfl_season_phase || null,
+    isNfl,
+    nfl: nflReport,
+    nflSeasonPhase: nflReport?.nflSeasonPhase || null,
   };
 }
 
@@ -1141,15 +1162,17 @@ function renderPlayerSnapshot(intel, entry = {}) {
   const formatters = srMetricFormatters();
   const position = entry.position || piModalEntry?.position || '';
   const nflSpecs = intel.isNfl ? SRMetrics.srGetNflStatSpecs(position) : null;
+  const nfl = intel.nfl;
 
   let recentTitle = 'Last 7 Days';
   let seasonTitle = 'Season Snapshot';
-  if (intel.isNfl) {
-    recentTitle = intel.nflSeasonPhase === 'OFFSEASON' ? 'Previous Season' : 'Recent 3 Games';
-    seasonTitle = intel.nflSeasonPhase === 'OFFSEASON' ? 'Previous Season Snapshot' : 'Season Snapshot';
-    if (intel.nflSeasonPhase === 'OFFSEASON') {
-      recentTitle = 'Offseason';
-    }
+  let recentMeta = '';
+  let seasonMeta = '';
+  if (intel.isNfl && nfl) {
+    recentTitle = nfl.recentWindowLabel;
+    seasonTitle = nfl.seasonWindowLabel;
+    recentMeta = `<p class="sr-section-lead">${nfl.performancePeriodNote}: ${nfl.recentDateRange}${nfl.gamesInWindow != null ? ` · ${nfl.gamesInWindow} games` : ""}</p>`;
+    seasonMeta = `<p class="sr-section-lead">${nfl.performancePeriodNote}: ${nfl.seasonDateRange}</p>`;
   }
 
   const last7Body = has7d
@@ -1172,7 +1195,7 @@ function renderPlayerSnapshot(intel, entry = {}) {
       </div>`
     : `<p class="sr-pending">Performance data pending.</p>`;
 
-  const showRecent = !intel.isNfl || intel.nflSeasonPhase !== 'OFFSEASON';
+  const showRecent = !intel.isNfl || (nfl && nfl.showRecentPanel);
 
   return `
     <section class="sr-section sr-snapshot">
@@ -1180,18 +1203,53 @@ function renderPlayerSnapshot(intel, entry = {}) {
       <div class="sr-snapshot-panels">
         ${showRecent ? `<article class="sr-panel">
           <h4 class="sr-panel-title">${recentTitle}</h4>
+          ${recentMeta}
           ${last7Body}
         </article>` : ''}
         <article class="sr-panel">
           <h4 class="sr-panel-title">${seasonTitle}</h4>
+          ${seasonMeta}
           ${seasonBody}
         </article>
       </div>
     </section>`;
 }
 
+function renderNflSignalDrivers(intel) {
+  if (!intel?.isNfl || !intel?.nfl) return "";
+  const drivers = intel.nfl.signalDrivers || [];
+  const body = drivers.length
+    ? `
+      <div class="sr-nfl-drivers">
+        ${drivers.map((driver) => `
+          <article class="sr-nfl-driver">
+            <div class="sr-nfl-driver-head">
+              <strong>${driver.title}</strong>
+              <span class="sr-nfl-driver-source">${driver.sourceType}</span>
+            </div>
+            <p class="sr-nfl-driver-summary">${driver.summary}</p>
+            <div class="sr-nfl-driver-meta">
+              <span>Impact: ${driver.impact}</span>
+              <span>Evidence: ${driver.evidenceQuality}</span>
+              <span>Occurred: ${driver.occurredAt}</span>
+            </div>
+          </article>`).join("")}
+      </div>`
+    : `<p class="sr-pending">${SRNfl.SR_NFL_NO_DRIVERS}</p>`;
+
+  return `
+    <section class="sr-section sr-nfl-drivers-section">
+      <h3 class="sr-section-title">NFL Signal Drivers</h3>
+      <p class="sr-section-lead">Verified football developments from stored evidence only.</p>
+      ${body}
+    </section>`;
+}
+
 function buildSignalContributors(entry, intel, weeklySnap = null) {
   const contributors = [];
+  if (intel.isNfl) {
+    return contributors;
+  }
   const stats7d = intel.stats7d;
   const stats30d = intel.stats30d;
   const evidence = intel.evidence || {};
@@ -1277,6 +1335,7 @@ function buildSignalContributors(entry, intel, weeklySnap = null) {
 
 function renderWhyThisSignal(entry, intel, weeklySnap = null) {
   const contributors = buildSignalContributors(entry, intel, weeklySnap);
+  const nflDriversSection = intel.isNfl ? renderNflSignalDrivers(intel) : "";
   const body = contributors.length
     ? `
       <div class="sr-contributors">
@@ -1297,6 +1356,7 @@ function renderWhyThisSignal(entry, intel, weeklySnap = null) {
       <h3 class="sr-section-title">Why This Signal</h3>
       <p class="sr-section-lead">How recent performance and market activity shaped this week's CardSignal Score.</p>
       ${body}
+      ${nflDriversSection}
     </section>`;
 }
 
@@ -1713,13 +1773,24 @@ async function openPlayerIntelligenceModal(entry) {
   selectedPlayer = entry;
 
   try {
-    const player = entry.player_id ? await fetchPlayer(entry.player_id) : entry;
+    let player = entry;
+    const playerId = SRNfl.srNflResolvePlayerId(entry);
+    if (isNflEntry(entry) && playerId) {
+      try {
+        player = await fetchNflPlayer(playerId);
+      } catch (_) {
+        player = { ...entry, player_id: playerId };
+      }
+    } else if (entry.player_id && !isNflEntry(entry)) {
+      player = await fetchPlayer(entry.player_id);
+    }
     selectedPlayer = player;
 
     let weeklySnap = null;
-    if (player.player_id) {
+    const weeklyPlayerKey = player.cs_player_id || normalizeCsPlayerId(player);
+    if (weeklyPlayerKey) {
       try {
-        const weeklyData = await fetchPlayerWeeklySignals(player.player_id);
+        const weeklyData = await fetchPlayerWeeklySignals(weeklyPlayerKey);
         weeklySnap = resolveWeeklySnapshot(player, weeklyData?.items || []);
       } catch (_) {
         weeklySnap = null;
@@ -2697,7 +2768,7 @@ function renderSearchResults(matches, query, { loading = false } = {}) {
         type="button"
         role="option"
         aria-selected="${index === searchHighlightIndex ? "true" : "false"}"
-        data-player-id="${entry.player_id || ""}"
+        data-player-id="${SRNfl.srNflResolvePlayerId(entry) || entry.player_id || ""}"
         data-is-leaderboard="${scored ? "1" : "0"}"
       >
         ${renderSearchResultHeadshot(entry)}
@@ -2878,8 +2949,7 @@ function setupPlayerSearch() {
     if (!button) return;
 
     const playerId = button.dataset.playerId;
-    const entry = currentSearchMatches.find((item) => String(item.player_id || "") === playerId)
-      || currentSearchMatches.find((item) => item.player_name === button.querySelector("strong")?.textContent);
+    const entry = resolveSearchEntryByPlayerId(currentSearchMatches, playerId);
     if (!entry) return;
 
     await handleSearchResultPick(entry);

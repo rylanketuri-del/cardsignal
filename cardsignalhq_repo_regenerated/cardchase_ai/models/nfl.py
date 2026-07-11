@@ -14,7 +14,7 @@ NFLSourceMethod = Literal["OFFICIAL_API", "LICENSED_API", "APPROVED_IMPORT", "MA
 NFLDataQuality = Literal["HIGH", "MEDIUM", "LOW", "INSUFFICIENT"]
 NFLPeriodType = Literal["RECENT_3_GAMES", "REGULAR_SEASON", "POSTSEASON", "PRESEASON", "PREVIOUS_SEASON"]
 NFLPositionGroup = Literal["QB", "RB", "WR", "TE", "K", "DEFENSIVE_PLAYER", "UNKNOWN"]
-NFLSeasonPhase = Literal["REGULAR_SEASON", "POSTSEASON", "PRESEASON", "OFFSEASON"]
+NFLSeasonPhase = Literal["REGULAR_SEASON", "POSTSEASON", "PRESEASON", "OFFSEASON", "INACTIVE", "UNKNOWN"]
 
 OFFENSIVE_POSITIONS = frozenset({"QB", "RB", "WR", "TE"})
 OPTIONAL_POSITIONS = frozenset({"K", "DEFENSIVE_PLAYER"})
@@ -129,6 +129,7 @@ class NFLSignalDriver(BaseModel):
 
 
 class NFLPlayerSearchResult(BaseModel):
+    player_id: str
     cs_player_id: str
     source_player_id: str
     player_name: str

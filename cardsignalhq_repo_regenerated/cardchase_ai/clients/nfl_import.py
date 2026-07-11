@@ -144,6 +144,7 @@ class NFLImportProvider:
             pos = player.get("position")
             results.append(
                 NFLPlayerSearchResult(
+                    player_id=sid,
                     cs_player_id=cs_nfl_player_id(sid),
                     source_player_id=sid,
                     player_name=player["player_name"],

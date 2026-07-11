@@ -311,6 +311,8 @@ class NFLProviderTests(unittest.TestCase):
             results = provider.search_players("Quarterback", limit=5)
             self.assertEqual(len(results), 1)
             self.assertEqual(results[0].cs_player_id, "CS-NFL-P-TEST-QB-01")
+            self.assertEqual(results[0].player_id, "TEST-QB-01")
+            self.assertEqual(results[0].player_id, results[0].source_player_id)
 
     def test_search_empty_when_unavailable(self):
         with patch("cardchase_ai.nfl_api.is_league_available", return_value=False):

@@ -14,6 +14,7 @@ from cardchase_ai.models.nfl import NFL_PLAYER_SIGNAL_V1, map_nfl_position
 from cardchase_ai.models.schemas import HitterHotnessBreakdown, MarketSnapshot, RollingHitterStats
 from cardchase_ai.models.weekly import PlayerWeeklySignalSnapshot, WeeklyIntelligenceRun
 from cardchase_ai.nfl_score import build_nfl_performance_snapshot
+from cardchase_ai.nfl_scouting_mapper import build_nfl_scouting_evidence, resolve_nfl_season_phase
 from cardchase_ai.nfl_season import nfl_season_phase
 from cardchase_ai.nfl_signal_drivers import generate_nfl_signal_drivers
 from cardchase_ai.nfl_storage import NFLStorage
@@ -87,6 +88,7 @@ def build_nfl_player_snapshot(
     recent_snap = nfl_storage.fetch_latest_snapshot_by_period(csp_id, "RECENT_3_GAMES")
     season_snap = nfl_storage.fetch_latest_snapshot_by_period(csp_id, "REGULAR_SEASON")
     drivers = nfl_storage.fetch_signal_drivers(csp_id)
+    stored_phase = output.nfl_season_phase or "UNKNOWN"
 
     missing_inputs = list(dict.fromkeys(collector_missing + scarcity_missing))
     if recent_snap and recent_snap.missing_inputs:
@@ -119,18 +121,19 @@ def build_nfl_player_snapshot(
     recommendation = derive_recommendation(hotness, collector) if card_signal is not None else None
     status = derive_status(hotness, None)
 
-    evidence = {
-        "performance_reasons": hotness.reasons,
-        "collector_evidence": collector_evidence,
-        "scarcity_evidence": scarcity_evidence,
-        "confidence_multiplier": hotness.confidence_multiplier,
-        "tag": hotness.tag,
-        "nfl_recent_stats": recent_snap.stats if recent_snap else {},
-        "nfl_season_stats": season_snap.stats if season_snap else {},
-        "nfl_data_quality": recent_snap.data_quality if recent_snap else "INSUFFICIENT",
-        "nfl_signal_drivers": [d.model_dump(mode="json") for d in drivers],
-        "nfl_algorithm_version": NFL_PLAYER_SIGNAL_V1,
-    }
+    evidence = build_nfl_scouting_evidence(
+        nfl_season_phase=stored_phase,
+        season=period.season,
+        recent_snap=recent_snap,
+        season_snap=season_snap,
+        drivers=drivers,
+        performance_reasons=hotness.reasons,
+        collector_evidence=collector_evidence,
+        scarcity_evidence=scarcity_evidence,
+        confidence_multiplier=hotness.confidence_multiplier,
+        tag=hotness.tag,
+    )
+    evidence["nfl_algorithm_version"] = NFL_PLAYER_SIGNAL_V1
 
     return PlayerWeeklySignalSnapshot(
         snapshot_id=str(uuid.uuid4()),
@@ -187,7 +190,10 @@ def process_player_for_nfl_weekly(
         season_stats = provider.fetch_season_stats(source_id, season)
         recent_games = select_recent_games(all_games, limit=3)
         recent_stats = aggregate_position_stats(position_group, recent_games)
-        season_phase = nfl_season_phase(has_active_season_games=bool(recent_games))
+        season_phase = resolve_nfl_season_phase(
+            active_status=candidate.get("active_status"),
+            computed_phase=nfl_season_phase(has_active_season_games=bool(recent_games)),
+        )
 
         cs_id = cs_nfl_player_id(source_id)
         recent_snapshot = build_nfl_performance_snapshot(
@@ -261,6 +267,7 @@ def process_player_for_nfl_weekly(
             player_name=player_name,
             player_id=_nfl_player_id_int(source_id),
             source_player_id=source_id,
+            nfl_season_phase=season_phase,
             stats_7d=stats_recent,
             stats_30d=stats_season,
             market_snapshots=market_snapshots,
