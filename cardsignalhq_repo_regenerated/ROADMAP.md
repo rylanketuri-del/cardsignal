@@ -67,28 +67,39 @@
   - Admin `POST /api/weekly/run` with duplicate guard and force option
   - Local JSON fallback when Supabase is unavailable
 
+### Data Confidence & Explainability (Sprint 10.0)
+
+- **Release v0.14.0 — Data Confidence Layer**
+  - [x] Reusable `DataConfidence` model (`DATA_CONFIDENCE_V1`)
+  - [x] Confidence levels: VERY_HIGH, HIGH, MEDIUM, LOW, INSUFFICIENT — independent of recommendations
+  - [x] Freshness buckets: LIVE, RECENT, CURRENT, STALE, UNKNOWN
+  - [x] Explainability categories with available / missing / pending states
+  - [x] Honest missing-input explanations from stored gaps only
+  - [x] `GET /api/confidence/player/{id}` and `GET /api/confidence/card/{id}` (read-only)
+  - [x] Scouting Report + Card Report headers: Evidence, Freshness, Updated
+  - [x] Expandable “Why this report?” trust section
+  - [x] No proprietary scoring weights exposed
+
 ## Current Milestone
 
-### Release v0.10.2 — Scouting Report 2.0
+### Release v0.14.0 — Data Confidence & Explainability
 
-In progress. Do not merge or deploy until verification pass.
+Shipped in this branch. Do not merge or deploy until verification pass.
 
-**Scouting Report** transforms the player modal into a premium single-page research experience:
+**Data Confidence Layer** introduces transparent evidence quality across player and card reports:
 
-- Scrollable editorial report (no tabs): Header → Player Snapshot → Why This Signal → Cards → Market → Signal Analysis → Outlook
-- Real stored intelligence only — honest pending states when data is unavailable
-- Evidence replaces Conviction/Confidence throughout the report
-- Player performance from `stats_7d` / `stats_30d`; market from stored snapshots
-- Signal Analysis covers Performance, Market, Momentum, Scarcity, and Collector Demand
-- Homepage (Signal Center) unchanged
-
-### Release v0.9.0 — Weekly Intelligence Pipeline
-
-Shipped in prior release. Verification pass complete for weekly pipeline foundation.
-
-**Beta schedule (documented, idempotent guard):** Tuesday 6:00 AM America/New_York via external scheduler calling `POST /api/weekly/run` with admin token.
+- Evidence and freshness badges in report headers
+- Trust section summarizing verified snapshots and honest gaps
+- Confidence computed from stored signals only — never from BUY/HOLD/SELL
+- API endpoints for programmatic confidence access
 
 ## Up Next
+
+### Sprint 10.1 — NBA Performance Adapter
+
+- NBA stats client and performance scoring adapter
+- League-specific reporting period rules for NBA beta
+- NBA player universe for weekly intelligence
 
 ### v0.9.1 — Production QA and Data Seeding
 

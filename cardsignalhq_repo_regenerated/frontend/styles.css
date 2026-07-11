@@ -5943,6 +5943,221 @@ body.pi-modal-open {
   border-color: var(--charcoal);
 }
 
+/* ===========================
+   Sprint 10.0 — Data Confidence Layer
+=========================== */
+
+.dc-header-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 16px;
+  margin: 12px 0 4px;
+}
+
+.dc-badge-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dc-badge-label {
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(247, 245, 242, 0.65);
+}
+
+.dc-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 64px;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(220, 214, 206, 0.35);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.dc-badge--evidence-high {
+  background: rgba(112, 138, 114, 0.18);
+  border-color: rgba(112, 138, 114, 0.4);
+  color: #c8dcc9;
+}
+
+.dc-badge--evidence-medium {
+  background: rgba(187, 132, 85, 0.16);
+  border-color: rgba(187, 132, 85, 0.38);
+  color: #e8cdb3;
+}
+
+.dc-badge--evidence-low {
+  background: rgba(154, 102, 86, 0.14);
+  border-color: rgba(154, 102, 86, 0.35);
+  color: #dcc4bb;
+}
+
+.dc-badge--evidence-insufficient {
+  background: rgba(125, 120, 115, 0.12);
+  border-color: rgba(125, 120, 115, 0.3);
+  color: rgba(247, 245, 242, 0.55);
+}
+
+.dc-badge--freshness-live {
+  background: rgba(47, 125, 74, 0.16);
+  border-color: rgba(47, 125, 74, 0.38);
+  color: #b8e0c8;
+}
+
+.dc-badge--freshness-recent {
+  background: rgba(112, 138, 114, 0.14);
+  border-color: rgba(112, 138, 114, 0.35);
+  color: #c8dcc9;
+}
+
+.dc-badge--freshness-current {
+  background: rgba(187, 132, 85, 0.12);
+  border-color: rgba(187, 132, 85, 0.32);
+  color: #e8cdb3;
+}
+
+.dc-badge--freshness-stale {
+  background: rgba(154, 102, 86, 0.12);
+  border-color: rgba(154, 102, 86, 0.32);
+  color: #dcc4bb;
+}
+
+.dc-badge--freshness-unknown {
+  background: rgba(125, 120, 115, 0.1);
+  border-color: rgba(125, 120, 115, 0.28);
+  color: rgba(247, 245, 242, 0.5);
+}
+
+.dc-trust {
+  margin-bottom: 20px;
+  padding: 14px 16px;
+  border: 1px solid var(--stone);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+}
+
+.dc-trust-summary {
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--bronze);
+  list-style: none;
+}
+
+.dc-trust-summary::-webkit-details-marker {
+  display: none;
+}
+
+.dc-trust-body {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--stone);
+}
+
+.dc-trust-lead {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0 0 8px;
+}
+
+.dc-trust-list {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+}
+
+.dc-trust-list li {
+  font-size: 13px;
+  color: var(--text);
+  padding: 4px 0;
+}
+
+.dc-trust-check {
+  color: var(--sage);
+  margin-right: 6px;
+}
+
+.dc-trust-meta {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 4px 0;
+}
+
+.dc-trust-meta-label {
+  font-weight: 700;
+  color: var(--bronze);
+  margin-right: 6px;
+}
+
+.dc-trust-pending {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 0;
+}
+
+.dc-trust-missing {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--stone);
+}
+
+.dc-trust-missing-label {
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--clay);
+  margin: 0 0 6px;
+}
+
+.dc-trust-missing-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.sr-card-report-header {
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--stone);
+}
+
+.sr-card-report-kicker {
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--bronze);
+  margin: 0 0 8px;
+}
+
+.sr-card-report-header .dc-header-badges {
+  margin: 0 0 6px;
+}
+
+.sr-card-report-header .dc-badge-label {
+  color: var(--muted);
+}
+
+.sr-card-report-updated {
+  font-size: 11px;
+  color: var(--muted);
+  margin: 0;
+}
+
 .hidden {
   display: none !important;
 }
