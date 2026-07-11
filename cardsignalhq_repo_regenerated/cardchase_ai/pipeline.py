@@ -15,6 +15,9 @@ from cardchase_ai.delivery import AlertDeliveryClient, DeliverySettings, build_n
 from cardchase_ai.models.schemas import HitterHotnessBreakdown, MarketSnapshot, RollingHitterStats
 from cardchase_ai.score import build_hotness_breakdown
 from cardchase_ai.storage import SupabaseStorage
+from cardchase_ai.season_metadata import refresh_league_season_metadata
+from cardchase_ai.signal_driver_service import persist_pipeline_signal_drivers
+from cardchase_ai.signal_driver_storage import build_signal_driver_storage
 from cardchase_ai.utils.normalize import summarize_market
 from cardchase_ai.utils.rolling import filter_last_n_days, summarize_hitter_window
 
@@ -416,10 +419,31 @@ def run() -> Path:
     return Path(result.leaderboard_path)
 
 
+def _persist_signal_drivers(outputs: list[PlayerPipelineOutput], settings) -> None:
+    storage = build_signal_driver_storage(settings)
+    refresh_league_season_metadata("MLB", settings.mlb_season, storage, mlb_client=MLBClient())
+
+    for output in outputs:
+        try:
+            persist_pipeline_signal_drivers(
+                player_name=output.player_name,
+                source_player_id=output.player_id,
+                league="MLB",
+                stats_7d=output.stats_7d,
+                stats_30d=output.stats_30d,
+                market_snapshots=output.market_snapshots,
+                season=settings.mlb_season,
+                storage=storage,
+            )
+        except Exception as error:
+            print(f"Signal driver persistence failed for {output.player_name}: {error}")
+
+
 def run_pipeline() -> PipelineResult:
     settings = get_settings()
 
     outputs = _build_outputs()
+    _persist_signal_drivers(outputs, settings)
     serialized = [json.loads(output.model_dump_json()) for output in outputs]
 
     file_path = _write_outputs(serialized, settings.output_dir)

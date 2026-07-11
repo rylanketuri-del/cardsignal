@@ -5585,6 +5585,113 @@ body.pi-modal-open {
   color: var(--text);
 }
 
+.sr-snapshot-range {
+  margin: 0 0 12px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.sr-signal-drivers .sr-drivers {
+  display: grid;
+  gap: 18px;
+}
+
+.sr-driver-group {
+  display: grid;
+  gap: 10px;
+}
+
+.sr-driver-group-label {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--bronze);
+}
+
+.sr-driver-list {
+  display: grid;
+  gap: 12px;
+}
+
+.sr-driver-card {
+  padding: 16px 18px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(220, 214, 206, 0.9);
+  background: var(--panel);
+  display: grid;
+  gap: 8px;
+}
+
+.sr-driver-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sr-driver-title {
+  margin: 0;
+  font-family: Cormorant, Georgia, serif;
+  font-size: 20px;
+  line-height: 1.15;
+  color: var(--charcoal);
+}
+
+.sr-driver-summary {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.sr-driver-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.sr-driver-impact {
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  white-space: nowrap;
+}
+
+.sr-impact--positive {
+  color: var(--signal-green);
+  background: rgba(47, 125, 74, 0.1);
+}
+
+.sr-impact--negative {
+  color: var(--signal-red);
+  background: rgba(154, 102, 86, 0.12);
+}
+
+.sr-impact--neutral {
+  color: var(--bronze);
+  background: rgba(138, 103, 71, 0.1);
+}
+
+.sr-impact--unknown {
+  color: var(--muted);
+  background: rgba(125, 120, 115, 0.12);
+}
+
+.sr-driver-evidence.sr-evidence--high { color: var(--signal-green); }
+.sr-driver-evidence.sr-evidence--medium { color: var(--copper); }
+.sr-driver-evidence.sr-evidence--low { color: var(--clay); }
+.sr-driver-evidence.sr-evidence--insufficient { color: var(--muted); }
+
 .sr-cards-list {
   display: grid;
   gap: 16px;

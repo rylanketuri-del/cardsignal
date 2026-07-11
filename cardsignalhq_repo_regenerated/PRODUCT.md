@@ -33,8 +33,8 @@ Report sections (scrollable, editorial layout):
 | Section | Purpose |
 |---------|---------|
 | **Header** | Player, team, position, CardSignal Score, recommendation, status, updated timestamp, algorithm version |
-| **Player Snapshot** | Last 7 Days and Season Snapshot from stored MLB stats |
-| **Why This Signal** | Signal contributors explaining score changes from real evidence |
+| **Player Snapshot** | Season-aware stats: Last 7 Days + Season Snapshot during active season; Previous Season Snapshot + Latest Developments during offseason |
+| **Signal Drivers** | Verified explainers for why the score matters now — performance, market, career/team developments |
 | **Cards** | Player-linked card intelligence with pricing, movement, listings, PSA population when available |
 | **Market** | Research-style market summary from stored eBay snapshots |
 | **Signal Analysis** | Performance, Market, Momentum, Scarcity, Collector Demand with scores and evidence quality |
@@ -47,6 +47,21 @@ Report UX:
 - Centered panel on desktop; full-screen drawer on mobile
 - Body scroll locked while open
 - Uses only real stored intelligence or honest pending states — no fabricated report data
+
+## Signal Drivers Principles
+
+Signal Drivers explain **why a CardSignal Score matters right now** — they do not replace the scoring engine.
+
+- **Explainers, not recommendations** — Signal Drivers surface verified intelligence; they do not independently issue BUY/SELL/HOLD recommendations
+- **Active season vs offseason** — during the regular season, recent performance and season context appear; during the offseason, previous-season snapshots, verified developments, market activity, and scarcity take priority
+- **Verified stored evidence only** — every driver must come from a stored source with timestamp, source type, and evidence quality; missing evidence is INSUFFICIENT
+- **Performance is one catalyst** — news, career events, team changes, market activity, and scarcity may also influence collector attention
+- **No stale stats as recent** — offseason and inactive players must not display recent-form statistics as though they are current; season and date range are labeled clearly
+- **No unsupported rumors** — unverified trade rumors, speculation, and ambiguous developments never appear as Signal Drivers
+- **No fabricated intelligence** — NBA, NFL, and legacy player drivers are not fabricated; only MLB performance adapters are active in beta
+- **Timestamps mandatory** — every driver includes `occurred_at`, `captured_at`, and `source_type` labels in the UI
+
+GET routes serve stored Signal Drivers only — they never trigger news scraping or provider work.
 
 ## CardSignal Score
 

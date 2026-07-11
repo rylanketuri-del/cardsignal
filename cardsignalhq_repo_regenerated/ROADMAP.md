@@ -47,48 +47,66 @@
   - [x] CardSignal Outlook with Evidence (replaces Conviction/Confidence)
   - [x] No fabricated report data — pending states when intelligence unavailable
 
-### Real Card Intelligence (Sprint 8.x)
-
-- **Sprint 8.7 — partial in this branch**
+- **Sprint 9.2 — Real Card Intelligence & Weekly Pipeline** *(complete)*
   - [x] eBay market snapshots in manual pipeline
   - [x] Card intelligence synthesis from stored eBay query templates
-  - [ ] Card registry (not present in this branch)
-  - [ ] PSA population provider/integration (not present; optional stage interface only)
   - [x] Historical market movement foundation (stored snapshot comparison; no live provider reads on GET)
+  - [x] Weekly intelligence orchestration layer for Tuesday refresh
+  - [x] Top 100 MLB beta universe
+  - [x] Append-only player/card weekly snapshots
+  - [x] Signal of the Week selection with evidence requirements
+  - [x] Today's Leaders from latest completed official run
+  - [x] `GET /api/weekly/latest`, weekly history endpoints
+  - [x] Admin `POST /api/weekly/run` with duplicate guard and force option
+  - [x] Local JSON fallback when Supabase is unavailable
 
-- **Sprint 8.8 — Weekly Intelligence Pipeline** *(in progress — verification pass pending)*
-  - Weekly orchestration layer for Tuesday refresh
-  - Top 100 MLB beta universe
-  - Append-only player/card weekly snapshots
-  - Signal of the Week selection with evidence requirements
-  - Today's Leaders from latest completed official run
-  - Explicit stage outcomes with FAILED / PARTIAL / SKIPPED / UNAVAILABLE handling
-  - `GET /api/weekly/latest`, weekly history endpoints
-  - Admin `POST /api/weekly/run` with duplicate guard and force option
-  - Local JSON fallback when Supabase is unavailable
+### Signal Drivers & Seasonal Intelligence (Sprint 9.3)
+
+- **Release v0.11.1 — Signal Drivers & Seasonal Intelligence** *(complete)*
+  - [x] Reusable Signal Driver model with impact, evidence quality, timestamps, and source types
+  - [x] Sport-season state model (REGULAR_SEASON, POSTSEASON, PRESEASON, OFFSEASON, INACTIVE, UNKNOWN)
+  - [x] MLB performance drivers from stored 7d/30d statistics only
+  - [x] Market and scarcity drivers from stored snapshots
+  - [x] Provider-neutral `PlayerDevelopmentProvider` interface (manual verified, approved import, official API)
+  - [x] Append-only Signal Driver storage with duplicate prevention (Supabase + JSON fallback)
+  - [x] `GET /api/players/{player_id}/signal-drivers` read-only endpoint
+  - [x] Admin-protected development ingestion endpoint
+  - [x] Scouting Report Signal Drivers section replacing Why This Signal
+  - [x] Season-aware Player Snapshot (active season vs offseason vs preseason layouts)
+  - [x] Multi-sport foundation (NBA/NFL adapters prepared, MLB active)
+  - [x] Future-compatible score-to-driver relationship fields on weekly snapshots
+  - [x] No fabricated NBA/NFL/legacy intelligence
 
 ## Current Milestone
 
-### Release v0.10.2 — Scouting Report 2.0
+### Release v0.11.1 — Signal Drivers & Seasonal Intelligence
 
-In progress. Do not merge or deploy until verification pass.
+Complete. Do not merge or deploy until verification pass.
 
-**Scouting Report** transforms the player modal into a premium single-page research experience:
+**Signal Drivers** explain why a player's CardSignal Score matters right now:
 
-- Scrollable editorial report (no tabs): Header → Player Snapshot → Why This Signal → Cards → Market → Signal Analysis → Outlook
-- Real stored intelligence only — honest pending states when data is unavailable
-- Evidence replaces Conviction/Confidence throughout the report
-- Player performance from `stats_7d` / `stats_30d`; market from stored snapshots
-- Signal Analysis covers Performance, Market, Momentum, Scarcity, and Collector Demand
-- Homepage (Signal Center) unchanged
-
-### Release v0.9.0 — Weekly Intelligence Pipeline
-
-Shipped in prior release. Verification pass complete for weekly pipeline foundation.
-
-**Beta schedule (documented, idempotent guard):** Tuesday 6:00 AM America/New_York via external scheduler calling `POST /api/weekly/run` with admin token.
+- Stored evidence only — performance, market, career/team developments
+- Season-aware Scouting Report layouts for active season, offseason, and preseason
+- Evidence quality and source-type labels on every driver card
+- Honest empty states when no verified drivers exist
 
 ## Up Next
+
+### Sprint 9.4 — NFL Performance Adapter
+
+- NFL season metadata from stored schedule
+- Recent 3-game performance window
+- Season totals/averages drivers
+- Offseason developments, training camp, depth-chart and contract changes
+- No fabricated NFL players or statistics until real data is stored
+
+### Sprint 9.5 — NBA Performance Adapter
+
+- NBA season metadata from stored schedule
+- Recent 5-game performance window
+- Season averages drivers
+- Playoffs, offseason developments, trades, contracts, Summer League
+- No fabricated NBA players or statistics until real data is stored
 
 ### v0.9.1 — Production QA and Data Seeding
 
@@ -111,6 +129,11 @@ Shipped in prior release. Verification pass complete for weekly pipeline foundat
 
 ## Future
 
+- **Legacy Intelligence** — retired hobby pillars (Michael Jordan, Ken Griffey Jr., Kobe Bryant, Tom Brady, and others) using card-market activity, auction results, sales history, PSA population, scarcity, set anniversaries, Hall of Fame and milestone events, documentaries, major product releases, and historic performance context — never fake recent performance statistics
+- **Development/news provider integration** — wire approved news and official APIs through `PlayerDevelopmentProvider`
+- **Signal Driver alerts** — notify collectors when verified developments affect watched players
+- **Signal Driver history** — searchable archive of past drivers and seasonal context
+- **Offseason market reports** — curated market intelligence during league off-seasons
 - **Card registry** — canonical card identity layer for player-linked intelligence
 - **PSA population integration** — wired through `PopulationProvider` when available
 - **Tuesday email report** — weekly digest from stored homepage intelligence
