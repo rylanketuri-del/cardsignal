@@ -74,7 +74,16 @@ Current production scope:
 - eBay Browse API for active listings
 - Supabase for leaderboard persistence, auth, watchlists, alerts, and notifications
 
-Placeholder intelligence (card rows, market metrics, forecast reasons) uses stable seeded values when backend fields are missing. Live card-market snapshots will replace placeholders in a future release.
+Placeholder intelligence (card rows, market metrics, forecast reasons) uses honest pending states when backend fields are missing. Live card-market snapshots replace gaps during weekly refresh — no fabricated report data in collector-facing paths.
+
+## Closed Beta Principles
+
+- Beta users must be able to report confusion and bugs easily via the Beta Feedback button
+- Every feedback submission includes safe version/build context automatically
+- No fabricated intelligence — reports use stored data or explicit pending states
+- User-facing errors must be safe and understandable (no raw JSON, stack traces, or internal IDs)
+- Private feedback must remain private — no public reads, admin review only
+- Readiness is determined by quality gates (see `BETA_CHECKLIST.md`), not feature count
 
 ## Weekly Intelligence Principles
 

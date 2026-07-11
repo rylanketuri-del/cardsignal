@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, List
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -14,6 +14,14 @@ from cardchase_ai.clients.mlb import MLBClient
 from cardchase_ai.config import get_settings
 from cardchase_ai.pipeline import run_pipeline
 from cardchase_ai.storage import SupabaseError, SupabaseStorage
+from cardchase_ai.beta_feedback import (
+    BetaFeedbackRequest,
+    build_feedback_record,
+    check_rate_limit,
+    contains_sensitive_data,
+)
+from cardchase_ai.beta_readiness import run_beta_readiness_audit
+from cardchase_ai.version import get_app_info
 from cardchase_ai.weekly_intelligence import build_latest_weekly_api_payload, build_weekly_storage, run_weekly_intelligence
 
 
@@ -70,7 +78,7 @@ class WeeklyRunRequest(BaseModel):
     market_enabled: bool | None = None
     population_enabled: bool | None = None
 
-app = FastAPI(title="CardChase AI API", version="0.6.0")
+app = FastAPI(title="CardChase AI API", version="0.14.1")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -220,9 +228,10 @@ async def receive_ebay_account_deletion_notification():
     return {"status": "received"}
 
 
-@app.post("/api/ebay/account-deletion")
-async def receive_ebay_account_deletion_notification():
-    return {"status": "received"}
+@app.get("/api/app-info")
+def get_app_info_route() -> JSONResponse:
+    return JSONResponse(get_app_info())
+
 
 @app.get("/api/config")
 def get_public_config() -> JSONResponse:
@@ -499,3 +508,70 @@ def delete_admin_tracked_player(player_name: str, admin=Depends(_require_admin))
         raise HTTPException(status_code=404, detail="Supabase is not configured.")
     storage.delete_tracked_player(player_name)
     return JSONResponse({"status": "ok"})
+
+
+def _optional_user_id(authorization: str | None = Header(default=None)) -> str | None:
+    if not authorization or not authorization.startswith("Bearer "):
+        return None
+    storage = _storage()
+    if not storage:
+        return None
+    token = authorization.replace("Bearer ", "", 1)
+    try:
+        user = storage.fetch_user(token)
+        return user.get("id")
+    except SupabaseError:
+        return None
+
+
+@app.post("/api/beta-feedback")
+def submit_beta_feedback(
+    payload: BetaFeedbackRequest,
+    request: Request,
+    authorization: str | None = Header(default=None),
+) -> JSONResponse:
+    if contains_sensitive_data(payload.model_dump()):
+        raise HTTPException(status_code=400, detail="Feedback contains unsupported sensitive fields.")
+
+    client_ip = request.client.host if request.client else "unknown"
+    rate_key = f"{client_ip}:{payload.feedback_type}"
+    if not check_rate_limit(rate_key):
+        raise HTTPException(status_code=429, detail="Too many feedback submissions. Please wait and try again.")
+
+    storage = _storage()
+    if not storage:
+        raise HTTPException(status_code=503, detail="Feedback is temporarily unavailable.")
+
+    user_id = _optional_user_id(authorization)
+    record = build_feedback_record(payload, user_id=user_id, client_ip=client_ip)
+    try:
+        storage.insert_beta_feedback(record)
+    except SupabaseError:
+        raise HTTPException(status_code=503, detail="Feedback is temporarily unavailable.") from None
+
+    return JSONResponse({"status": "ok"})
+
+
+@app.get("/api/admin/beta-feedback")
+def list_beta_feedback(
+    status: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+    admin=Depends(_require_admin),
+) -> JSONResponse:
+    storage = _storage()
+    if not storage:
+        raise HTTPException(status_code=503, detail="Supabase is not configured.")
+    items = storage.fetch_beta_feedback(status=status, limit=limit, offset=offset)
+    return JSONResponse({"items": items, "count": len(items)})
+
+
+@app.get("/api/admin/beta-readiness")
+def get_beta_readiness(admin=Depends(_require_admin)) -> JSONResponse:
+    settings = _settings()
+    storage = _storage()
+    result = run_beta_readiness_audit(
+        supabase_configured=bool(storage),
+        settings=settings,
+    )
+    return JSONResponse(result.to_dict())

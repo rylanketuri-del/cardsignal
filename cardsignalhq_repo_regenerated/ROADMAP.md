@@ -56,39 +56,70 @@
   - [ ] PSA population provider/integration (not present; optional stage interface only)
   - [x] Historical market movement foundation (stored snapshot comparison; no live provider reads on GET)
 
-- **Sprint 8.8 — Weekly Intelligence Pipeline** *(in progress — verification pass pending)*
-  - Weekly orchestration layer for Tuesday refresh
-  - Top 100 MLB beta universe
-  - Append-only player/card weekly snapshots
-  - Signal of the Week selection with evidence requirements
-  - Today's Leaders from latest completed official run
-  - Explicit stage outcomes with FAILED / PARTIAL / SKIPPED / UNAVAILABLE handling
-  - `GET /api/weekly/latest`, weekly history endpoints
-  - Admin `POST /api/weekly/run` with duplicate guard and force option
-  - Local JSON fallback when Supabase is unavailable
+- **Sprint 8.8 — Weekly Intelligence Pipeline**
+  - [x] Weekly orchestration layer for Tuesday refresh
+  - [x] Top 100 MLB beta universe
+  - [x] Append-only player/card weekly snapshots
+  - [x] Signal of the Week selection with evidence requirements
+  - [x] Today's Leaders from latest completed official run
+  - [x] Explicit stage outcomes with FAILED / PARTIAL / SKIPPED / UNAVAILABLE handling
+  - [x] `GET /api/weekly/latest`, weekly history endpoints
+  - [x] Admin `POST /api/weekly/run` with duplicate guard and force option
+  - [x] Local JSON fallback when Supabase is unavailable
+
+### Beta Readiness (Sprint 10.x)
+
+- **Sprint 10.0 — Signal Center Integration** *(complete)*
+  - [x] Homepage Signal Center redesign integrated with Scouting Report 2.0
+  - [x] Weekly intelligence wired into Featured Signal and Today's Leaders
+
+- **Release v0.14.1 — Sprint 10.1 Beta Readiness Audit** *(complete — verification pass pending)*
+  - [x] Internal beta-readiness audit (`scripts/run_beta_readiness_audit.py`, `GET /api/admin/beta-readiness`)
+  - [x] Beta Feedback button, modal, and `POST /api/beta-feedback`
+  - [x] `beta_feedback` Supabase table with private RLS
+  - [x] Version/build footer and beta changelog
+  - [x] Hash routing for Scouting Report and Card Report deep links
+  - [x] Browser back/forward modal state restoration
+  - [x] Safe error rendering and dead placeholder code removal
+  - [x] `BETA_CHECKLIST.md` closed-beta quality gates
 
 ## Current Milestone
 
-### Release v0.10.2 — Scouting Report 2.0
+### Release v0.14.1 — Closed Beta Readiness
 
-In progress. Do not merge or deploy until verification pass.
-
-**Scouting Report** transforms the player modal into a premium single-page research experience:
-
-- Scrollable editorial report (no tabs): Header → Player Snapshot → Why This Signal → Cards → Market → Signal Analysis → Outlook
-- Real stored intelligence only — honest pending states when data is unavailable
-- Evidence replaces Conviction/Confidence throughout the report
-- Player performance from `stats_7d` / `stats_30d`; market from stored snapshots
-- Signal Analysis covers Performance, Market, Momentum, Scarcity, and Collector Demand
-- Homepage (Signal Center) unchanged
-
-### Release v0.9.0 — Weekly Intelligence Pipeline
-
-Shipped in prior release. Verification pass complete for weekly pipeline foundation.
-
-**Beta schedule (documented, idempotent guard):** Tuesday 6:00 AM America/New_York via external scheduler calling `POST /api/weekly/run` with admin token.
+Verification pass pending. Do not merge or deploy until checklist is green.
 
 ## Up Next
+
+### Sprint 10.2 — NBA Performance Adapter
+
+- NBA performance data adapter foundation
+- League-specific reporting period rules
+- No collector invites for NBA until real data is verified
+
+### Closed Beta Launch Checklist
+
+- Apply `BETA_CHECKLIST.md` gates in staging
+- Privacy / Terms pages
+- Closed-beta invite workflow
+- Onboarding guide for first-time collectors
+
+### Beta Feedback Review
+
+- Admin triage workflow for `beta_feedback` submissions
+- Status transitions: NEW → REVIEWED → PLANNED → CLOSED
+
+### Product Analytics
+
+- Instrument key collector flows (search, report views, feedback)
+
+### Privacy / Terms
+
+- Collector-facing privacy policy and terms of use
+
+### Support Workflow
+
+- Documented path from feedback → engineering → release notes
 
 ### v0.9.1 — Production QA and Data Seeding
 
@@ -99,7 +130,7 @@ Shipped in prior release. Verification pass complete for weekly pipeline foundat
 
 ### v1.0.0 — Multi-Sport Expansion
 
-- Enable NBA, NFL, NHL sport tabs
+- Enable NBA, NFL, NHL sport tabs with real data
 - Sport-specific leaderboards and scoring adjustments
 - Cross-sport Signal Center filters
 
