@@ -3816,6 +3816,11 @@ button,
   font-size: 0.875rem;
 }
 
+.weekly-movement-note {
+  margin-top: 6px;
+  color: var(--bronze);
+}
+
 .signal-week-banner--empty {
   padding: 2rem;
   text-align: center;

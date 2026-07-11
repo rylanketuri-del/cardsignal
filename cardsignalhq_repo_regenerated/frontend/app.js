@@ -264,12 +264,17 @@ function renderWeeklyRefreshNote() {
 }
 
 function buildLeaderboard(entries) {
+  const movementNote = WeeklyMovement.shouldShowWeeklyMovementNote(weeklyIntelligence)
+    ? `<p class="section-desc weekly-movement-note">${WeeklyMovement.WM_MOVEMENT_NOTE}</p>`
+    : "";
+
   return `
     <section class="market-leaders-module sport-section sport-section--mlb" data-sport="mlb">
       <div class="market-leaders-header">
         <div>
           <h2 class="leaders-section-title">Today's Leaders</h2>
           <p class="section-desc">${SECTION_DESCRIPTIONS.leaders}</p>
+          ${movementNote}
         </div>
       </div>
 
@@ -289,8 +294,8 @@ function buildLeaderboard(entries) {
             const score = entry.hotness?.total_score || 0;
             const performance = entry.hotness?.performance_score || 0;
             const market = entry.hotness?.market_score || 0;
-            const movement = formatWeeklyMovement(entry);
-            const moveClass = weeklyMovementClass(movement);
+            const movement = WeeklyMovement.formatWeeklyMovement(entry);
+            const moveClass = WeeklyMovement.weeklyMovementClass(movement);
             const team = getTeamAbbrev(entry);
             const position = entry.position || "—";
 
@@ -308,7 +313,7 @@ function buildLeaderboard(entries) {
                 <span class="leader-number">${formatScore(score)}</span>
                 <span class="leader-metric">${formatScore(performance)}</span>
                 <span class="leader-metric">${formatScore(market)}</span>
-                <span class="leader-trend ${moveClass}">${renderWeeklyMovementLabel(movement)}</span>
+                <span class="leader-trend ${moveClass}">${WeeklyMovement.renderWeeklyMovementLabel(movement)}</span>
                 <span class="leader-report-pill">View Report</span>
               </button>
             `;
@@ -2377,27 +2382,6 @@ function getSignalOfWeekStatus(entry = {}) {
   return { label: "RISING", emoji: "📈", className: "signal-week-status--rising" };
 }
 
-function formatWeeklyMovement(entry = {}) {
-  if (entry.weekly_change != null && Number.isFinite(Number(entry.weekly_change))) {
-    const delta = Number(entry.weekly_change);
-    const arrow = delta > 0.01 ? "↑" : delta < -0.01 ? "↓" : "→";
-    const signed = delta > 0 ? `+${delta.toFixed(1)}` : delta < 0 ? `${delta.toFixed(1)}` : `+0.0`;
-    return { arrow, signed, pending: false };
-  }
-  return { arrow: "", signed: "Pending", pending: true };
-}
-
-function weeklyMovementClass(movement = {}) {
-  if (movement.pending) return "metric-pending";
-  if (movement.signed.startsWith("+")) return "metric-up";
-  if (movement.signed.startsWith("-")) return "metric-down";
-  return "metric-flat";
-}
-
-function renderWeeklyMovementLabel(movement = {}) {
-  return movement.pending ? movement.signed : `${movement.arrow} ${movement.signed}`;
-}
-
 function openSignalOfWeekReport(entry) {
   selectPlayer(entry);
 }
@@ -2406,9 +2390,12 @@ function renderSignalOfTheWeek(entries = [], storedSignal = null) {
   const card = document.querySelector(".signal-of-week-card");
   if (!card) return;
 
-  const signalEntry = signalOfWeekToEntry(storedSignal || weeklyIntelligence?.signal_of_the_week);
+  const officialSignal = signalOfWeekToEntry(storedSignal || weeklyIntelligence?.signal_of_the_week);
+  const fallbackEntry = getSignalOfWeekTopEntry(entries);
+  const hasOfficialSelection = !!officialSignal;
+  const entry = officialSignal || fallbackEntry;
 
-  if (!signalEntry) {
+  if (!entry) {
     card.classList.remove("featured-signal-banner");
     card.removeAttribute("role");
     card.removeAttribute("tabindex");
@@ -2428,18 +2415,19 @@ function renderSignalOfTheWeek(entries = [], storedSignal = null) {
     return;
   }
 
-  const entry = signalEntry;
+  const presentation = WeeklyMovement.resolveFeaturedSignalPresentation({
+    hasOfficialSelection,
+    entry,
+  });
   const score = Number(entry?.hotness?.total_score ?? 0);
-  const movement = formatWeeklyMovement(entry);
-
   const aiReasonSentence = entry?.signal_of_week_reason
     ? clampToOneSentence(entry.signal_of_week_reason)
-    : "Weekly signal rationale pending.";
+    : (hasOfficialSelection ? "Weekly signal rationale pending." : "Current leaderboard signal based on stored CardSignal scores.");
   const aiAction = entry?.recommendation ? String(entry.recommendation).toUpperCase() : "WATCH";
-
   const team = getTeamAbbrev(entry);
   const position = entry.position || "—";
-  const moveClass = weeklyMovementClass(movement);
+  const movement = presentation.movement;
+  const moveClass = movement ? WeeklyMovement.weeklyMovementClass(movement) : "";
 
   card.classList.add("featured-signal-banner");
   card.removeAttribute("role");
@@ -2453,7 +2441,7 @@ function renderSignalOfTheWeek(entries = [], storedSignal = null) {
       </div>
 
       <div class="signal-week-content">
-        <div class="signal-week-label">Signal of the Week</div>
+        <div class="signal-week-label">${presentation.label}</div>
         <div class="signal-week-primary">
           <div class="signal-week-identity">
             <div class="signal-week-name">${entry.player_name || "—"}</div>
@@ -2470,10 +2458,11 @@ function renderSignalOfTheWeek(entries = [], storedSignal = null) {
               <span class="signal-week-stat-value">${formatScore(score)}</span>
               <span class="signal-week-stat-label">CardSignal Score</span>
             </div>
+            ${presentation.showWeeklyMovement ? `
             <div class="signal-week-stat">
-              <span class="signal-week-stat-value ${moveClass}">${renderWeeklyMovementLabel(movement)}</span>
+              <span class="signal-week-stat-value ${moveClass}">${WeeklyMovement.renderWeeklyMovementLabel(movement)}</span>
               <span class="signal-week-stat-label">Weekly Movement</span>
-            </div>
+            </div>` : ""}
           </div>
         </div>
 
