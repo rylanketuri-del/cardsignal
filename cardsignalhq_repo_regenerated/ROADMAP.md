@@ -56,39 +56,51 @@
   - [ ] PSA population provider/integration (not present; optional stage interface only)
   - [x] Historical market movement foundation (stored snapshot comparison; no live provider reads on GET)
 
-- **Sprint 8.8 — Weekly Intelligence Pipeline** *(in progress — verification pass pending)*
-  - Weekly orchestration layer for Tuesday refresh
-  - Top 100 MLB beta universe
-  - Append-only player/card weekly snapshots
-  - Signal of the Week selection with evidence requirements
-  - Today's Leaders from latest completed official run
-  - Explicit stage outcomes with FAILED / PARTIAL / SKIPPED / UNAVAILABLE handling
-  - `GET /api/weekly/latest`, weekly history endpoints
-  - Admin `POST /api/weekly/run` with duplicate guard and force option
-  - Local JSON fallback when Supabase is unavailable
+- **Sprint 8.8 — Weekly Intelligence Pipeline**
+  - [x] Weekly orchestration layer for Tuesday refresh
+  - [x] Top 100 MLB beta universe
+  - [x] Append-only player/card weekly snapshots
+  - [x] Signal of the Week selection with evidence requirements
+  - [x] Today's Leaders from latest completed official run
+  - [x] Explicit stage outcomes with FAILED / PARTIAL / SKIPPED / UNAVAILABLE handling
+  - [x] `GET /api/weekly/latest`, weekly history endpoints
+  - [x] Admin `POST /api/weekly/run` with duplicate guard and force option
+  - [x] Local JSON fallback when Supabase is unavailable
+
+- **Sprint 9.3 — Scouting Report data integrity** *(complete)*
+  - [x] Centralized metric mapping with pending states
+  - [x] No proxy fallbacks in Scouting Report metrics
+  - [x] Evidence tier replaces conviction in report UX
 
 ## Current Milestone
 
-### Release v0.10.2 — Scouting Report 2.0
+### Release v0.12.0 — Sprint 9.4 NFL Performance Adapter
 
 In progress. Do not merge or deploy until verification pass.
 
-**Scouting Report** transforms the player modal into a premium single-page research experience:
+- [x] Provider-neutral `NFLPerformanceProvider` interface
+- [x] Approved import path (`output/nfl/import/nfl_data.json`)
+- [x] Deterministic NFL identity (`CS-NFL-P-{SOURCE_PLAYER_ID}`)
+- [x] Position-aware scoring (QB, RB, WR, TE) with `NFL_PERFORMANCE_V1`
+- [x] Recent 3-game window with bye-week and inactive-game handling
+- [x] NFL Signal Drivers from stored evidence only
+- [x] NFL weekly pipeline stage (independent from MLB; Thu–Mon period)
+- [x] NFL API routes (`/api/nfl/players/search`, leaderboard, player, performance, signal-drivers)
+- [x] Universal Search NFL integration when registry exists
+- [x] NFL homepage activation only when genuine weekly data exists
+- [x] NFL Scouting Report position-aware stat specs
+- [ ] End-to-end verification with live approved import data
 
-- Scrollable editorial report (no tabs): Header → Player Snapshot → Why This Signal → Cards → Market → Signal Analysis → Outlook
-- Real stored intelligence only — honest pending states when data is unavailable
-- Evidence replaces Conviction/Confidence throughout the report
-- Player performance from `stats_7d` / `stats_30d`; market from stored snapshots
-- Signal Analysis covers Performance, Market, Momentum, Scarcity, and Collector Demand
-- Homepage (Signal Center) unchanged
-
-### Release v0.9.0 — Weekly Intelligence Pipeline
-
-Shipped in prior release. Verification pass complete for weekly pipeline foundation.
-
-**Beta schedule (documented, idempotent guard):** Tuesday 6:00 AM America/New_York via external scheduler calling `POST /api/weekly/run` with admin token.
+NFL remains **Coming Soon** in the UI until verified import data is seeded.
 
 ## Up Next
+
+### Sprint 9.5 — NBA Performance Adapter
+
+- Provider-neutral NBA performance interface
+- NBA season phases and position-aware scoring
+- NBA weekly period rules
+- NBA Universal Search and Scouting Report integration
 
 ### v0.9.1 — Production QA and Data Seeding
 
@@ -96,10 +108,11 @@ Shipped in prior release. Verification pass complete for weekly pipeline foundat
 - Seed historical weekly snapshots for chart coverage
 - Supabase migration apply + rollback test
 - PSA population provider implementation (when credentials/source available)
+- Seed verified NFL import data for beta universe activation
 
 ### v1.0.0 — Multi-Sport Expansion
 
-- Enable NBA, NFL, NHL sport tabs
+- Enable NBA, NFL, NHL sport tabs with live data
 - Sport-specific leaderboards and scoring adjustments
 - Cross-sport Signal Center filters
 
@@ -116,8 +129,13 @@ Shipped in prior release. Verification pass complete for weekly pipeline foundat
 - **Tuesday email report** — weekly digest from stored homepage intelligence
 - **Signal Vault** — searchable archive of weekly signals and card intelligence
 - **Weekly push notifications** — Signal of the Week and mover alerts
-- **NFL weekly period support** — Thursday–Monday reporting windows
 - **NBA weekly period support** — league-specific period rules
+- **NFL defensive-player intelligence** — separate scoring model for defensive players
+- **NFL rookie/draft intelligence** — draft class and rookie card relevance
+- **NFL training-camp provider** — verified role developments
+- **NFL depth-chart provider** — starter/backup role tracking
+- **NFL playoff weighting** — postseason performance emphasis
+- **NFL legacy intelligence** — retired-player archive (separate from active universe)
 - **Signal Accuracy tracking** — compare weekly forecasts to outcomes
 - Sold-comps integration beyond active eBay listings
 - Portfolio tracking and cost-basis views

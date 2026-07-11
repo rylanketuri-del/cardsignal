@@ -154,6 +154,96 @@ const SR_PLAYER_STAT_SPECS = {
   ],
 };
 
+const SR_NFL_STAT_SPECS = {
+  QB: {
+    recent: [
+      { label: "Pass Yards", source_field: "passing_yards", value_type: "integer" },
+      { label: "Pass TD", source_field: "passing_touchdowns", value_type: "integer" },
+      { label: "INT", source_field: "interceptions", value_type: "integer" },
+      { label: "Completion %", source_field: "completion_percentage", value_type: "decimal1" },
+      { label: "Passer Rating", source_field: "passer_rating", value_type: "decimal1" },
+      { label: "Rush Yards", source_field: "rushing_yards", value_type: "integer" },
+    ],
+    season: [
+      { label: "Pass Yards", source_field: "passing_yards", value_type: "integer" },
+      { label: "Pass TD", source_field: "passing_touchdowns", value_type: "integer" },
+      { label: "INT", source_field: "interceptions", value_type: "integer" },
+      { label: "Completion %", source_field: "completion_percentage", value_type: "decimal1" },
+      { label: "Passer Rating", source_field: "passer_rating", value_type: "decimal1" },
+      { label: "Rush Yards", source_field: "rushing_yards", value_type: "integer" },
+    ],
+  },
+  RB: {
+    recent: [
+      { label: "Rush Yards", source_field: "rushing_yards", value_type: "integer" },
+      { label: "Rush TD", source_field: "rushing_touchdowns", value_type: "integer" },
+      { label: "Yards/Carry", source_field: "yards_per_carry", value_type: "decimal1" },
+      { label: "Receptions", source_field: "receptions", value_type: "integer" },
+      { label: "Receiving Yards", source_field: "receiving_yards", value_type: "integer" },
+      { label: "Total TD", source_field: "total_touchdowns", value_type: "integer" },
+    ],
+    season: [
+      { label: "Rush Yards", source_field: "rushing_yards", value_type: "integer" },
+      { label: "Rush TD", source_field: "rushing_touchdowns", value_type: "integer" },
+      { label: "Yards/Carry", source_field: "yards_per_carry", value_type: "decimal1" },
+      { label: "Receptions", source_field: "receptions", value_type: "integer" },
+      { label: "Receiving Yards", source_field: "receiving_yards", value_type: "integer" },
+      { label: "Total TD", source_field: "total_touchdowns", value_type: "integer" },
+    ],
+  },
+  WR: {
+    recent: [
+      { label: "Targets", source_field: "targets", value_type: "integer" },
+      { label: "Receptions", source_field: "receptions", value_type: "integer" },
+      { label: "Receiving Yards", source_field: "receiving_yards", value_type: "integer" },
+      { label: "Receiving TD", source_field: "receiving_touchdowns", value_type: "integer" },
+      { label: "Catch Rate", source_field: "catch_rate", value_type: "decimal1" },
+      { label: "Yards/Reception", source_field: "yards_per_reception", value_type: "decimal1" },
+    ],
+    season: [
+      { label: "Targets", source_field: "targets", value_type: "integer" },
+      { label: "Receptions", source_field: "receptions", value_type: "integer" },
+      { label: "Receiving Yards", source_field: "receiving_yards", value_type: "integer" },
+      { label: "Receiving TD", source_field: "receiving_touchdowns", value_type: "integer" },
+      { label: "Catch Rate", source_field: "catch_rate", value_type: "decimal1" },
+      { label: "Yards/Reception", source_field: "yards_per_reception", value_type: "decimal1" },
+    ],
+  },
+  TE: {
+    recent: [
+      { label: "Targets", source_field: "targets", value_type: "integer" },
+      { label: "Receptions", source_field: "receptions", value_type: "integer" },
+      { label: "Receiving Yards", source_field: "receiving_yards", value_type: "integer" },
+      { label: "Receiving TD", source_field: "receiving_touchdowns", value_type: "integer" },
+      { label: "Catch Rate", source_field: "catch_rate", value_type: "decimal1" },
+      { label: "Yards/Reception", source_field: "yards_per_reception", value_type: "decimal1" },
+    ],
+    season: [
+      { label: "Targets", source_field: "targets", value_type: "integer" },
+      { label: "Receptions", source_field: "receptions", value_type: "integer" },
+      { label: "Receiving Yards", source_field: "receiving_yards", value_type: "integer" },
+      { label: "Receiving TD", source_field: "receiving_touchdowns", value_type: "integer" },
+      { label: "Catch Rate", source_field: "catch_rate", value_type: "decimal1" },
+      { label: "Yards/Reception", source_field: "yards_per_reception", value_type: "decimal1" },
+    ],
+  },
+};
+
+function srResolveNflPositionGroup(position = "") {
+  const pos = String(position || "").toUpperCase();
+  if (pos === "QB") return "QB";
+  if (pos === "RB" || pos === "FB") return "RB";
+  if (pos === "WR") return "WR";
+  if (pos === "TE") return "TE";
+  return null;
+}
+
+function srGetNflStatSpecs(position = "") {
+  const group = srResolveNflPositionGroup(position);
+  if (!group || !SR_NFL_STAT_SPECS[group]) return null;
+  return SR_NFL_STAT_SPECS[group];
+}
+
 function srBuildMarketSource(intel = {}, weeklySnap = null) {
   const safeIntel = intel && typeof intel === "object" ? intel : {};
   const safeWeekly = weeklySnap && typeof weeklySnap === "object" ? weeklySnap : null;
@@ -259,6 +349,9 @@ const SRMetrics = {
   SR_MARKET_METRIC_SPECS,
   SR_CARD_METRIC_SPECS,
   SR_PLAYER_STAT_SPECS,
+  SR_NFL_STAT_SPECS,
+  srResolveNflPositionGroup,
+  srGetNflStatSpecs,
   srSafeToNumber,
   srPickStoredField,
   srResolveMetric,

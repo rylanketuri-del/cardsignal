@@ -44,6 +44,7 @@ class PlayerPipelineOutput(BaseModel):
     team_logo_url: str | None = None
     sport: str = "MLB"
     candidate_source: str = "dynamic"
+    source_player_id: str | None = None
 
 
 class PipelineResult(BaseModel):

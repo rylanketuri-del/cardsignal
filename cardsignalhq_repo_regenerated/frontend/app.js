@@ -19,6 +19,9 @@ let piModalWeeklySnap = null;
 let piModalCards = [];
 let piModalKeydownHandler = null;
 let weeklyIntelligence = null;
+let nflWeeklyIntelligence = null;
+let nflDataAvailable = false;
+let activeSportFilter = 'all';
 const SCOUTING_REPORT_ALGO = "WEEKLY_INTELLIGENCE_V1";
 
 function tagClass(tag) {
@@ -77,11 +80,28 @@ async function fetchPlayerWeeklySignals(playerId) {
 async function fetchCardWeeklyIntelligence(csCardId) {
   return apiFetch(`/api/cards/${encodeURIComponent(csCardId)}/intelligence/weekly?limit=2`);
 }
-async function fetchPlayerSearch(query) {
-  const response = await fetch(`${API_BASE_URL}/api/players/search?q=${encodeURIComponent(query)}`);
-  if (!response.ok) return [];
-  const data = await response.json();
-  return Array.isArray(data) ? data : (data.items || []);
+async function fetchPlayerSearch(query, sport = null) {
+  const filter = sport || activeSportFilter;
+  const endpoints = [];
+  if (filter === 'all' || filter === 'mlb') {
+    endpoints.push(fetch(`${API_BASE_URL}/api/players/search?q=${encodeURIComponent(query)}&sport=MLB`).then((r) => (r.ok ? r.json() : [])));
+  }
+  if ((filter === 'all' || filter === 'nfl') && nflDataAvailable) {
+    endpoints.push(fetch(`${API_BASE_URL}/api/nfl/players/search?q=${encodeURIComponent(query)}`).then((r) => (r.ok ? r.json() : [])));
+  }
+  if (!endpoints.length) return [];
+  const batches = await Promise.all(endpoints);
+  return batches.flat().filter(Boolean);
+}
+
+async function fetchNflStatus() {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/nfl/status`);
+    if (!response.ok) return { available: false };
+    return response.json();
+  } catch (_) {
+    return { available: false };
+  }
 }
 
 function setAuthStatus(message, isError = false) {
@@ -947,9 +967,19 @@ function formatStatCount(value, pending = "—") {
 }
 
 function normalizeCsPlayerId(entry = {}) {
-  const pid = entry.player_id || entry.cs_player_id || entry.source_player_id;
+  const pid = entry.cs_player_id || entry.player_id || entry.source_player_id;
   if (!pid) return null;
-  return String(pid).includes(":") ? String(pid) : `mlb:${pid}`;
+  const raw = String(pid);
+  if (raw.startsWith('CS-NFL-P-') || raw.includes(':')) return raw;
+  const league = String(entry.league || entry.sport || '').toUpperCase();
+  if (league === 'NFL' || league === 'FOOTBALL') return `CS-NFL-P-${raw}`;
+  return `mlb:${raw}`;
+}
+
+function isNflEntry(entry = {}) {
+  const league = String(entry.league || entry.sport || '').toUpperCase();
+  const csId = String(entry.cs_player_id || '');
+  return league === 'NFL' || league === 'FOOTBALL' || csId.startsWith('CS-NFL-P-');
 }
 
 function resolveWeeklySnapshot(entry = {}, weeklyHistory = []) {
@@ -1057,6 +1087,7 @@ function parseStoredContributorDirection(value, fallback = "up") {
 function buildStoredPlayerIntel(entry = {}, weeklySnap = null) {
   const hotness = entry.hotness || {};
   const missing = weeklySnap?.missing_inputs || [];
+  const snapEvidence = weeklySnap?.evidence || {};
 
   return {
     score: csIntelSafeToNumber(weeklySnap?.card_signal_score ?? hotness.total_score),
@@ -1069,13 +1100,15 @@ function buildStoredPlayerIntel(entry = {}, weeklySnap = null) {
     recommendation: resolveRecommendation(entry, weeklySnap),
     hasStoredRecommendation: hasStoredRecommendation(entry, weeklySnap),
     weeklyChange: csIntelSafeToNumber(weeklySnap?.weekly_change ?? entry.weekly_change),
-    evidence: weeklySnap?.evidence || {},
+    evidence: snapEvidence,
     missingInputs: missing,
     algorithmVersion: weeklySnap?.algorithm_version || weeklyIntelligence?.run?.algorithm_version || SCOUTING_REPORT_ALGO,
     capturedAt: weeklySnap?.captured_at || entry.generated_at || weeklyIntelligence?.run?.completed_at,
-    stats7d: entry.stats_7d || null,
-    stats30d: entry.stats_30d || null,
+    stats7d: entry.stats_7d || entry.nfl_recent_stats || snapEvidence.nfl_recent_stats || null,
+    stats30d: entry.stats_30d || entry.nfl_season_stats || snapEvidence.nfl_season_stats || null,
     marketSnapshots: entry.market_snapshots || {},
+    isNfl: isNflEntry(entry) || weeklySnap?.league === 'NFL' || weeklySnap?.sport === 'FOOTBALL',
+    nflSeasonPhase: entry.nfl_season_phase || snapEvidence.nfl_season_phase || null,
   };
 }
 
@@ -1100,17 +1133,29 @@ function renderSnapshotStat(label, value, { title = "" } = {}) {
     </div>`;
 }
 
-function renderPlayerSnapshot(intel) {
+function renderPlayerSnapshot(intel, entry = {}) {
   const stats7d = intel.stats7d;
   const stats30d = intel.stats30d;
-  const has7d = hasPerformanceStats(stats7d);
-  const hasSeason = hasPerformanceStats(stats30d);
+  const has7d = hasPerformanceStats(stats7d) || (stats7d && Object.keys(stats7d).length > 1);
+  const hasSeason = hasPerformanceStats(stats30d) || (stats30d && Object.keys(stats30d).length > 1);
   const formatters = srMetricFormatters();
+  const position = entry.position || piModalEntry?.position || '';
+  const nflSpecs = intel.isNfl ? SRMetrics.srGetNflStatSpecs(position) : null;
+
+  let recentTitle = 'Last 7 Days';
+  let seasonTitle = 'Season Snapshot';
+  if (intel.isNfl) {
+    recentTitle = intel.nflSeasonPhase === 'OFFSEASON' ? 'Previous Season' : 'Recent 3 Games';
+    seasonTitle = intel.nflSeasonPhase === 'OFFSEASON' ? 'Previous Season Snapshot' : 'Season Snapshot';
+    if (intel.nflSeasonPhase === 'OFFSEASON') {
+      recentTitle = 'Offseason';
+    }
+  }
 
   const last7Body = has7d
     ? `
       <div class="sr-snapshot-grid">
-        ${SRMetrics.SR_PLAYER_STAT_SPECS.last7d.map((spec) => {
+        ${(nflSpecs ? nflSpecs.recent : SRMetrics.SR_PLAYER_STAT_SPECS.last7d).map((spec) => {
     const stat = SRMetrics.srFormatPlayerStat(spec, stats7d, formatters);
     return renderSnapshotStat(stat.label, stat.display, { title: stat.title });
   }).join("")}
@@ -1120,23 +1165,25 @@ function renderPlayerSnapshot(intel) {
   const seasonBody = hasSeason
     ? `
       <div class="sr-snapshot-grid">
-        ${SRMetrics.SR_PLAYER_STAT_SPECS.season.map((spec) => {
+        ${(nflSpecs ? nflSpecs.season : SRMetrics.SR_PLAYER_STAT_SPECS.season).map((spec) => {
     const stat = SRMetrics.srFormatPlayerStat(spec, stats30d, formatters);
     return renderSnapshotStat(stat.label, stat.display, { title: stat.title });
   }).join("")}
       </div>`
     : `<p class="sr-pending">Performance data pending.</p>`;
 
+  const showRecent = !intel.isNfl || intel.nflSeasonPhase !== 'OFFSEASON';
+
   return `
     <section class="sr-section sr-snapshot">
       <h3 class="sr-section-title">Player Snapshot</h3>
       <div class="sr-snapshot-panels">
-        <article class="sr-panel">
-          <h4 class="sr-panel-title">Last 7 Days</h4>
+        ${showRecent ? `<article class="sr-panel">
+          <h4 class="sr-panel-title">${recentTitle}</h4>
           ${last7Body}
-        </article>
+        </article>` : ''}
         <article class="sr-panel">
-          <h4 class="sr-panel-title">Season Snapshot</h4>
+          <h4 class="sr-panel-title">${seasonTitle}</h4>
           ${seasonBody}
         </article>
       </div>
@@ -1591,7 +1638,7 @@ function renderScoutingReportHeader(entry, intel) {
 function renderScoutingReport(entry, intel, cards = [], weeklySnap = null) {
   return `
     <div class="sr-report">
-      ${renderPlayerSnapshot(intel)}
+      ${renderPlayerSnapshot(intel, player)}
       ${renderWhyThisSignal(entry, intel, weeklySnap)}
       ${renderReportCards(cards)}
       ${renderReportMarket(entry, intel, weeklySnap)}
@@ -2580,6 +2627,10 @@ function renderSearchResultHeadshot(entry = {}) {
 
 function renderSearchResultBadge(entry) {
   const isTop20 = isLeaderboardPlayer(entry);
+  if (isNflEntry(entry)) {
+    const label = isTop20 ? 'NFL Top' : 'NFL Search';
+    return `<span class="player-search-result-badge player-search-result-badge--nfl">${label}</span>`;
+  }
   const label = isTop20 ? "Top 20" : "MLB Search";
   const modifier = isTop20 ? "top20" : "mlb";
   return `<span class="player-search-result-badge player-search-result-badge--${modifier}">${label}</span>`;
@@ -2846,15 +2897,38 @@ function setupSportTabs() {
   const nflSoon = document.getElementById("sport-coming-soon-nfl");
   if (!tabs.length) return;
 
-  const applySportFilter = (filter) => {
+  const applySportFilter = async (filter) => {
     const normalized = String(filter || "all").toLowerCase();
+    activeSportFilter = normalized;
     const showMlb = normalized === "all" || normalized === "mlb";
     const showNba = normalized === "nba";
-    const showNfl = normalized === "nfl";
+    const showNflOnly = normalized === "nfl";
+    const showNflSoon = showNflOnly && !nflDataAvailable;
 
-    if (mlbContent) mlbContent.classList.toggle("hidden", !showMlb);
+    if (mlbContent) mlbContent.classList.toggle("hidden", !showMlb && !showNflOnly);
     if (nbaSoon) nbaSoon.classList.toggle("hidden", !showNba);
-    if (nflSoon) nflSoon.classList.toggle("hidden", !showNfl);
+    if (nflSoon) nflSoon.classList.toggle("hidden", !showNflSoon);
+
+    if (showNflOnly && nflDataAvailable) {
+      const nflPayload = await fetchWeeklyLatest('NFL').catch(() => null);
+      if (nflPayload?.todays_leaders?.length) {
+        nflWeeklyIntelligence = nflPayload;
+        latestEntries = nflPayload.todays_leaders.map(weeklyLeaderToEntry);
+        renderSignalCenter(latestEntries);
+        const leaderboardRoot = document.getElementById('leaderboard-table');
+        if (leaderboardRoot) leaderboardRoot.innerHTML = buildLeaderboard(latestEntries);
+      }
+    } else if (showMlb || normalized === 'all') {
+      const source = normalized === 'all' && nflDataAvailable && weeklyIntelligence?.todays_leaders?.length
+        ? mergeAllSportLeaders(weeklyIntelligence?.todays_leaders || [], nflWeeklyIntelligence?.todays_leaders || [])
+        : (weeklyIntelligence?.todays_leaders || []).map(weeklyLeaderToEntry);
+      if (source.length) {
+        latestEntries = source;
+        renderSignalCenter(latestEntries);
+        const leaderboardRoot = document.getElementById('leaderboard-table');
+        if (leaderboardRoot) leaderboardRoot.innerHTML = buildLeaderboard(latestEntries);
+      }
+    }
 
     tabs.forEach((tab) => {
       const tabFilter = tab.dataset.sportFilter;
@@ -2880,6 +2954,20 @@ function setupSportTabs() {
   applySportFilter("all");
 }
 
+function mergeAllSportLeaders(mlbLeaders = [], nflLeaders = []) {
+  const combined = [
+    ...mlbLeaders.map((e) => ({ ...weeklyLeaderToEntry(e), sport: 'MLB', league: 'MLB' })),
+    ...nflLeaders.map((e) => ({ ...weeklyLeaderToEntry(e), sport: 'FOOTBALL', league: 'NFL' })),
+  ];
+  return combined
+    .filter((e) => e.card_signal_score != null || e.hotness?.total_score != null)
+    .sort((a, b) => {
+      const aScore = a.card_signal_score ?? a.hotness?.total_score ?? -1;
+      const bScore = b.card_signal_score ?? b.hotness?.total_score ?? -1;
+      return bScore - aScore;
+    });
+}
+
 async function init() {
   const status = document.getElementById('load-status');
 
@@ -2897,19 +2985,29 @@ async function init() {
     bindAdminActions();
 
     status.textContent = 'Loading leaderboard...';
-    const [payload, weeklyPayload] = await Promise.all([
+    const nflStatus = await fetchNflStatus();
+    nflDataAvailable = !!nflStatus.available;
+
+    const weeklyRequests = [fetchWeeklyLatest('MLB').catch(() => null)];
+    if (nflDataAvailable) weeklyRequests.push(fetchWeeklyLatest('NFL').catch(() => null));
+
+    const [payload, ...weeklyResults] = await Promise.all([
       fetch(SOURCE_URL).then(res => {
         if (!res.ok) throw new Error(`Could not load ${SOURCE_URL}.`);
         return res.json();
       }),
-      fetchWeeklyLatest('MLB').catch(() => null),
+      ...weeklyRequests,
     ]);
 
-    weeklyIntelligence = weeklyPayload;
+    weeklyIntelligence = weeklyResults[0] || null;
+    nflWeeklyIntelligence = nflDataAvailable ? (weeklyResults[1] || null) : null;
     let entries = payload.items || [];
 
-    if (weeklyPayload?.todays_leaders?.length) {
-      entries = weeklyPayload.todays_leaders.map(weeklyLeaderToEntry);
+    if (weeklyIntelligence?.todays_leaders?.length) {
+      entries = weeklyIntelligence.todays_leaders.map(weeklyLeaderToEntry);
+    }
+    if (nflDataAvailable && nflWeeklyIntelligence?.todays_leaders?.length && activeSportFilter === 'all') {
+      entries = mergeAllSportLeaders(weeklyIntelligence?.todays_leaders || [], nflWeeklyIntelligence?.todays_leaders || []);
     }
 
     latestEntries = entries;
