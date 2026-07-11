@@ -69,8 +69,9 @@ Forecast language uses tentative phrasing (“suggests,” “may,” “could�
 
 Current production scope:
 
-- **MLB hitters only** (NBA, NFL, NHL tabs shown as coming soon)
-- MLB Stats API for performance
+- **MLB hitters** — MLB Stats API for performance
+- **NFL (beta adapter):** approved import path; unavailable until verified data is seeded — no fabricated intelligence
+- **NBA, NHL** — shown as coming soon
 - eBay Browse API for active listings
 - Supabase for leaderboard persistence, auth, watchlists, alerts, and notifications
 
@@ -81,7 +82,7 @@ Placeholder intelligence (card rows, market metrics, forecast reasons) uses stab
 CardSignal refreshes market-wide intelligence **weekly on Tuesdays at 6:00 AM America/New_York** (beta schedule).
 
 - **Reporting period (MLB/NBA beta):** Monday 12:00 AM through Sunday 11:59 PM in the league timezone
-- **NFL (future):** Thursday through Monday — period rules are configurable per league
+- **NFL:** Thursday through Monday — period rules are configurable per league; refresh target remains Tuesday morning
 - **Append-only snapshots:** player weekly signals and card weekly intelligence are never overwritten
 - **Latest completed run:** remains available if a new run fails or is skipped
 - **Signal of the Week:** selected only from players with sufficient real evidence — no random recommendations
@@ -91,9 +92,21 @@ CardSignal refreshes market-wide intelligence **weekly on Tuesdays at 6:00 AM Am
 
 GET routes serve stored weekly intelligence only — they never trigger provider work.
 
-## User Layers
+## NFL Intelligence Principles
 
-- **Anonymous** — browse Signal Center, search players, open Intelligence Reports
+NFL support follows the same evidence-first architecture as MLB, with football-specific rules:
+
+- **Position-aware performance:** QB, RB, WR, and TE use separate scoring models — defensive players are not forced into offensive formulas
+- **Recent 3-game window:** during the active season, recent form uses the last 3 completed games (not calendar days)
+- **Bye weeks:** bye weeks are excluded from performance windows and do not count as zero-stat games
+- **Season phases:** REGULAR/POSTSEASON show Recent 3 Games + Season Snapshot; PRESEASON shows verified preseason + previous season; OFFSEASON shows previous season only
+- **No projections or rumors:** Signal Drivers require stored, verified evidence — fantasy projections and rumors are excluded
+- **Data quality:** HIGH / MEDIUM / LOW / INSUFFICIENT based on completed games, metric completeness, and sample size
+- **Player score vs card score:** NFL performance (`NFL_PERFORMANCE_V1`) feeds player-level signals; CardSignal Card Score remains a separate market-aware layer (`NFL_PLAYER_SIGNAL_V1`)
+- **Provider policy:** NFL uses a provider-neutral interface; approved imports are labeled `APPROVED_IMPORT`; NFL stays unavailable until real data is loaded
+- **Identity:** deterministic IDs use `CS-NFL-P-{SOURCE_PLAYER_ID}` and never change on team trades
+
+## User Layers
 - **Authenticated** — save watchlist players, configure alert preferences, per-player alert rules, notification center
 - **Admin** — hidden from public UI; protected by admin token for settings and tracked-player management
 

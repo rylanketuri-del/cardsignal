@@ -12,6 +12,14 @@ from pydantic import BaseModel
 
 from cardchase_ai.clients.mlb import MLBClient
 from cardchase_ai.config import get_settings
+from cardchase_ai.nfl_api import (
+    fetch_nfl_leaderboard,
+    fetch_nfl_performance,
+    fetch_nfl_player,
+    fetch_nfl_signal_drivers,
+    nfl_availability_payload,
+    search_nfl_players,
+)
 from cardchase_ai.pipeline import run_pipeline
 from cardchase_ai.storage import SupabaseError, SupabaseStorage
 from cardchase_ai.weekly_intelligence import build_latest_weekly_api_payload, build_weekly_storage, run_weekly_intelligence
@@ -248,16 +256,56 @@ def get_latest_run() -> JSONResponse:
 
 
 @app.get("/api/players/search")
-def search_players(q: str = "") -> JSONResponse:
+def search_players(q: str = "", sport: str = "MLB") -> JSONResponse:
     query = (q or "").strip()
     if len(query) < 2:
         return JSONResponse([])
+
+    sport_upper = (sport or "MLB").upper()
+    if sport_upper == "NFL":
+        return JSONResponse(search_nfl_players(query, limit=10))
 
     try:
         results = MLBClient().search_players(query, limit=10)
         return JSONResponse(results)
     except Exception:
         return JSONResponse([])
+
+
+@app.get("/api/nfl/players/search")
+def search_nfl_players_route(q: str = "") -> JSONResponse:
+    query = (q or "").strip()
+    if len(query) < 2:
+        return JSONResponse([])
+    return JSONResponse(search_nfl_players(query, limit=10))
+
+
+@app.get("/api/nfl/leaderboard/latest")
+def get_nfl_leaderboard_latest() -> JSONResponse:
+    return JSONResponse(fetch_nfl_leaderboard())
+
+
+@app.get("/api/nfl/players/{player_id}")
+def get_nfl_player(player_id: str) -> JSONResponse:
+    payload = fetch_nfl_player(player_id)
+    if not payload:
+        raise HTTPException(status_code=404, detail="NFL player not found or NFL data unavailable.")
+    return JSONResponse(payload)
+
+
+@app.get("/api/nfl/players/{player_id}/performance")
+def get_nfl_player_performance(player_id: str) -> JSONResponse:
+    return JSONResponse(fetch_nfl_performance(player_id))
+
+
+@app.get("/api/nfl/players/{player_id}/signal-drivers")
+def get_nfl_player_signal_drivers(player_id: str) -> JSONResponse:
+    return JSONResponse(fetch_nfl_signal_drivers(player_id))
+
+
+@app.get("/api/nfl/status")
+def get_nfl_status() -> JSONResponse:
+    return JSONResponse(nfl_availability_payload())
 
 
 @app.get("/api/players/{player_id}")
@@ -367,7 +415,7 @@ def get_player_weekly_signals(player_id: str, limit: int = 12) -> JSONResponse:
     """Player weekly signal history — read-only."""
     settings = _settings()
     storage = build_weekly_storage(settings)
-    cs_id = player_id if ":" in player_id else f"mlb:{player_id}"
+    cs_id = player_id if ":" in player_id or player_id.startswith("CS-NFL-P-") else f"mlb:{player_id}"
     items = storage.fetch_player_weekly_history(cs_id, max(2, min(limit, 52)))
     return JSONResponse({"items": items})
 
