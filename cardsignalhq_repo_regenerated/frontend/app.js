@@ -17,9 +17,11 @@ let piModalEntry = null;
 let piModalIntel = null;
 let piModalWeeklySnap = null;
 let piModalCards = [];
+let piModalSignalDrivers = null;
 let piModalKeydownHandler = null;
 let weeklyIntelligence = null;
 const SCOUTING_REPORT_ALGO = "WEEKLY_INTELLIGENCE_V1";
+const SIGNAL_DRIVERS_ALGO = "SIGNAL_DRIVERS_V1";
 
 function tagClass(tag) {
   if (tag === 'BUY LOW') return 'tag buylow';
@@ -72,6 +74,11 @@ async function fetchWeeklyLatest(league = 'MLB') {
 }
 async function fetchPlayerWeeklySignals(playerId) {
   return apiFetch(`/api/players/${playerId}/signals/weekly?limit=12`);
+}
+
+async function fetchPlayerSignalDrivers(playerId, { current = true, limit = 50 } = {}) {
+  const params = new URLSearchParams({ current: String(current), limit: String(limit) });
+  return apiFetch(`/api/players/${playerId}/signal-drivers?${params.toString()}`);
 }
 
 async function fetchCardWeeklyIntelligence(csCardId) {
@@ -1100,12 +1107,17 @@ function renderSnapshotStat(label, value, { title = "" } = {}) {
     </div>`;
 }
 
-function renderPlayerSnapshot(intel) {
+function renderPlayerSnapshot(intel, signalDriversPayload = null) {
   const stats7d = intel.stats7d;
   const stats30d = intel.stats30d;
   const has7d = hasPerformanceStats(stats7d);
   const hasSeason = hasPerformanceStats(stats30d);
   const formatters = srMetricFormatters();
+  const seasonState = signalDriversPayload?.season_state?.state || "REGULAR_SEASON";
+  const isOffseason = ["OFFSEASON", "INACTIVE", "UNKNOWN"].includes(seasonState);
+  const isPreseason = seasonState === "PRESEASON";
+  const prevLabel = signalDriversPayload?.previous_season_context?.label || "Season Snapshot";
+  const seasonLabel = isOffseason ? "Previous Season Snapshot" : isPreseason ? "Preseason Snapshot" : "Season Snapshot";
 
   const last7Body = has7d
     ? `
@@ -1127,128 +1139,214 @@ function renderPlayerSnapshot(intel) {
       </div>`
     : `<p class="sr-pending">Performance data pending.</p>`;
 
-  return `
+  if (isOffseason) {
+    return `
     <section class="sr-section sr-snapshot">
       <h3 class="sr-section-title">Player Snapshot</h3>
       <div class="sr-snapshot-panels">
         <article class="sr-panel">
-          <h4 class="sr-panel-title">Last 7 Days</h4>
-          ${last7Body}
-        </article>
-        <article class="sr-panel">
-          <h4 class="sr-panel-title">Season Snapshot</h4>
+          <h4 class="sr-panel-title">${prevLabel}</h4>
+          <p class="sr-snapshot-range">Stored previous-season statistics — not current recent form.</p>
           ${seasonBody}
         </article>
+        <article class="sr-panel">
+          <h4 class="sr-panel-title">Latest Developments</h4>
+          <p class="sr-snapshot-range">Verified offseason developments appear in Signal Drivers below.</p>
+          <p class="sr-pending">See Signal Drivers for verified developments.</p>
+        </article>
+      </div>
+    </section>`;
+  }
+
+  const panels = [];
+  if (!isOffseason) {
+    panels.push(`
+        <article class="sr-panel">
+          <h4 class="sr-panel-title">Last 7 Days</h4>
+          <p class="sr-snapshot-range">Recent-form window from stored MLB statistics.</p>
+          ${has7d ? last7Body : `<p class="sr-pending">Performance data pending.</p>`}
+        </article>`);
+  }
+
+  if (isPreseason && has7d) {
+    panels.push(`
+        <article class="sr-panel">
+          <h4 class="sr-panel-title">Preseason Snapshot</h4>
+          <p class="sr-snapshot-range">Preseason statistics when available from stored data.</p>
+          ${last7Body}
+        </article>`);
+  }
+
+  panels.push(`
+        <article class="sr-panel">
+          <h4 class="sr-panel-title">${seasonLabel}</h4>
+          <p class="sr-snapshot-range">${isPreseason ? "Previous season baseline from stored statistics." : "30-day stored season window."}</p>
+          ${seasonBody}
+        </article>`);
+
+  if (isPreseason) {
+    panels.push(`
+        <article class="sr-panel">
+          <h4 class="sr-panel-title">Latest Developments</h4>
+          <p class="sr-snapshot-range">Verified developments appear in Signal Drivers.</p>
+          <p class="sr-pending">See Signal Drivers for verified developments.</p>
+        </article>`);
+  }
+
+  return `
+    <section class="sr-section sr-snapshot">
+      <h3 class="sr-section-title">Player Snapshot</h3>
+      <div class="sr-snapshot-panels">
+        ${panels.join("")}
       </div>
     </section>`;
 }
 
-function buildSignalContributors(entry, intel, weeklySnap = null) {
-  const contributors = [];
-  const stats7d = intel.stats7d;
-  const stats30d = intel.stats30d;
-  const evidence = intel.evidence || {};
-
-  if (hasPerformanceStats(stats7d)) {
-    const avg = csIntelSafeToNumber(stats7d.avg);
-    if (avg !== null) {
-      contributors.push({
-        label: "Last 7 Day AVG",
-        direction: hasPerformanceStats(stats30d) ? (avg >= stats30d.avg ? "up" : "down") : "up",
-        detail: avg.toFixed(3),
-      });
-    }
-
-    const homeRuns = csIntelSafeToNumber(stats7d.home_runs);
-    if (homeRuns !== null && homeRuns > 0) {
-      contributors.push({
-        label: "Home Runs",
-        direction: "up",
-        detail: `${Math.round(homeRuns)} in the last 7 days`,
-      });
-    }
-
-    const ops = csIntelSafeToNumber(stats7d.ops);
-    if (ops !== null && ops > 0) {
-      contributors.push({
-        label: "OPS",
-        direction: hasPerformanceStats(stats30d) ? (ops >= stats30d.ops ? "up" : "down") : "up",
-        detail: ops.toFixed(3),
-      });
-    }
-
-    const rbi = csIntelSafeToNumber(stats7d.rbi);
-    if (rbi !== null && rbi > 0) {
-      contributors.push({
-        label: "RBI",
-        direction: "up",
-        detail: `${Math.round(rbi)} in the last 7 days`,
-      });
-    }
-  }
-
-  (evidence.performance_reasons || []).forEach((reason) => {
-    contributors.push({ label: "Performance", direction: "up", detail: reason });
-  });
-
-  (evidence.momentum_evidence || []).forEach((line) => {
-    const text = String(line);
-    const opsDelta = text.match(/ops_delta=([+-]?\d+(?:\.\d+)?)/);
-    if (opsDelta) {
-      const delta = Number(opsDelta[1]);
-      if (Number.isFinite(delta)) {
-        contributors.push({
-          label: "OPS Movement",
-          direction: parseStoredContributorDirection(delta),
-          detail: `${delta >= 0 ? "+" : ""}${delta.toFixed(3)} vs 30-day baseline`,
-        });
-        return;
-      }
-    }
-    contributors.push({ label: "Momentum", direction: "up", detail: text });
-  });
-
-  const weeklyChange = csIntelSafeToNumber(weeklySnap?.weekly_change ?? intel.weeklyChange);
-  if (weeklyChange !== null && weeklyChange !== 0) {
-    contributors.push({
-      label: "CardSignal Score",
-      direction: parseStoredContributorDirection(weeklyChange),
-      detail: `${weeklyChange > 0 ? "+" : ""}${weeklyChange.toFixed(1)} weekly change`,
-    });
-  }
-
-  (evidence.collector_evidence || []).forEach((line) => {
-    contributors.push({ label: "Collector Demand", direction: "up", detail: String(line) });
-  });
-
-  (evidence.scarcity_evidence || []).forEach((line) => {
-    contributors.push({ label: "Scarcity", direction: "up", detail: String(line) });
-  });
-
-  return contributors;
+function srImpactClass(impact) {
+  const value = String(impact || "UNKNOWN").toUpperCase();
+  if (value === "POSITIVE") return "sr-impact--positive";
+  if (value === "NEGATIVE") return "sr-impact--negative";
+  if (value === "NEUTRAL") return "sr-impact--neutral";
+  return "sr-impact--unknown";
 }
 
-function renderWhyThisSignal(entry, intel, weeklySnap = null) {
-  const contributors = buildSignalContributors(entry, intel, weeklySnap);
-  const body = contributors.length
-    ? `
-      <div class="sr-contributors">
-        <p class="sr-contributors-label">Signal Contributors</p>
-        ${contributors.map((c) => `
-          <div class="sr-contributor">
-            <span class="sr-contributor-arrow sr-contributor-arrow--${c.direction}">${c.direction === "up" ? "⬆" : "⬇"}</span>
-            <div class="sr-contributor-copy">
-              <strong>${c.label}</strong>
-              <span>${c.detail}</span>
-            </div>
-          </div>`).join("")}
-      </div>`
-    : `<p class="sr-pending">Signal contributor data pending.</p>`;
+function srEvidenceClass(quality) {
+  const value = String(quality || "INSUFFICIENT").toUpperCase();
+  if (value === "HIGH") return "sr-evidence--high";
+  if (value === "MEDIUM") return "sr-evidence--medium";
+  if (value === "LOW") return "sr-evidence--low";
+  return "sr-evidence--insufficient";
+}
+
+function srSourceTypeLabel(sourceType) {
+  const labels = {
+    OFFICIAL_API: "Official API",
+    APPROVED_IMPORT: "Approved Import",
+    MANUAL_VERIFIED: "Manual Verified",
+    MARKET_SNAPSHOT: "Market Snapshot",
+    PERFORMANCE_SNAPSHOT: "Performance Snapshot",
+  };
+  return labels[String(sourceType || "").toUpperCase()] || "Stored Source";
+}
+
+function groupSignalDriversForDisplay(drivers = [], seasonState = "REGULAR_SEASON") {
+  const groups = {
+    recent_performance: [],
+    season_context: [],
+    market_drivers: [],
+    career_team: [],
+    previous_season: [],
+    latest_developments: [],
+    scarcity_drivers: [],
+  };
+
+  drivers.forEach((driver) => {
+    const category = String(driver.category || "").toUpperCase();
+    const type = String(driver.driver_type || "").toUpperCase();
+    const ref = String(driver.source_reference || "");
+    if (category === "MARKET") {
+      if (type === "SCARCITY_CHANGE" || type === "POPULATION_MOVEMENT") {
+        groups.scarcity_drivers.push(driver);
+      } else {
+        groups.market_drivers.push(driver);
+      }
+    } else if (category === "PERFORMANCE") {
+      if (ref.includes("previous_season") || driver.metadata?.label === "previous_season") {
+        groups.previous_season.push(driver);
+      } else if (type === "RECENT_FORM") {
+        groups.recent_performance.push(driver);
+      } else {
+        groups.season_context.push(driver);
+      }
+    } else {
+      groups.latest_developments.push(driver);
+      groups.career_team.push(driver);
+    }
+  });
+
+  if (["OFFSEASON", "INACTIVE", "UNKNOWN"].includes(seasonState)) {
+    groups.recent_performance = [];
+  }
+
+  return groups;
+}
+
+function renderSignalDriverCard(driver) {
+  if (!driver?.title || !driver?.summary) return "";
+  const impact = String(driver.impact || "UNKNOWN").toUpperCase();
+  const evidence = String(driver.evidence_quality || "INSUFFICIENT").toUpperCase();
+  const dateLabel = driver.occurred_at ? formatTimestamp(driver.occurred_at) : "—";
+  return `
+    <article class="sr-driver-card">
+      <div class="sr-driver-card-head">
+        <h4 class="sr-driver-title">${driver.title}</h4>
+        <span class="sr-driver-impact ${srImpactClass(impact)}">${impact}</span>
+      </div>
+      <p class="sr-driver-summary">${driver.summary}</p>
+      <div class="sr-driver-meta">
+        <span class="sr-driver-evidence ${srEvidenceClass(evidence)}">${evidence} evidence</span>
+        <span class="sr-driver-date">${dateLabel}</span>
+        <span class="sr-driver-source">${srSourceTypeLabel(driver.source_type)}</span>
+      </div>
+    </article>`;
+}
+
+function renderSignalDriverGroup(title, drivers = []) {
+  if (!drivers.length) return "";
+  const cards = drivers.map(renderSignalDriverCard).filter(Boolean).join("");
+  if (!cards) return "";
+  return `
+    <div class="sr-driver-group">
+      <p class="sr-driver-group-label">${title}</p>
+      <div class="sr-driver-list">${cards}</div>
+    </div>`;
+}
+
+function renderSignalDrivers(entry, intel, weeklySnap = null, signalDriversPayload = null) {
+  const seasonState = signalDriversPayload?.season_state?.state || "REGULAR_SEASON";
+  const drivers = signalDriversPayload?.current_drivers || [];
+  const isOffseason = ["OFFSEASON", "INACTIVE", "UNKNOWN"].includes(seasonState);
+  const groups = groupSignalDriversForDisplay(drivers, seasonState);
+
+  let groupSections = [];
+  if (isOffseason) {
+    groupSections = [
+      renderSignalDriverGroup("Previous Season", groups.previous_season),
+      renderSignalDriverGroup("Latest Developments", groups.latest_developments),
+      renderSignalDriverGroup("Market Drivers", groups.market_drivers),
+      renderSignalDriverGroup("Scarcity Drivers", groups.scarcity_drivers),
+    ];
+  } else if (seasonState === "PRESEASON") {
+    groupSections = [
+      renderSignalDriverGroup("Preseason Context", groups.season_context),
+      renderSignalDriverGroup("Previous Season", groups.previous_season),
+      renderSignalDriverGroup("Latest Developments", groups.latest_developments),
+      renderSignalDriverGroup("Market Drivers", groups.market_drivers),
+    ];
+  } else {
+    groupSections = [
+      renderSignalDriverGroup("Recent Performance", groups.recent_performance),
+      renderSignalDriverGroup("Season Context", groups.season_context),
+      renderSignalDriverGroup("Market Drivers", groups.market_drivers),
+      renderSignalDriverGroup("Career & Team Developments", groups.career_team),
+    ];
+  }
+
+  const renderedGroups = groupSections.filter(Boolean).join("");
+  const body = renderedGroups
+    ? `<div class="sr-drivers">${renderedGroups}</div>`
+    : `<p class="sr-pending">${isOffseason
+      ? "No verified offseason Signal Drivers are available yet."
+      : "No verified Signal Drivers are available yet."}</p>`;
+
+  const lead = isOffseason
+    ? "Why this player's card market may be worth attention during the offseason — from verified stored evidence only."
+    : "Why this player's CardSignal Score matters right now — from verified stored evidence only.";
 
   return `
-    <section class="sr-section">
-      <h3 class="sr-section-title">Why This Signal</h3>
-      <p class="sr-section-lead">How recent performance and market activity shaped this week's CardSignal Score.</p>
+    <section class="sr-section sr-signal-drivers">
+      <h3 class="sr-section-title">Signal Drivers</h3>
+      <p class="sr-section-lead">${lead}</p>
       ${body}
     </section>`;
 }
@@ -1588,11 +1686,11 @@ function renderScoutingReportHeader(entry, intel) {
     </div>`;
 }
 
-function renderScoutingReport(entry, intel, cards = [], weeklySnap = null) {
+function renderScoutingReport(entry, intel, cards = [], weeklySnap = null, signalDriversPayload = null) {
   return `
     <div class="sr-report">
-      ${renderPlayerSnapshot(intel)}
-      ${renderWhyThisSignal(entry, intel, weeklySnap)}
+      ${renderPlayerSnapshot(intel, signalDriversPayload)}
+      ${renderSignalDrivers(entry, intel, weeklySnap, signalDriversPayload)}
       ${renderReportCards(cards)}
       ${renderReportMarket(entry, intel, weeklySnap)}
       ${renderSignalAnalysis(entry, intel)}
@@ -1655,6 +1753,7 @@ function closePlayerIntelligenceModal() {
   piModalIntel = null;
   piModalWeeklySnap = null;
   piModalCards = [];
+  piModalSignalDrivers = null;
 }
 
 async function openPlayerIntelligenceModal(entry) {
@@ -1670,12 +1769,18 @@ async function openPlayerIntelligenceModal(entry) {
     selectedPlayer = player;
 
     let weeklySnap = null;
+    let signalDriversPayload = null;
     if (player.player_id) {
       try {
         const weeklyData = await fetchPlayerWeeklySignals(player.player_id);
         weeklySnap = resolveWeeklySnapshot(player, weeklyData?.items || []);
       } catch (_) {
         weeklySnap = null;
+      }
+      try {
+        signalDriversPayload = await fetchPlayerSignalDrivers(player.player_id);
+      } catch (_) {
+        signalDriversPayload = null;
       }
     }
 
@@ -1687,9 +1792,10 @@ async function openPlayerIntelligenceModal(entry) {
     piModalIntel = intel;
     piModalWeeklySnap = weeklySnap;
     piModalCards = cards;
+    piModalSignalDrivers = signalDriversPayload;
 
     header.innerHTML = renderScoutingReportHeader(player, intel);
-    body.innerHTML = renderScoutingReport(player, intel, cards, weeklySnap);
+    body.innerHTML = renderScoutingReport(player, intel, cards, weeklySnap, signalDriversPayload);
 
     wirePlayerActions();
 

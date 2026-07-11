@@ -14,6 +14,9 @@ from cardchase_ai.clients.mlb import MLBClient
 from cardchase_ai.config import get_settings
 from cardchase_ai.pipeline import run_pipeline
 from cardchase_ai.storage import SupabaseError, SupabaseStorage
+from cardchase_ai.signal_driver_service import build_signal_drivers_response
+from cardchase_ai.signal_driver_storage import build_signal_driver_storage
+from cardchase_ai.development_provider import ManualVerifiedDevelopmentProvider
 from cardchase_ai.weekly_intelligence import build_latest_weekly_api_payload, build_weekly_storage, run_weekly_intelligence
 
 
@@ -70,7 +73,22 @@ class WeeklyRunRequest(BaseModel):
     market_enabled: bool | None = None
     population_enabled: bool | None = None
 
-app = FastAPI(title="CardChase AI API", version="0.6.0")
+
+class PlayerDevelopmentIngestRequest(BaseModel):
+    driver_type: str
+    title: str
+    summary: str
+    occurred_at: str
+    source_type: str = "MANUAL_VERIFIED"
+    source_reference: str
+    impact: str = "UNKNOWN"
+    evidence_quality: str = "HIGH"
+    metric_name: str | None = None
+    metric_value: float | str | None = None
+    comparison_value: float | str | None = None
+    metadata: dict[str, Any] | None = None
+
+app = FastAPI(title="CardChase AI API", version="0.11.1")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -360,6 +378,94 @@ def get_weekly_latest(league: str = "MLB") -> JSONResponse:
     storage = build_weekly_storage(settings)
     payload = build_latest_weekly_api_payload(league.upper(), storage, settings)
     return JSONResponse(payload)
+
+
+@app.get("/api/players/{player_id}/signal-drivers")
+def get_player_signal_drivers(
+    player_id: str,
+    current: bool = True,
+    limit: int = 50,
+    category: str | None = None,
+    season_state: str | None = None,
+) -> JSONResponse:
+    """Read stored Signal Drivers only — never triggers provider work."""
+    settings = _settings()
+    player_payload, _source = _load_player(player_id)
+    storage = build_signal_driver_storage(settings)
+    response = build_signal_drivers_response(
+        player_payload=player_payload,
+        storage=storage,
+        league=player_payload.get("sport", "MLB"),
+        season=settings.mlb_season,
+        current_only=current,
+        category=category,
+        limit=max(1, min(limit, 100)),
+    )
+    if season_state:
+        # Optional filter — return empty drivers if stored state does not match query
+        if response.season_state.state != season_state.upper():
+            response.current_drivers = []
+            response.data_quality.current_drivers = 0
+    return JSONResponse(response.model_dump(mode="json"))
+
+
+@app.post("/api/admin/players/{player_id}/developments")
+def ingest_player_development(
+    player_id: str,
+    payload: PlayerDevelopmentIngestRequest,
+    admin=Depends(_require_admin),
+) -> JSONResponse:
+    """Admin-only verified development ingestion."""
+    settings = _settings()
+    player_payload, _source = _load_player(player_id)
+    league = str(player_payload.get("sport", "MLB")).upper()
+    cs_id = player_id if ":" in player_id else f"{league.lower()}:{player_id}"
+
+    provider = ManualVerifiedDevelopmentProvider()
+    raw = {
+        "cs_player_id": cs_id,
+        "source_player_id": str(player_payload.get("player_id", player_id)),
+        "driver_type": payload.driver_type,
+        "title": payload.title,
+        "summary": payload.summary,
+        "occurred_at": payload.occurred_at,
+        "source_type": payload.source_type,
+        "source_reference": payload.source_reference,
+        "impact": payload.impact,
+        "evidence_quality": payload.evidence_quality,
+        "metric_name": payload.metric_name,
+        "metric_value": payload.metric_value,
+        "comparison_value": payload.comparison_value,
+        "metadata": payload.metadata or {},
+    }
+    valid, reason = provider.validate_development(raw)
+    if not valid:
+        raise HTTPException(status_code=400, detail=f"Development rejected: {reason}")
+
+    storage = build_signal_driver_storage(settings)
+    storage.append_development(raw)
+
+    from cardchase_ai.signal_driver_service import persist_pipeline_signal_drivers
+    from cardchase_ai.models.schemas import RollingHitterStats, MarketSnapshot
+
+    stats_7d = RollingHitterStats.model_validate(player_payload.get("stats_7d") or {})
+    stats_30d = RollingHitterStats.model_validate(player_payload.get("stats_30d") or {})
+    market_raw = player_payload.get("market_snapshots") or {}
+    market_snapshots = {
+        k: MarketSnapshot.model_validate(v) for k, v in market_raw.items() if isinstance(v, dict)
+    }
+
+    drivers = persist_pipeline_signal_drivers(
+        player_name=player_payload.get("player_name", ""),
+        source_player_id=player_payload.get("player_id", player_id),
+        league=league,
+        stats_7d=stats_7d,
+        stats_30d=stats_30d,
+        market_snapshots=market_snapshots,
+        season=settings.mlb_season,
+        storage=storage,
+    )
+    return JSONResponse({"status": "ok", "drivers_appended": len(drivers)})
 
 
 @app.get("/api/players/{player_id}/signals/weekly")

@@ -66,6 +66,9 @@ class PlayerWeeklySignalSnapshot(BaseModel):
     rank: int | None = None
     evidence: dict[str, Any] = Field(default_factory=dict)
     missing_inputs: list[str] = Field(default_factory=list)
+    supporting_driver_ids: list[str] = Field(default_factory=list)
+    driver_evidence_used: list[str] = Field(default_factory=list)
+    driver_missing_evidence: list[str] = Field(default_factory=list)
     algorithm_version: str = WEEKLY_INTELLIGENCE_V1
     captured_at: datetime | None = None
     player_name: str | None = None
