@@ -57,10 +57,12 @@ class ScoutingReportStaticGuardTests(unittest.TestCase):
     def test_scouting_metrics_module_loaded_before_app(self):
         index_html = (FRONTEND / "index.html").read_text(encoding="utf-8")
         metrics_pos = index_html.find("scouting-report-metrics.js")
+        registry_pos = index_html.find("card-registry.js")
         card_report_pos = index_html.find("card-report.js")
         app_pos = index_html.find("app.js")
         self.assertGreater(metrics_pos, -1)
-        self.assertGreater(card_report_pos, metrics_pos)
+        self.assertGreater(registry_pos, metrics_pos)
+        self.assertGreater(card_report_pos, registry_pos)
         self.assertGreater(app_pos, card_report_pos)
 
 

@@ -11,6 +11,7 @@ const REPO_ROOT = path.resolve(__dirname, "..");
 const FRONTEND = path.join(REPO_ROOT, "frontend");
 
 function loadCardReportModule() {
+  const registryCode = fs.readFileSync(path.join(FRONTEND, "card-registry.js"), "utf8");
   const metricsCode = fs.readFileSync(path.join(FRONTEND, "scouting-report-metrics.js"), "utf8");
   const cardReportCode = fs.readFileSync(path.join(FRONTEND, "card-report.js"), "utf8");
 
@@ -21,10 +22,8 @@ function loadCardReportModule() {
     formatScore: (v) => (typeof v === "number" ? v.toFixed(1) : "—"),
     formatTimestamp: (v) => (v ? String(v) : "Pending"),
     csIntelRecommendationClass: () => "cs-recommendation--buy",
-    formatCardIdentityHtml: () => "<p class=\"sr-card-title\">2023 Bowman Chrome</p>",
-    getCardIdentityFields: () => ({ year: 2023, brand: "Bowman", set: "Chrome" }),
     srMetricFormatters: () => ({ money: (v) => `$${v}`, percent: (v) => `${v}%`, score: (v) => String(v) }),
-    SRMetrics: require(path.join(REPO_ROOT, "tests", "..", "frontend", "scouting-report-metrics.js")),
+    SRMetrics: require(path.join(FRONTEND, "scouting-report-metrics.js")),
     latestEntries: [],
     fetch: async () => ({ ok: false }),
     document: { addEventListener: () => {}, getElementById: () => null },
@@ -34,6 +33,7 @@ function loadCardReportModule() {
   };
   sandbox.window = sandbox;
 
+  vm.runInNewContext(registryCode, sandbox);
   vm.runInNewContext(metricsCode, sandbox);
   vm.runInNewContext(cardReportCode, sandbox);
 
@@ -90,8 +90,8 @@ function testRenderCardReportSections() {
     scarcity_drivers: [{ label: "PSA 10 Listings", detail: "8 PSA 10 listings" }],
     recommendation: "BUY",
     evidence: "MEDIUM",
-    outlook_summary: "Stored market inputs support BUY.",
-    outlook_evidence: ["improving demand"],
+    outlook_summary: "Outlook based on stored card-level evidence in the current snapshot.",
+    outlook_evidence: ["listing volume increased"],
   });
   assert.ok(html.includes("Card Identity"));
   assert.ok(html.includes("Card Snapshot"));

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from cardchase_ai.card_outlook import CardOutlook, build_card_outlook
 from cardchase_ai.models.card_report import (
     CardIdentity,
     CardReport,
@@ -28,14 +29,6 @@ def parse_cs_card_id(cs_card_id: str) -> dict[str, str]:
         "query_name": parts[3],
         "cs_player_id": f"{parts[0]}:{parts[1]}",
     }
-
-
-def format_evidence_tier(conviction: str | None) -> str:
-    if not conviction:
-        return "INSUFFICIENT"
-    normalized = str(conviction).strip()
-    mapping = {"High": "HIGH", "Medium": "MEDIUM", "Low": "LOW"}
-    return mapping.get(normalized, normalized.upper())
 
 
 def _resolve_card_identity(snapshot: dict[str, Any], query_name: str) -> CardIdentity | None:
@@ -214,38 +207,17 @@ def _build_price_history(history: list[dict[str, Any]]) -> PriceHistorySeries:
     )
 
 
-def _build_outlook(snapshot: dict[str, Any], card_label: str) -> tuple[str | None, list[str]]:
-    recommendation = snapshot.get("recommendation")
-    evidence_items: list[str] = []
+def _build_outlook(snapshot: dict[str, Any]) -> CardOutlook:
     evidence_data = snapshot.get("evidence") or {}
-
-    if snapshot.get("demand_score") is not None and float(snapshot["demand_score"]) >= 60:
-        evidence_items.append("improving demand")
-    if evidence_data.get("listings_count") is not None and int(evidence_data["listings_count"]) <= 5:
-        evidence_items.append("tight listing supply")
-    if snapshot.get("momentum_score") is not None and float(snapshot["momentum_score"]) >= 55:
-        evidence_items.append("positive price momentum")
-
-    tags = evidence_data.get("tags") or {}
-    if tags.get("premium_count"):
-        evidence_items.append("premium listing activity")
-
-    for reason in evidence_data.get("outlook_reasons") or []:
-        evidence_items.append(str(reason))
-
-    if not recommendation or recommendation == "WATCH":
-        return "More evidence is required before CardSignal can issue a card-level recommendation.", evidence_items
-
-    label = card_label or "This card"
-    rec = str(recommendation).upper()
-    if rec == "BUY":
-        summary = f"Stored market inputs currently support a BUY outlook for {label}, though outcomes are never guaranteed."
-    elif rec == "SELL":
-        summary = f"Stored market inputs currently support a SELL outlook for {label}; near-term headwinds remain possible."
-    else:
-        summary = f"Stored market inputs currently support a HOLD outlook for {label} over the next reporting window."
-
-    return summary, evidence_items
+    return build_card_outlook(
+        stored_recommendation=snapshot.get("recommendation"),
+        stored_evidence_tier=snapshot.get("conviction"),
+        evidence_data=evidence_data,
+        stored_risk=snapshot.get("risk"),
+        stored_time_horizon=snapshot.get("time_horizon"),
+        missing_inputs=snapshot.get("missing_inputs") or [],
+        algorithm_version=snapshot.get("algorithm_version", "WEEKLY_INTELLIGENCE_V1"),
+    )
 
 
 def build_card_report(snapshot: dict[str, Any], history: list[dict[str, Any]] | None = None) -> CardReport:
@@ -260,7 +232,7 @@ def build_card_report(snapshot: dict[str, Any], history: list[dict[str, Any]] | 
     card_label = snapshot.get("card_label") or CARD_QUERY_LABELS.get(query_name, query_name)
 
     history = history or [snapshot]
-    outlook_summary, outlook_evidence = _build_outlook(snapshot, card_label)
+    outlook = _build_outlook(snapshot)
     return CardReport(
         cs_card_id=cs_card_id,
         player_id=parsed["player_id"],
@@ -270,8 +242,8 @@ def build_card_report(snapshot: dict[str, Any], history: list[dict[str, Any]] | 
         card_label=card_label,
         card_identity=_resolve_card_identity(snapshot, query_name),
         card_score=snapshot.get("card_signal_score"),
-        recommendation=snapshot.get("recommendation"),
-        evidence=format_evidence_tier(snapshot.get("conviction")),  # type: ignore[arg-type]
+        recommendation=outlook.recommendation,
+        evidence=outlook.evidence,  # type: ignore[arg-type]
         status=snapshot.get("status"),
         market=_build_market(snapshot),
         population=_build_population(snapshot),
@@ -279,15 +251,15 @@ def build_card_report(snapshot: dict[str, Any], history: list[dict[str, Any]] | 
         signal_drivers=[],
         market_drivers=_build_market_drivers(snapshot),
         scarcity_drivers=_build_scarcity_drivers(snapshot),
-        outlook_summary=outlook_summary,
-        outlook_evidence=outlook_evidence,
-        risk=snapshot.get("risk"),
-        time_horizon=snapshot.get("time_horizon"),
+        outlook_summary=outlook.summary,
+        outlook_evidence=outlook.supporting_evidence,
+        risk=outlook.risk,
+        time_horizon=outlook.time_horizon,
         market_activity_score=snapshot.get("market_activity_score"),
         demand_score=snapshot.get("demand_score"),
         momentum_score=snapshot.get("momentum_score"),
         scarcity_score=snapshot.get("scarcity_score"),
-        missing_inputs=snapshot.get("missing_inputs") or [],
+        missing_inputs=outlook.missing_inputs,
         updated_at=snapshot.get("captured_at"),
-        algorithm_version=snapshot.get("algorithm_version", "WEEKLY_INTELLIGENCE_V1"),
+        algorithm_version=outlook.algorithm_version,
     )

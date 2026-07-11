@@ -6,9 +6,9 @@ import unittest
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+from cardchase_ai.card_outlook import format_evidence_tier
 from cardchase_ai.card_report import (
     build_card_report,
-    format_evidence_tier,
     parse_cs_card_id,
 )
 from cardchase_ai.models.card_report import CardReport
@@ -72,6 +72,7 @@ class EvidenceTierTests(unittest.TestCase):
 class BuildCardReportTests(unittest.TestCase):
     def test_builds_card_report_from_snapshot(self):
         snapshot = _sample_snapshot()
+        snapshot["evidence"]["outlook_reasons"] = ["listing volume increased"]
         report = build_card_report(snapshot, [snapshot])
         self.assertIsInstance(report, CardReport)
         self.assertEqual(report.cs_card_id, "mlb:660271:card:psa10")
@@ -81,6 +82,29 @@ class BuildCardReportTests(unittest.TestCase):
         self.assertEqual(report.card_score, 72.5)
         self.assertEqual(report.recommendation, "BUY")
         self.assertEqual(report.evidence, "MEDIUM")
+        self.assertEqual(report.outlook_evidence, ["listing volume increased"])
+
+    def test_no_heuristic_outlook_evidence_without_stored_items(self):
+        snapshot = _sample_snapshot()
+        report = build_card_report(snapshot, [snapshot])
+        for phrase in (
+            "improving demand",
+            "tight listing supply",
+            "positive price momentum",
+            "premium listing activity",
+        ):
+            self.assertNotIn(phrase, [item.lower() for item in report.outlook_evidence])
+
+    def test_no_stored_outlook_evidence_marks_insufficient(self):
+        snapshot = _sample_snapshot()
+        snapshot["recommendation"] = "BUY"
+        report = build_card_report(snapshot, [snapshot])
+        self.assertEqual(report.evidence, "INSUFFICIENT")
+        self.assertEqual(report.outlook_evidence, [])
+        self.assertEqual(
+            report.outlook_summary,
+            "Supporting evidence is not available in the current snapshot.",
+        )
 
     def test_market_drivers_from_stored_evidence(self):
         snapshot = _sample_snapshot()

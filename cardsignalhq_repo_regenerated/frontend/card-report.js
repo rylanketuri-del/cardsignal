@@ -83,7 +83,26 @@ function cardReportIdentitySource(report = {}) {
   if (report.card_identity) {
     return { identity: report.card_identity };
   }
-  return { card_label: report.card_label };
+  return {};
+}
+
+function cardReportFormatIdentity(card = {}) {
+  const registry = typeof CardRegistry !== "undefined" ? CardRegistry : null;
+  if (registry && typeof registry.formatCardIdentityHtml === "function") {
+    return registry.formatCardIdentityHtml(card);
+  }
+  if (typeof formatCardIdentityHtml === "function") {
+    return formatCardIdentityHtml(card);
+  }
+  return null;
+}
+
+function cardReportIdentityPending() {
+  const registry = typeof CardRegistry !== "undefined" ? CardRegistry : null;
+  if (registry && registry.CARD_REGISTRY_PENDING) {
+    return registry.CARD_REGISTRY_PENDING;
+  }
+  return "Registry data pending";
 }
 
 function cardReportEvidenceClass(tier = "") {
@@ -110,9 +129,7 @@ function renderCardReportDriver(driver = {}) {
 
 function renderCardReportHeader(report = {}) {
   const identitySource = cardReportIdentitySource(report);
-  const identityHtml = typeof formatCardIdentityHtml === "function"
-    ? formatCardIdentityHtml(identitySource)
-    : null;
+  const identityHtml = cardReportFormatIdentity(identitySource);
   const identityTitle = identityHtml
     ? ""
     : `<h2 class="cr-header-identity-fallback">${report.card_label || "Card Report"}</h2>`;
@@ -177,37 +194,10 @@ function renderCardReportHeader(report = {}) {
 
 function renderCardIdentitySection(report = {}) {
   const identitySource = cardReportIdentitySource(report);
-  const identityHtml = typeof formatCardIdentityHtml === "function"
-    ? formatCardIdentityHtml(identitySource)
-    : null;
-  const fields = typeof getCardIdentityFields === "function"
-    ? getCardIdentityFields(identitySource)
-    : {};
-  const serialNumber = report.card_identity?.serial_number || report.population?.serial_number;
-
-  const detailRows = [];
-  if (fields.year) detailRows.push(["Year", fields.year]);
-  if (fields.brand) detailRows.push(["Brand", fields.brand]);
-  if (fields.set) detailRows.push(["Set", fields.set]);
-  if (fields.parallel) detailRows.push(["Parallel", fields.parallel]);
-  if (fields.card_number) detailRows.push(["Card #", `#${fields.card_number}`]);
-  if (fields.grade) {
-    const gradeLine = [fields.grading_company, fields.grade].filter(Boolean).join(" ");
-    detailRows.push(["Grade", gradeLine]);
-  } else if (fields.grading_company) {
-    detailRows.push(["Grading Company", fields.grading_company]);
-  }
-  if (serialNumber) detailRows.push(["Serial Number", serialNumber]);
-
-  const body = detailRows.length
-    ? `<dl class="cr-identity-grid">${detailRows.map(([label, value]) => `
-        <div class="cr-identity-item">
-          <dt>${label}</dt>
-          <dd>${value}</dd>
-        </div>`).join("")}</dl>`
-    : identityHtml
-      ? `<div class="cr-identity-formatted">${identityHtml}</div>`
-      : `<p class="sr-pending">Card registry data is still being linked.</p>`;
+  const identityHtml = cardReportFormatIdentity(identitySource);
+  const body = identityHtml
+    ? `<div class="cr-identity-formatted">${identityHtml}</div>`
+    : `<p class="sr-pending">${cardReportIdentityPending()}</p>`;
 
   return `
     <section class="sr-section cr-section">
@@ -330,12 +320,13 @@ function renderCardOutlookSection(report = {}) {
     : "";
   const evidence = report.evidence || "INSUFFICIENT";
   const evidenceClass = cardReportEvidenceClass(evidence);
-  const summary = report.outlook_summary || "Outlook pending — more stored evidence required.";
+  const summary = report.outlook_summary
+    || "More verified card-level evidence is required before CardSignal can issue a full outlook.";
   const supportItems = report.outlook_evidence || [];
 
   const supportBody = supportItems.length
     ? `<ul class="cr-outlook-support">${supportItems.map((item) => `<li>${item}</li>`).join("")}</ul>`
-    : `<p class="sr-pending">Supporting evidence pending.</p>`;
+    : `<p class="sr-pending">${evidence === "INSUFFICIENT" ? "Supporting evidence is not available in the current snapshot." : "Supporting evidence pending."}</p>`;
 
   return `
     <section class="sr-section cr-section cr-outlook">

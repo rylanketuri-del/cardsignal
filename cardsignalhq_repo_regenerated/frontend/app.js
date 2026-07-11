@@ -1007,50 +1007,6 @@ function deriveEvidenceQuality(score, missingKeys = [], requiredKey = null) {
   return null;
 }
 
-function getCardIdentityFields(card = {}) {
-  const source = card.identity || card.registry || card;
-  return {
-    year: source.card_year ?? source.year ?? null,
-    brand: source.brand ?? null,
-    set: source.set ?? null,
-    parallel: source.parallel ?? null,
-    card_number: source.card_number ?? null,
-    grade: source.grade ?? null,
-    grading_company: source.grading_company ?? null,
-  };
-}
-
-function hasCardRegistryIdentity(card = {}) {
-  const fields = getCardIdentityFields(card);
-  return !!(fields.year || fields.brand || fields.set);
-}
-
-function formatCardIdentityHtml(card = {}) {
-  const fields = getCardIdentityFields(card);
-  if (!hasCardRegistryIdentity(card)) return null;
-
-  const titleParts = [fields.year, fields.brand, fields.set].filter((part) => part != null && part !== "");
-  const lines = [];
-
-  if (titleParts.length) {
-    lines.push(`<p class="sr-card-title">${titleParts.join(" ")}</p>`);
-  }
-  if (fields.parallel) {
-    lines.push(`<p class="sr-card-meta">${fields.parallel}</p>`);
-  }
-  if (fields.card_number) {
-    lines.push(`<p class="sr-card-number">#${fields.card_number}</p>`);
-  }
-  if (fields.grade) {
-    const gradeLine = [fields.grading_company, fields.grade].filter(Boolean).join(" ");
-    lines.push(`<p class="sr-card-grade">${gradeLine}</p>`);
-  } else if (fields.grading_company) {
-    lines.push(`<p class="sr-card-grade">${fields.grading_company}</p>`);
-  }
-
-  return lines.length ? lines.join("") : null;
-}
-
 function parseStoredContributorDirection(value, fallback = "up") {
   const n = csIntelSafeToNumber(value);
   if (n === null) return fallback;
@@ -1313,7 +1269,7 @@ function renderReportCardPanel(card) {
   return `
     <article class="sr-card-panel cr-clickable" data-cs-card-id="${card.cs_card_id || ""}">
       <div class="sr-card-identity">
-        ${identityHtml || `<p class="sr-pending">Card registry data is still being linked.</p>`}
+        ${identityHtml || `<p class="sr-pending">${CARD_REGISTRY_PENDING}</p>`}
       </div>
       <div class="sr-card-metrics">
         ${metricRow(metrics.medianActivePrice)}
