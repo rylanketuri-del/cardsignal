@@ -69,9 +69,24 @@
 
 ## Current Milestone
 
+### Release v0.13.1 — Card Intelligence Ranking (Sprint 9.6)
+
+In progress. Do not merge or deploy until verification pass.
+
+**Card Intelligence Ranking** transforms the Scouting Report Cards section into a ranked portfolio view:
+
+- [x] Cards sorted by stored CardSignal Card Score (highest first)
+- [x] Top Pick highlight for #1 ranked card with stored score, recommendation, evidence, and explanation
+- [x] At-a-glance comparison: Score, Recommendation, Evidence, Market Snapshot per card
+- [x] Informational ranking explanation above the Cards section (no proprietary weights exposed)
+- [x] Deterministic tie-breaking: evidence strength → card identity → `cs_card_id`
+- [x] View Card Report action on every card (reuses `/cards/{cs_card_id}` routing)
+- [x] Centralized ranking module — no duplicate sort logic in `app.js`
+- [x] Homepage, Signal Center, Player Scouting Report, Card Reports, and auth unchanged
+
 ### Release v0.13.0 — Card Report Foundation (Sprint 9.5)
 
-Shipped in this branch. Do not merge or deploy until verification pass.
+Shipped in prior release. Verification pass complete for card report foundation.
 
 **Card Reports** introduce the individual collectible research destination:
 
@@ -82,7 +97,13 @@ Shipped in this branch. Do not merge or deploy until verification pass.
 - [x] Card rows clickable from Signal Center and Scouting Report Cards section
 - [x] Price history foundation (time series stored; chart adapter pending)
 - [x] Architecture hooks for future comments, watchlists, sharing, charts, alerts, Signal Vault
-- [x] Scouting Report navigation preserved — player reports unchanged
+  - [x] Scouting Report navigation preserved — player reports unchanged
+
+- **Sprint 9.6 — Card Intelligence Ranking** *(complete in this branch)*
+  - [x] Cards ranked by stored CardSignal Card Score within player Scouting Reports
+  - [x] Top Pick badge and comparison grid (Score, Recommendation, Evidence, Market Snapshot)
+  - [x] Deterministic tie-breaking and centralized `card-intelligence-ranking.js` module
+  - [x] View Card Report action on every ranked card
 
 ### Release v0.10.2 — Scouting Report 2.0
 
@@ -95,12 +116,6 @@ Shipped in prior release. Verification pass complete for weekly pipeline foundat
 **Beta schedule (documented, idempotent guard):** Tuesday 6:00 AM America/New_York via external scheduler calling `POST /api/weekly/run` with admin token.
 
 ## Up Next
-
-### Sprint 9.6 — Card Intelligence Ranking
-
-- Rank cards within player card portfolios
-- Card-level score history visualization
-- Card comparison views
 
 ### Sprint 9.7 — NBA Performance Adapter
 

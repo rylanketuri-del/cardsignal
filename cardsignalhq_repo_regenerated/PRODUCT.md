@@ -117,6 +117,18 @@ CardSignal refreshes market-wide intelligence **weekly on Tuesdays at 6:00 AM Am
 
 GET routes serve stored weekly intelligence only — they never trigger provider work.
 
+## Card Intelligence Ranking Principles
+
+Within a player's Scouting Report, the **Cards** section is an intelligence ranking — not a flat list.
+
+- **Sort key:** CardSignal Card Score (highest first) from stored weekly card intelligence
+- **Never sort by:** price, newest, alphabetical order, grade, or listing count unless explicitly selected in a future sprint
+- **Top Pick:** the #1 ranked card receives a subtle analyst-style badge with stored score, recommendation, evidence, and explanation
+- **Comparison:** every card panel surfaces Score, Recommendation, Evidence, and Market Snapshot so collectors understand why Card A outranks Card B
+- **Tie handling:** equal scores break deterministically on stronger stored evidence → card identity → `cs_card_id`
+- **Data rules:** ranking explanations, evidence copy, and recommendations come only from stored intelligence — no fabricated ranking logic
+- **Card Report entry:** each card exposes a clear **View Card Report** action using existing `/cards/{cs_card_id}` routing
+
 ## User Layers
 
 - **Anonymous** — browse Signal Center, search players, open Intelligence Reports

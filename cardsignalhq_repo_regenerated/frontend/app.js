@@ -1244,14 +1244,25 @@ async function enrichPlayerCards(cards = []) {
       enriched.push(card);
     }
   }
-  return enriched;
+  return typeof rankPlayerCards === "function" ? rankPlayerCards(enriched) : enriched;
 }
 
 function resolveStoredCardRecommendation(card = {}) {
   return card.recommendation ? String(card.recommendation).toUpperCase() : "WATCH";
 }
 
-function renderReportCardPanel(card) {
+function renderCardComparisonItem(label, value, { badgeClass = "", badgeKind = "recommendation", pending = false } = {}) {
+  const valueClass = badgeClass
+    ? `${badgeKind === "evidence" ? "cs-evidence-badge" : "cs-recommendation-badge"} ${badgeClass} sr-card-compare-badge`
+    : `sr-card-compare-value${pending ? " sr-pending--inline" : ""}`;
+  return `
+    <div class="sr-card-compare-item">
+      <span class="sr-card-compare-label">${label}</span>
+      <span class="${valueClass}">${value}</span>
+    </div>`;
+}
+
+function renderReportCardPanel(card, { rank = null, isTopPick = false } = {}) {
   const evidence = card.evidence || {};
   const tags = evidence.tags || {};
   const psaPop = tags.psa10_count != null ? formatStatCount(tags.psa10_count, "PSA population pending.") : "PSA population pending.";
@@ -1259,6 +1270,28 @@ function renderReportCardPanel(card) {
   const rec = resolveStoredCardRecommendation(card);
   const recClass = csIntelRecommendationClass(rec.toLowerCase());
   const metrics = SRMetrics.srBuildCardMetrics(card, srMetricFormatters());
+  const formatters = srMetricFormatters();
+  const score = typeof resolveCardSignalScore === "function"
+    ? resolveCardSignalScore(card)
+    : (card.card_signal_score ?? card.score);
+  const scoreLabel = score != null ? formatScore(score) : "Pending";
+  const evidenceTier = typeof resolveCardEvidenceTier === "function"
+    ? resolveCardEvidenceTier(card)
+    : "INSUFFICIENT";
+  const evidenceClass = csIntelEvidenceClass(evidenceTier);
+  const evidenceText = typeof buildStoredCardEvidenceText === "function"
+    ? buildStoredCardEvidenceText(card)
+    : null;
+  const marketSnapshot = typeof buildCardMarketSnapshot === "function"
+    ? buildCardMarketSnapshot(card, formatters)
+    : "Market snapshot pending.";
+  const explanation = typeof buildStoredCardExplanation === "function"
+    ? buildStoredCardExplanation(card)
+    : null;
+  const rankLabel = rank != null ? `#${rank}` : "";
+  const topPickBadge = isTopPick
+    ? `<span class="sr-card-top-pick-badge">Top Pick</span>`
+    : "";
 
   const metricRow = (metric) => `
     <div class="sr-card-metric">
@@ -1266,10 +1299,39 @@ function renderReportCardPanel(card) {
       <span class="sr-card-metric-value${metric.pending ? " sr-pending--inline" : ""}">${metric.display}</span>
     </div>`;
 
+  const topPickSummary = isTopPick
+    ? `
+      <div class="sr-card-top-pick-summary">
+        <p class="sr-card-top-pick-copy">
+          ${explanation
+    ? explanation
+    : `<span class="sr-pending--inline">Card-level explanation pending.</span>`}
+        </p>
+      </div>`
+    : "";
+
   return `
-    <article class="sr-card-panel cr-clickable" data-cs-card-id="${card.cs_card_id || ""}">
+    <article class="sr-card-panel${isTopPick ? " sr-card-panel--top-pick" : ""}" data-cs-card-id="${card.cs_card_id || ""}">
+      <div class="sr-card-panel-head">
+        <div class="sr-card-rank-wrap">
+          ${rankLabel ? `<span class="sr-card-rank">${rankLabel}</span>` : ""}
+          ${topPickBadge}
+        </div>
+        <button
+          type="button"
+          class="sr-card-report-btn"
+          data-cr-view-report
+          data-cs-card-id="${card.cs_card_id || ""}"
+        >View Card Report</button>
+      </div>
       <div class="sr-card-identity">
         ${identityHtml || `<p class="sr-pending">${CARD_REGISTRY_PENDING}</p>`}
+      </div>
+      <div class="sr-card-compare-grid">
+        ${renderCardComparisonItem("CardSignal Score", scoreLabel)}
+        ${renderCardComparisonItem("Recommendation", rec, { badgeClass: recClass })}
+        ${renderCardComparisonItem("Evidence", evidenceTier, { badgeClass: evidenceClass, badgeKind: "evidence" })}
+        ${renderCardComparisonItem("Market Snapshot", marketSnapshot, { pending: marketSnapshot === "Market snapshot pending." })}
       </div>
       <div class="sr-card-metrics">
         ${metricRow(metrics.medianActivePrice)}
@@ -1281,33 +1343,47 @@ function renderReportCardPanel(card) {
           <span class="sr-card-metric-label">PSA Population</span>
           <span class="sr-card-metric-value">${psaPop}</span>
         </div>
-        <div class="sr-card-metric">
-          <span class="sr-card-metric-label">CardSignal Score</span>
-          <span class="sr-card-metric-value">${card.card_signal_score != null ? formatScore(card.card_signal_score) : card.score != null ? formatScore(card.score) : "Pending"}</span>
-        </div>
-        <div class="sr-card-metric">
-          <span class="sr-card-metric-label">Recommendation</span>
-          <span class="cs-recommendation-badge ${recClass} sr-card-rec">${rec}</span>
-        </div>
       </div>
       <p class="sr-card-evidence">
         <span class="sr-evidence-label">Evidence</span>
-        ${evidence.listings_count
-    ? `Based on ${evidence.listings_count} active listing${evidence.listings_count === 1 ? "" : "s"} in stored market snapshots.`
-    : "Market history still building."}
+        ${evidenceText || `<span class="sr-pending--inline">Market history still building.</span>`}
       </p>
+      ${topPickSummary}
     </article>`;
 }
 
+function wireCardReportButtons(root = document) {
+  root.querySelectorAll("[data-cr-view-report]").forEach((btn) => {
+    if (btn.dataset.crViewBound === "1") return;
+    btn.dataset.crViewBound = "1";
+    btn.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const csCardId = btn.dataset.csCardId;
+      if (csCardId && typeof openCardReportModal === "function") {
+        openCardReportModal(csCardId);
+      }
+    });
+  });
+}
+
 function renderReportCards(cards = []) {
-  const body = cards.length
-    ? `<div class="sr-cards-list">${cards.map((c) => renderReportCardPanel(c)).join("")}</div>`
+  const rankedCards = typeof rankPlayerCards === "function" ? rankPlayerCards(cards) : cards;
+  const body = rankedCards.length
+    ? `<div class="sr-cards-list">${rankedCards.map((card, index) => renderReportCardPanel(card, {
+      rank: index + 1,
+      isTopPick: index === 0,
+    })).join("")}</div>`
     : `<p class="sr-pending">Card intelligence pending for this player.</p>`;
+  const rankingNote = typeof CARD_RANKING_EXPLANATION === "string"
+    ? `<p class="sr-cards-ranking-note">${CARD_RANKING_EXPLANATION}</p>`
+    : "";
 
   return `
-    <section class="sr-section">
+    <section class="sr-section sr-cards-section">
       <h3 class="sr-section-title">Cards</h3>
-      <p class="sr-section-lead">Tracked cards linked to this player through stored weekly intelligence.</p>
+      <p class="sr-section-lead">Cards ranked by CardSignal Card Score — highest intelligence signal first.</p>
+      ${rankingNote}
       ${body}
     </section>`;
 }
@@ -1652,6 +1728,7 @@ async function openPlayerIntelligenceModal(entry) {
 
     wirePlayerActions();
     if (typeof wireCardPanelClicks === "function") wireCardPanelClicks(body);
+    wireCardReportButtons(body);
 
     modal.classList.remove("hidden");
     modal.setAttribute("aria-hidden", "false");
