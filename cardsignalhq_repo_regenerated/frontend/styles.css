@@ -134,10 +134,8 @@ body {
 }
 
 .leaders-report-section {
-  display: grid;
-  grid-template-columns: 1.15fr .85fr;
-  gap: 22px;
-  align-items: start;
+  display: block;
+  margin-top: 16px;
 }
 
 /* Panels */
@@ -3939,12 +3937,6 @@ button,
   padding: 32px;
 }
 
-.market-leaders-module:hover {
-  transform: none;
-  box-shadow: var(--shadow-soft);
-  border-color: rgba(220, 214, 206, 0.9);
-}
-
 .market-leaders-header {
   margin-bottom: 26px;
 }
@@ -4144,13 +4136,12 @@ button,
 }
 
 .leaders-report-section {
-  gap: 18px;
+  gap: 0;
   margin-top: 16px;
   align-items: stretch;
 }
 
-.leaders-report-section #leaderboard-table,
-.leaders-report-section .player-report-shell {
+.leaders-report-section #leaderboard-table {
   min-width: 0;
 }
 
@@ -4171,7 +4162,7 @@ button,
 }
 
 .market-leaders-scroll {
-  max-height: 480px;
+  max-height: min(72vh, 720px);
   overflow-y: auto;
   overflow-x: hidden;
   border-radius: 24px;
@@ -5861,4 +5852,76 @@ body.pi-modal-open {
   .sr-section-title {
     font-size: 28px;
   }
+}
+
+/* ===========================
+   Signal Center — Sport filters & Coming Soon
+=========================== */
+
+.sport-content--mlb {
+  display: block;
+}
+
+.sport-coming-soon {
+  margin-top: 18px;
+}
+
+.sport-coming-soon-card {
+  background: var(--panel);
+  border: 1px solid rgba(220, 214, 206, 0.9);
+  border-radius: 28px;
+  padding: 48px 32px;
+  box-shadow: var(--shadow-soft);
+  text-align: center;
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+.sport-coming-soon-title {
+  margin: 8px 0 12px;
+  font-family: Cormorant, Georgia, serif;
+  font-size: 44px;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  color: var(--charcoal);
+}
+
+.sport-coming-soon-copy {
+  margin: 0 auto;
+  max-width: 420px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.qi-card--pending {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 220px;
+}
+
+.qi-pending-copy {
+  margin: 0;
+  text-align: center;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+  max-width: 280px;
+}
+
+.sport-tab[data-sport-filter="nba"],
+.sport-tab[data-sport-filter="nfl"] {
+  cursor: pointer;
+}
+
+.sport-tab[data-sport-filter="nba"].active,
+.sport-tab[data-sport-filter="nfl"].active {
+  background: var(--charcoal);
+  color: var(--cream);
+  border-color: var(--charcoal);
+}
+
+.hidden {
+  display: none !important;
 }

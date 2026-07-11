@@ -28,11 +28,11 @@
       </header>
 
       <nav class="sport-tabs" aria-label="Sport filters">
-        <button class="sport-tab active" type="button">All</button>
-        <button class="sport-tab active-sport" type="button">MLB</button>
-        <button class="sport-tab disabled" type="button">NBA Soon</button>
-        <button class="sport-tab disabled" type="button">NFL Soon</button>
-        <button class="sport-tab disabled" type="button">NHL Soon</button>
+        <button class="sport-tab active" type="button" data-sport-filter="all">All</button>
+        <button class="sport-tab active-sport" type="button" data-sport-filter="mlb">MLB</button>
+        <button class="sport-tab" type="button" data-sport-filter="nba">NBA</button>
+        <button class="sport-tab" type="button" data-sport-filter="nfl">NFL</button>
+        <button class="sport-tab disabled" type="button" data-sport-filter="nhl" disabled>NHL Soon</button>
       </nav>
 
       <nav class="product-nav">
@@ -66,6 +66,7 @@
       </section>
 
       <!-- Signal Center: primary dashboard sections -->
+      <div class="sport-content sport-content--mlb" id="sport-content-mlb" data-sport="mlb">
       <section class="signal-center-hero" id="signal-center-hero" aria-label="Featured Signal">
         <div class="signal-of-week-card featured-signal-banner"></div>
       </section>
@@ -74,52 +75,24 @@
         <div class="quick-intelligence-grid" id="quick-intelligence-grid"></div>
       </section>
 
-      <section class="product-section leaders-report-section">
+      <section class="product-section leaders-report-section" id="leaders-report-section">
         <div id="leaderboard-table"></div>
+      </section>
+      </div>
 
-        <div class="player-report-shell player-intel-placeholder-shell">
-          <div class="section-header">
-            <div>
-              <p class="eyebrow">Player Intelligence</p>
-              <h2>Deep Dive</h2>
-            </div>
-          </div>
-
-          <div id="player-detail" class="detail-empty player-intel-placeholder">
-            Select a player to open their Scouting Report.
-          </div>
+      <section class="sport-coming-soon hidden" id="sport-coming-soon-nba" data-sport="nba" aria-label="NBA coming soon">
+        <div class="sport-coming-soon-card">
+          <p class="eyebrow">NBA</p>
+          <h2 class="sport-coming-soon-title">Coming Soon</h2>
+          <p class="sport-coming-soon-copy">NBA card-market intelligence is in development. Check back for weekly signals, leaderboards, and scouting reports.</p>
         </div>
       </section>
 
-      <section class="grid two-up charts-section">
-        <div class="panel light-panel">
-          <div class="panel-header">
-            <div>
-              <h2>Signal Timeline</h2>
-              <p class="section-desc">Selected player signal over recent weekly snapshots.</p>
-            </div>
-          </div>
-          <div class="chart-canvas-wrap" id="score-history-wrap">
-            <canvas id="score-history-chart" height="160"></canvas>
-            <div class="chart-placeholder hidden" id="score-history-placeholder">
-              Signal timeline will populate after weekly snapshots.
-            </div>
-          </div>
-        </div>
-
-        <div class="panel light-panel">
-          <div class="panel-header">
-            <div>
-              <h2>Market Activity</h2>
-              <p class="section-desc">Top leaderboard signal across recent pricing runs.</p>
-            </div>
-          </div>
-          <div class="chart-canvas-wrap" id="leaderboard-history-wrap">
-            <canvas id="leaderboard-history-chart" height="160"></canvas>
-            <div class="chart-placeholder hidden" id="leaderboard-history-placeholder">
-              Market activity will populate after card pricing snapshots.
-            </div>
-          </div>
+      <section class="sport-coming-soon hidden" id="sport-coming-soon-nfl" data-sport="nfl" aria-label="NFL coming soon">
+        <div class="sport-coming-soon-card">
+          <p class="eyebrow">NFL</p>
+          <h2 class="sport-coming-soon-title">Coming Soon</h2>
+          <p class="sport-coming-soon-copy">NFL card-market intelligence is in development. Check back for weekly signals, leaderboards, and scouting reports.</p>
         </div>
       </section>
 
