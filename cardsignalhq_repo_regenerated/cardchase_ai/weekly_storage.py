@@ -174,6 +174,8 @@ class WeeklyJsonStorage:
         return history[-limit:]
 
     def fetch_card_weekly_history(self, cs_card_id: str, limit: int = 12) -> list[dict[str, Any]]:
+        from cardchase_ai.card_registry import enrich_card_row
+
         history: list[dict[str, Any]] = []
         for entry in self._load_index():
             path = self._run_path(entry["run_id"])
@@ -182,7 +184,7 @@ class WeeklyJsonStorage:
             data = json.loads(path.read_text(encoding="utf-8"))
             for snap in data.get("card_snapshots", []):
                 if snap.get("cs_card_id") == cs_card_id:
-                    history.append(snap)
+                    history.append(enrich_card_row(snap))
         history.sort(key=lambda s: s.get("captured_at") or "")
         return history[-limit:]
 
@@ -360,6 +362,8 @@ class WeeklyStorage:
         return self.json.fetch_player_weekly_history(cs_player_id, limit)
 
     def fetch_card_weekly_history(self, cs_card_id: str, limit: int = 12) -> list[dict[str, Any]]:
+        from cardchase_ai.card_registry import enrich_card_row
+
         if self.supabase:
             try:
                 rows = self.supabase._get(
@@ -371,7 +375,7 @@ class WeeklyStorage:
                         "limit": str(limit),
                     },
                 )
-                return rows
+                return [enrich_card_row(row) for row in rows]
             except SupabaseError:
                 pass
         return self.json.fetch_card_weekly_history(cs_card_id, limit)
@@ -502,7 +506,9 @@ class WeeklyStorage:
         }
 
     def _card_snapshot_to_row(self, snap: CardWeeklyIntelligenceSnapshot) -> dict[str, Any]:
-        return {
+        from cardchase_ai.card_registry import card_identity_from_snapshot
+
+        row = {
             "snapshot_id": snap.snapshot_id,
             "run_id": snap.run_id,
             "cs_card_id": snap.cs_card_id,
@@ -525,9 +531,10 @@ class WeeklyStorage:
             "missing_inputs": snap.missing_inputs,
             "algorithm_version": snap.algorithm_version,
             "captured_at": snap.captured_at.isoformat() if snap.captured_at else None,
-            "card_label": snap.card_label,
             "player_name": snap.player_name,
         }
+        row["identity"] = card_identity_from_snapshot(row)
+        return row
 
     def _signal_to_row(self, signal: SignalOfTheWeek) -> dict[str, Any]:
         return {

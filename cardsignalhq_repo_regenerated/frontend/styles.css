@@ -3910,6 +3910,40 @@ button,
   text-overflow: ellipsis;
 }
 
+.qi-row-identity {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.qi-card-identity-line {
+  display: block;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.qi-card-identity-title {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--charcoal);
+}
+
+.qi-card-identity-meta {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.qi-card-identity--pending {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  font-style: italic;
+}
+
 .qi-row-metrics {
   display: flex;
   align-items: center;

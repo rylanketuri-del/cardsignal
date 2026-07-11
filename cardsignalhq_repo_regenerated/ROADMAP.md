@@ -52,7 +52,7 @@
 - **Sprint 8.7 — partial in this branch**
   - [x] eBay market snapshots in manual pipeline
   - [x] Card intelligence synthesis from stored eBay query templates
-  - [ ] Card registry (not present in this branch)
+  - [x] Card registry — centralized CardIdentity mapper for player-linked intelligence
   - [ ] PSA population provider/integration (not present; optional stage interface only)
   - [x] Historical market movement foundation (stored snapshot comparison; no live provider reads on GET)
 
@@ -69,11 +69,32 @@
 
 ## Current Milestone
 
+### Sprint 9.2 — Card Intelligence
+
+Next milestone. Build on the Card Registry foundation:
+
+- Canonical card records linked to listing evidence
+- Card-level pricing, movement, and population enrichment
+- Card Reports and deep-link navigation
+- Search registry interfaces (not exposed until launch-ready)
+
+## Shipped in v0.10.4
+
+### Release v0.10.4 — Card Registry Completion (Sprint 9.1B)
+
+Complete. Verification pass pending PR review. Do not merge or deploy until verified.
+
+- [x] Centralized Card Registry mapper (`card_registry.py`, `card-registry.js`)
+- [x] CardIdentity model with collector-friendly display formatting
+- [x] Trending Cards, Biggest Movers, Buy Low Watch, Most Chased use CardIdentity
+- [x] Scouting Report Cards section uses CardIdentity (no manual title assembly)
+- [x] Every rendered card row carries `cs_card_id` for future deep linking
+- [x] "Registry data pending" when identity fields are unavailable
+- [x] No placeholder query labels or fabricated card names in card lists
+
 ### Release v0.10.2 — Scouting Report 2.0
 
-In progress. Do not merge or deploy until verification pass.
-
-**Scouting Report** transforms the player modal into a premium single-page research experience:
+Shipped. Scouting Report transforms the player modal into a premium single-page research experience:
 
 - Scrollable editorial report (no tabs): Header → Player Snapshot → Why This Signal → Cards → Market → Signal Analysis → Outlook
 - Real stored intelligence only — honest pending states when data is unavailable
@@ -111,7 +132,6 @@ Shipped in prior release. Verification pass complete for weekly pipeline foundat
 
 ## Future
 
-- **Card registry** — canonical card identity layer for player-linked intelligence
 - **PSA population integration** — wired through `PopulationProvider` when available
 - **Tuesday email report** — weekly digest from stored homepage intelligence
 - **Signal Vault** — searchable archive of weekly signals and card intelligence

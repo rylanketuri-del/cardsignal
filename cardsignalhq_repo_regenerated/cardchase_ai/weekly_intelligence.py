@@ -7,6 +7,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Callable
 
+from cardchase_ai.card_registry import card_identity_from_snapshot
 from cardchase_ai.clients.ebay import EbayClient
 from cardchase_ai.clients.mlb import MLBClient
 from cardchase_ai.config import Settings, get_settings
@@ -293,16 +294,21 @@ def build_homepage_card_sections(card_snapshots: list[CardWeeklyIntelligenceSnap
     chased = sorted(scored, key=lambda c: (-(c.demand_score or 0), c.cs_card_id))[:5]
 
     def row(c: CardWeeklyIntelligenceSnapshot) -> dict[str, Any]:
-        return {
+        snapshot_row = {
             "cs_card_id": c.cs_card_id,
             "cs_player_id": c.cs_player_id,
             "player_name": c.player_name,
-            "card_label": c.card_label,
+            "league": c.league,
             "score": c.card_signal_score,
             "recommendation": c.recommendation,
             "demand_score": c.demand_score,
             "market_activity_score": c.market_activity_score,
+            "momentum_score": c.momentum_score,
+            "evidence": c.evidence,
+            "captured_at": c.captured_at.isoformat() if c.captured_at else None,
         }
+        snapshot_row["identity"] = card_identity_from_snapshot(snapshot_row)
+        return snapshot_row
 
     return {
         "trending_cards": [row(c) for c in trending],
@@ -736,6 +742,15 @@ def run_weekly_intelligence(
         return _finalize_failed_run(run, storage, stages, outcomes, error, settings)
 
 
+def _enrich_card_intel_sections(sections: dict[str, list[dict[str, Any]]]) -> dict[str, list[dict[str, Any]]]:
+    from cardchase_ai.card_registry import enrich_card_row
+
+    return {
+        key: [enrich_card_row(row) for row in rows]
+        for key, rows in sections.items()
+    }
+
+
 def build_latest_weekly_api_payload(league: str, storage: WeeklyStorage, settings: Settings) -> dict[str, Any]:
     """Build GET /api/weekly/latest response from stored data only."""
     payload = storage.fetch_latest_completed_payload(league)
@@ -772,12 +787,12 @@ def build_latest_weekly_api_payload(league: str, storage: WeeklyStorage, setting
 
     homepage = payload.get("homepage")
     if isinstance(homepage, dict):
-        card_intel = {
+        card_intel = _enrich_card_intel_sections({
             "trending_cards": homepage.get("trending_cards", []),
             "biggest_movers": homepage.get("biggest_movers", []),
             "buy_low_watch": homepage.get("buy_low_watch", []),
             "most_chased": homepage.get("most_chased", []),
-        }
+        })
         quality = homepage.get("data_quality_summary", {})
         leaders = homepage.get("todays_leaders", [])
     else:
@@ -786,7 +801,7 @@ def build_latest_weekly_api_payload(league: str, storage: WeeklyStorage, setting
         sections = build_homepage_card_sections(
             [CardWeeklyIntelligenceSnapshot.model_validate(c) for c in card_snaps]
         ) if card_snaps else {"trending_cards": [], "biggest_movers": [], "buy_low_watch": [], "most_chased": []}
-        card_intel = sections
+        card_intel = _enrich_card_intel_sections(sections)
         quality = build_data_quality_summary(
             [PlayerWeeklySignalSnapshot.model_validate(p) for p in player_snaps]
         ) if player_snaps else {}
