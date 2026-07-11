@@ -161,7 +161,7 @@ function buildCardMarketSnapshot(card = {}, formatters = {}) {
     parts.push(`${metrics.priceMovement7d.display} 7d`);
   }
 
-  return parts.length ? parts.join(" · ") : "Market snapshot pending.";
+  return parts.length ? parts.join(" · ") : (typeof COLLECTOR_COPY !== "undefined" ? COLLECTOR_COPY.MARKET_SNAPSHOT_PENDING : "Market Snapshot data will appear after stored market snapshots are captured.");
 }
 
 const CardIntelligenceRanking = {

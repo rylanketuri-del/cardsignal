@@ -142,13 +142,13 @@ function renderCardReportHeader(report = {}) {
   const evidenceClass = cardReportEvidenceClass(evidence);
   const updatedLabel = report.updated_at && typeof formatTimestamp === "function"
     ? formatTimestamp(report.updated_at)
-    : "Pending";
+    : (typeof COLLECTOR_COPY !== "undefined" ? COLLECTOR_COPY.UPDATED_PENDING : "Updated timestamp pending");
   const scoreLabel = report.card_score != null && typeof formatScore === "function"
     ? formatScore(report.card_score)
-    : "—";
+    : (typeof COLLECTOR_COPY !== "undefined" ? COLLECTOR_COPY.CARD_SCORE_PENDING : "CardSignal Card Score pending");
   const playerLink = report.player_name
     ? `<button type="button" class="cr-player-link" data-cr-player-id="${report.player_id || ""}">${report.player_name}</button>`
-    : `<span class="cr-player-link cr-player-link--muted">Player pending</span>`;
+    : `<span class="cr-player-link cr-player-link--muted">Player link pending — registry data not yet linked.</span>`;
 
   return `
     <div class="sr-header cr-header">
@@ -168,7 +168,7 @@ function renderCardReportHeader(report = {}) {
       <div class="pi-modal-header-stats sr-header-stats cr-header-stats">
         <div class="pi-modal-stat">
           <span class="pi-modal-stat-value cr-header-score">${scoreLabel}</span>
-          <span class="pi-modal-stat-label">CardSignal Score</span>
+          <span class="pi-modal-stat-label">CardSignal Card Score</span>
         </div>
         <div class="pi-modal-stat">
           <span class="pi-modal-stat-value cs-recommendation-badge ${recClass} pi-modal-rec-badge">${rec}</span>
@@ -183,7 +183,7 @@ function renderCardReportHeader(report = {}) {
       <div class="sr-header-meta">
         <span>Updated ${updatedLabel}</span>
         <span class="sr-header-meta-sep" aria-hidden="true">·</span>
-        <span>${report.algorithm_version || CARD_REPORT_ALGO}</span>
+        <span class="sr-header-algo">${report.algorithm_version || CARD_REPORT_ALGO}</span>
       </div>
 
       <div class="pi-modal-header-actions">
@@ -234,16 +234,16 @@ function renderCardSnapshotSection(report = {}) {
   const dataQuality = report.market?.data_quality || "Pending";
 
   return `
-    <section class="sr-section cr-section">
+    <section class="sr-section cr-section cr-market-snapshot">
       <h3 class="sr-section-title">Card Snapshot</h3>
       <p class="sr-section-lead">Stored market intelligence for this collectible — no recalculated scores.</p>
       <div class="sr-snapshot-grid cr-snapshot-grid">
-        ${snapshotItem("Median Price", metrics.medianActivePrice?.display || "Pending", metrics.medianActivePrice?.pending !== false)}
-        ${snapshotItem("Average Price", metrics.averageActivePrice?.display || "Pending", metrics.averageActivePrice?.pending !== false)}
-        ${snapshotItem("Active Listings", metrics.activeListings?.display || "Pending", metrics.activeListings?.pending !== false)}
+        ${snapshotItem("Median Price", metrics.medianActivePrice?.display || "Median price pending", metrics.medianActivePrice?.pending !== false)}
+        ${snapshotItem("Average Price", metrics.averageActivePrice?.display || "Average price pending", metrics.averageActivePrice?.pending !== false)}
+        ${snapshotItem("Active Listings", metrics.activeListings?.display || "Listing count pending", metrics.activeListings?.pending !== false)}
         ${snapshotItem("Population", populationDisplay, population == null)}
-        ${snapshotItem("Sales Activity", salesActivity, !report.market?.sales_activity)}
-        ${snapshotItem("Data Quality", dataQuality, !report.market?.data_quality)}
+        ${snapshotItem("Sales Activity", salesActivity === "Pending" ? "Sales activity pending" : salesActivity, !report.market?.sales_activity)}
+        ${snapshotItem("Data Quality", dataQuality === "Pending" ? "Data quality pending" : dataQuality, !report.market?.data_quality)}
       </div>
     </section>`;
 }
@@ -420,8 +420,22 @@ async function openCardReportModal(csCardId, { updateRoute = true } = {}) {
       modal.querySelector("[data-cr-close]")?.focus();
     });
   } catch (error) {
-    header.innerHTML = `<div class="cr-error"><h2 class="cr-header-identity-fallback">Card Report</h2></div>`;
-    body.innerHTML = `<div class="pi-tab-placeholder"><p class="pi-tab-placeholder-copy">${error.message || "Card report unavailable."}</p></div>`;
+    const fallback = typeof COLLECTOR_COPY !== "undefined"
+      ? COLLECTOR_COPY.CARD_REPORT_UNAVAILABLE
+      : "This Card Report could not be loaded.";
+    const message = typeof formatCollectorError === "function"
+      ? formatCollectorError(error, fallback)
+      : fallback;
+    header.innerHTML = `
+      <div class="sr-header cr-header">
+        <div class="pi-modal-header-main">
+          <h2 class="cr-header-identity-fallback" id="cr-modal-title">Card Report</h2>
+        </div>
+        <div class="pi-modal-header-actions">
+          <button type="button" class="pi-modal-close" data-cr-close aria-label="Close card report">✕</button>
+        </div>
+      </div>`;
+    body.innerHTML = `<div class="pi-tab-placeholder"><p class="pi-tab-placeholder-copy">${message}</p></div>`;
   }
 }
 

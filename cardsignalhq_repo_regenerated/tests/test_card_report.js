@@ -71,7 +71,7 @@ function testRenderCardReportHeader() {
     updated_at: "2026-07-08T12:00:00Z",
     algorithm_version: "WEEKLY_INTELLIGENCE_V1",
   });
-  assert.ok(html.includes("CardSignal Score"));
+  assert.ok(html.includes("CardSignal Card Score"));
   assert.ok(html.includes("Where performance meets the market."));
   assert.ok(html.includes("Aaron Judge"));
   assert.ok(html.includes("BUY"));
