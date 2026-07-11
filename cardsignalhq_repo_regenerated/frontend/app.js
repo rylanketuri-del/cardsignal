@@ -1289,17 +1289,34 @@ async function enrichPlayerCards(cards = []) {
 }
 
 function resolveStoredCardRecommendation(card = {}) {
-  return card.recommendation ? String(card.recommendation).toUpperCase() : "WATCH";
+  return CSCardIntelligence.csCardResolveRecommendation(card);
+}
+
+function sortPlayerCardsByScore(cards = []) {
+  return CSCardIntelligence.csCardSortByScore(cards);
+}
+
+function wireCardReportTargets(root = document) {
+  root.querySelectorAll("[data-card-report-url]").forEach((el) => {
+    if (el.dataset.cardReportBound === "1") return;
+    el.dataset.cardReportBound = "1";
+    el.addEventListener("click", (event) => {
+      event.preventDefault();
+      // Card report navigation prepared for Sprint 9.3 — no route yet.
+    });
+    el.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      // Card report navigation prepared for Sprint 9.3 — no route yet.
+    });
+  });
 }
 
 function renderReportCardPanel(card) {
-  const evidence = card.evidence || {};
-  const tags = evidence.tags || {};
-  const psaPop = tags.psa10_count != null ? formatStatCount(tags.psa10_count, "PSA population pending.") : "PSA population pending.";
-  const identityHtml = formatCardIdentityHtml(card);
-  const rec = resolveStoredCardRecommendation(card);
-  const recClass = csIntelRecommendationClass(rec.toLowerCase());
+  const intel = CSCardIntelligence.csCardBuildStoredIntel(card);
+  const identityHtml = CSCardIntelligence.csCardFormatIdentityHtml(card, intel);
   const metrics = SRMetrics.srBuildCardMetrics(card, srMetricFormatters());
+  const cardReportUrl = intel.cardReportUrl;
 
   const metricRow = (metric) => `
     <div class="sr-card-metric">
@@ -1307,12 +1324,26 @@ function renderReportCardPanel(card) {
       <span class="sr-card-metric-value${metric.pending ? " sr-pending--inline" : ""}">${metric.display}</span>
     </div>`;
 
+  const evidence = card.evidence || {};
+  const populationCount = evidence.population_count;
+  const psaPop = populationCount != null
+    ? formatStatCount(populationCount, "PSA population pending.")
+    : "PSA population pending.";
+
   return `
-    <article class="sr-card-panel" data-cs-card-id="${card.cs_card_id || ""}">
+    <article
+      class="sr-card-panel sr-card-panel--intel"
+      data-cs-card-id="${intel.csCardId}"
+      data-card-report-url="${cardReportUrl}"
+      role="button"
+      tabindex="0"
+      aria-label="Card intelligence for ${intel.cardLabel || intel.csCardId || "card"}"
+    >
       <div class="sr-card-identity">
         ${identityHtml || `<p class="sr-pending">Card registry data is still being linked.</p>`}
       </div>
-      <div class="sr-card-metrics">
+      ${CSCardIntelligence.csCardRenderIntelligencePanel(card, formatScore)}
+      <div class="sr-card-metrics sr-card-metrics--market">
         ${metricRow(metrics.medianActivePrice)}
         ${metricRow(metrics.averageActivePrice)}
         ${metricRow(metrics.priceMovement7d)}
@@ -1320,35 +1351,22 @@ function renderReportCardPanel(card) {
         ${metricRow(metrics.activeListings)}
         <div class="sr-card-metric">
           <span class="sr-card-metric-label">PSA Population</span>
-          <span class="sr-card-metric-value">${psaPop}</span>
-        </div>
-        <div class="sr-card-metric">
-          <span class="sr-card-metric-label">CardSignal Score</span>
-          <span class="sr-card-metric-value">${card.card_signal_score != null ? formatScore(card.card_signal_score) : card.score != null ? formatScore(card.score) : "Pending"}</span>
-        </div>
-        <div class="sr-card-metric">
-          <span class="sr-card-metric-label">Recommendation</span>
-          <span class="cs-recommendation-badge ${recClass} sr-card-rec">${rec}</span>
+          <span class="sr-card-metric-value${populationCount == null ? " sr-pending--inline" : ""}">${psaPop}</span>
         </div>
       </div>
-      <p class="sr-card-evidence">
-        <span class="sr-evidence-label">Evidence</span>
-        ${evidence.listings_count
-    ? `Based on ${evidence.listings_count} active listing${evidence.listings_count === 1 ? "" : "s"} in stored market snapshots.`
-    : "Market history still building."}
-      </p>
     </article>`;
 }
 
 function renderReportCards(cards = []) {
-  const body = cards.length
-    ? `<div class="sr-cards-list">${cards.map((c) => renderReportCardPanel(c)).join("")}</div>`
+  const sorted = sortPlayerCardsByScore(cards);
+  const body = sorted.length
+    ? `<div class="sr-cards-list">${sorted.map((c) => renderReportCardPanel(c)).join("")}</div>`
     : `<p class="sr-pending">Card intelligence pending for this player.</p>`;
 
   return `
     <section class="sr-section">
       <h3 class="sr-section-title">Cards</h3>
-      <p class="sr-section-lead">Tracked cards linked to this player through stored weekly intelligence.</p>
+      <p class="sr-section-lead">Tracked cards ranked by CardSignal Card Score from stored weekly intelligence.</p>
       ${body}
     </section>`;
 }
@@ -1691,6 +1709,7 @@ async function openPlayerIntelligenceModal(entry) {
     header.innerHTML = renderScoutingReportHeader(player, intel);
     body.innerHTML = renderScoutingReport(player, intel, cards, weeklySnap);
 
+    wireCardReportTargets(body);
     wirePlayerActions();
 
     modal.classList.remove("hidden");

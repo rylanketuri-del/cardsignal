@@ -47,6 +47,18 @@
   - [x] CardSignal Outlook with Evidence (replaces Conviction/Confidence)
   - [x] No fabricated report data — pending states when intelligence unavailable
 
+### Card Intelligence (Sprint 9.2)
+
+- **Release v0.11.0 — CardSignal Intelligence**
+  - [x] CardSignal Card Score independent from Player Score
+  - [x] Card intelligence panel on every scouting report card (score, recommendation, evidence, explanation)
+  - [x] Factor chips from stored intelligence only
+  - [x] Cards ranked by CardSignal Card Score (highest first)
+  - [x] Recommendations from stored card intelligence — WATCH + INSUFFICIENT when evidence is thin
+  - [x] Centralized card intelligence engine and card registry hooks
+  - [x] Card report URL architecture prepared (`cs_card_id`, click target, future `/cards/{id}` path)
+  - [x] Historical price movement wired into card evidence when available
+
 ### Real Card Intelligence (Sprint 8.x)
 
 - **Sprint 8.7 — partial in this branch**
@@ -69,26 +81,30 @@
 
 ## Current Milestone
 
-### Release v0.10.2 — Scouting Report 2.0
+### Release v0.11.0 — CardSignal Intelligence
 
 In progress. Do not merge or deploy until verification pass.
 
-**Scouting Report** transforms the player modal into a premium single-page research experience:
+**Card Intelligence** shifts product recommendations to specific collectible cards while keeping the player as the entry point:
 
-- Scrollable editorial report (no tabs): Header → Player Snapshot → Why This Signal → Cards → Market → Signal Analysis → Outlook
-- Real stored intelligence only — honest pending states when data is unavailable
-- Evidence replaces Conviction/Confidence throughout the report
-- Player performance from `stats_7d` / `stats_30d`; market from stored snapshots
-- Signal Analysis covers Performance, Market, Momentum, Scarcity, and Collector Demand
+- Every card in the Scouting Report Cards section receives CardSignal Card Score, recommendation, evidence tier, explanation, and factor chips
+- Card scores composed from stored intelligence components only — missing factors reduce evidence, never invent values
+- Cards sorted by CardSignal Card Score (highest first)
+- Card report architecture prepared for Sprint 9.3 (`cs_card_id`, click target, future URL)
 - Homepage (Signal Center) unchanged
 
-### Release v0.9.0 — Weekly Intelligence Pipeline
+### Release v0.10.2 — Scouting Report 2.0
 
-Shipped in prior release. Verification pass complete for weekly pipeline foundation.
-
-**Beta schedule (documented, idempotent guard):** Tuesday 6:00 AM America/New_York via external scheduler calling `POST /api/weekly/run` with admin token.
+Shipped. Scouting Report transforms the player modal into a premium single-page research experience.
 
 ## Up Next
+
+### Sprint 9.3 — Card Reports
+
+- Dedicated card report pages at `/cards/{cs_card_id}`
+- Full card intelligence deep dive beyond scouting report card rows
+- Card registry identity linked to canonical card records
+- Navigation from scouting report card panels to card reports
 
 ### v0.9.1 — Production QA and Data Seeding
 

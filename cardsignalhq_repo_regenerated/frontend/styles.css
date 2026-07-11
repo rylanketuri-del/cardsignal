@@ -5597,7 +5597,97 @@ body.pi-modal-open {
   background: linear-gradient(180deg, #fffdfa, var(--panel));
   box-shadow: var(--shadow-soft);
   display: grid;
+  gap: 20px;
+}
+
+.sr-card-panel--intel {
+  cursor: default;
+  transition: box-shadow var(--transition-base), transform var(--transition-base);
+}
+
+.sr-card-panel--intel:focus-visible {
+  outline: 2px solid var(--copper);
+  outline-offset: 2px;
+}
+
+.sr-card-intel {
+  display: grid;
+  gap: 14px;
+  padding: 18px 20px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(220, 214, 206, 0.75);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.sr-card-intel-score-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
   gap: 16px;
+  flex-wrap: wrap;
+}
+
+.sr-card-intel-score-block {
+  display: grid;
+  gap: 6px;
+}
+
+.sr-card-intel-eyebrow {
+  font-size: 9px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--bronze);
+}
+
+.sr-card-intel-score {
+  font-family: Cormorant, Georgia, serif;
+  font-size: 42px;
+  line-height: 1;
+  color: var(--charcoal);
+}
+
+.sr-card-intel-rec {
+  min-height: 32px;
+  padding: 6px 14px;
+  font-size: 11px;
+}
+
+.sr-card-intel-evidence,
+.sr-card-intel-explanation {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text);
+}
+
+.sr-card-factors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sr-card-factor-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: var(--radius-pill);
+  border: 1px solid rgba(220, 214, 206, 0.9);
+  background: rgba(247, 245, 242, 0.9);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--charcoal);
+}
+
+.sr-card-factor-emoji {
+  font-size: 12px;
+  line-height: 1;
+}
+
+.sr-card-metrics--market {
+  padding-top: 4px;
+  border-top: 1px solid rgba(220, 214, 206, 0.55);
 }
 
 .sr-card-title {

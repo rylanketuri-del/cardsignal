@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from cardchase_ai.card_intelligence import card_intelligence_from_snapshot
 from cardchase_ai.models.schemas import HitterHotnessBreakdown, MarketSnapshot, RollingHitterStats
 from cardchase_ai.score import clamp_score
 
@@ -130,68 +131,25 @@ def compute_weekly_change(current: float | None, prior: float | None) -> float |
     return round(current - prior, 2)
 
 
-def card_intelligence_from_snapshot(
-    query_name: str,
-    snapshot: MarketSnapshot,
-    player_name: str,
-) -> dict[str, Any]:
-    missing: list[str] = []
-    if snapshot.listings_count == 0:
-        missing.append("listings")
-        return {
-            "card_signal_score": None,
-            "recommendation": "WATCH",
-            "conviction": "Low",
-            "risk": "Medium",
-            "time_horizon": "2-4 weeks",
-            "market_activity_score": None,
-            "demand_score": None,
-            "momentum_score": None,
-            "scarcity_score": None,
-            "missing_inputs": missing,
-            "evidence": {"query_name": query_name, "listings_count": 0},
-        }
-
-    activity = clamp_score((snapshot.listings_count / 30) * 100)
-    demand = clamp_score((snapshot.tags.premium_count / max(snapshot.listings_count, 1)) * 100)
-    scarcity = clamp_score((snapshot.tags.psa10_count / max(snapshot.listings_count, 1)) * 100)
-    momentum = clamp_score((snapshot.avg_price or 0) / 100) if snapshot.avg_price else None
-
-    score_parts = [v for v in [activity, demand] if v is not None]
-    card_score = round(sum(score_parts) / len(score_parts), 2) if score_parts else None
-
-    recommendation = "WATCH"
-    if card_score is not None:
-        if card_score >= 70 and demand >= 60:
-            recommendation = "BUY"
-        elif card_score < 40:
-            recommendation = "SELL"
-        else:
-            recommendation = "HOLD"
-
-    return {
-        "card_signal_score": card_score,
-        "recommendation": recommendation,
-        "conviction": "Medium" if card_score and card_score >= 60 else "Low",
-        "risk": "Low" if demand >= 65 else "Medium",
-        "time_horizon": "2-4 weeks",
-        "market_activity_score": round(activity, 2),
-        "demand_score": round(demand, 2),
-        "momentum_score": round(momentum, 2) if momentum is not None else None,
-        "scarcity_score": round(scarcity, 2),
-        "missing_inputs": missing,
-        "evidence": {
-            "query_name": query_name,
-            "listings_count": snapshot.listings_count,
-            "avg_price": snapshot.avg_price,
-            "tags": snapshot.tags.model_dump(),
-        },
-    }
-
-
 CARD_QUERY_LABELS = {
     "broad": "Base Cards",
     "bowman_chrome": "Bowman Chrome",
     "auto": "Autographs",
     "psa10": "PSA 10",
 }
+
+
+__all__ = [
+    "CARD_QUERY_LABELS",
+    "card_intelligence_from_snapshot",
+    "compute_weekly_change",
+    "cs_card_id",
+    "cs_player_id",
+    "derive_collector_score",
+    "derive_conviction",
+    "derive_momentum_score",
+    "derive_recommendation",
+    "derive_scarcity_score",
+    "derive_status",
+    "has_sufficient_evidence",
+]
