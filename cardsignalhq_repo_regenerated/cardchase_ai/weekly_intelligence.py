@@ -41,9 +41,9 @@ from cardchase_ai.utils.reporting_period import (
     next_scheduled_refresh,
 )
 from cardchase_ai.utils.rolling import filter_last_n_days, summarize_hitter_window
+from cardchase_ai.card_intelligence import card_intelligence_from_snapshot
 from cardchase_ai.weekly_scoring import (
     CARD_QUERY_LABELS,
-    card_intelligence_from_snapshot,
     compute_weekly_change,
     cs_card_id,
     cs_player_id,
@@ -240,18 +240,33 @@ def build_card_snapshots(
     period: ReportingPeriod,
     *,
     card_limit: int,
+    movement_by_card: dict[str, CardMarketMovement] | None = None,
+    player_momentum_score: float | None = None,
 ) -> list[CardWeeklyIntelligenceSnapshot]:
     snapshots: list[CardWeeklyIntelligenceSnapshot] = []
     pid = str(output.player_id)
     csp_id = cs_player_id(pid, run.league)
+    movement_by_card = movement_by_card or {}
 
     for query_name, snapshot in list(output.market_snapshots.items())[:card_limit]:
-        intel = card_intelligence_from_snapshot(query_name, snapshot, output.player_name)
+        card_id = cs_card_id(pid, query_name, run.league)
+        movement = movement_by_card.get(card_id)
+        card_label = CARD_QUERY_LABELS.get(query_name, query_name)
+        intel = card_intelligence_from_snapshot(
+            query_name,
+            snapshot,
+            output.player_name,
+            card_label=card_label,
+            player_performance_score=output.hotness.performance_score,
+            player_momentum_score=player_momentum_score,
+            price_change_pct=movement.price_change_pct if movement else None,
+            listings_change=movement.listings_change if movement else None,
+        )
         snapshots.append(
             CardWeeklyIntelligenceSnapshot(
                 snapshot_id=str(uuid.uuid4()),
                 run_id=run.run_id,
-                cs_card_id=cs_card_id(pid, query_name, run.league),
+                cs_card_id=card_id,
                 cs_player_id=csp_id,
                 league=run.league,
                 year=period.year,
@@ -533,15 +548,19 @@ def _execute_weekly_pipeline(
     run.warnings.extend(population_result.warnings)
     _record_stage(stages, outcomes, "population_snapshots", population_result.status, population_result.detail)
 
+    movement_by_card = {movement.cs_card_id: movement for movement in market_movements}
+
     player_snapshots: list[PlayerWeeklySignalSnapshot] = []
     card_snapshots: list[CardWeeklyIntelligenceSnapshot] = []
     card_errors: list[str] = []
 
     _record_stage(stages, outcomes, "card_intelligence", "COMPLETED", "building snapshots")
     for rank, output in enumerate(outputs, start=1):
+        player_momentum_score: float | None = None
         try:
             snap = build_player_snapshot(output, run, period, rank, storage)
             player_snapshots.append(snap)
+            player_momentum_score = snap.momentum_score
         except Exception as error:
             player_errors.append(f"{output.player_name}: {error}")
             continue
@@ -551,6 +570,8 @@ def _execute_weekly_pipeline(
                 run,
                 period,
                 card_limit=settings.weekly_card_limit_per_player,
+                movement_by_card=movement_by_card,
+                player_momentum_score=player_momentum_score,
             )
             card_snapshots.extend(cards)
         except Exception as error:

@@ -169,7 +169,9 @@ function srBuildCardSource(card = {}) {
     momentum_score: card.momentum_score,
     median_price_change_pct: card.median_price_change_pct,
     average_price_change_pct: card.average_price_change_pct,
-    price_change_pct: card.price_change_pct,
+    price_change_pct: card.price_change_pct ?? card.evidence?.price_change_pct,
+    median_price: card.evidence?.median_price,
+    listings_count: card.evidence?.listings_count,
   };
 }
 

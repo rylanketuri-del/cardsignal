@@ -35,7 +35,7 @@ Report sections (scrollable, editorial layout):
 | **Header** | Player, team, position, CardSignal Score, recommendation, status, updated timestamp, algorithm version |
 | **Player Snapshot** | Last 7 Days and Season Snapshot from stored MLB stats |
 | **Why This Signal** | Signal contributors explaining score changes from real evidence |
-| **Cards** | Player-linked card intelligence with pricing, movement, listings, PSA population when available |
+| **Cards** | Player-linked card intelligence with CardSignal Card Score, recommendation, evidence, explanation, factor chips, pricing, movement, listings, PSA population when available |
 | **Market** | Research-style market summary from stored eBay snapshots |
 | **Signal Analysis** | Performance, Market, Momentum, Scarcity, Collector Demand with scores and evidence quality |
 | **Outlook** | Recommendation, Evidence, Risk, Time Horizon, and analyst summary |
@@ -62,6 +62,14 @@ Each player also receives:
 - **Recommendation** — BUY / HOLD / SELL / WATCH (from stored weekly or card intelligence only)
 - **Evidence** — HIGH / MEDIUM / LOW / INSUFFICIENT (replaces legacy Conviction/Confidence in the Scouting Report)
 - **Status** — HOT / RISING / COOLING
+
+Each card in a Scouting Report also receives:
+
+- **CardSignal Card Score** — independent from the player score; composed from stored card intelligence components
+- **Recommendation** — BUY / HOLD / SELL / WATCH from stored card intelligence
+- **Evidence** — HIGH / MEDIUM / LOW / INSUFFICIENT based on available stored factors
+- **Explanation** — concise supported-by or limited-by summary from stored evidence
+- **Factor chips** — only when backed by stored data (performance, demand, supply, scarcity, etc.)
 
 Forecast language uses tentative phrasing (“suggests,” “may,” “could”) and never implies guaranteed returns.
 
