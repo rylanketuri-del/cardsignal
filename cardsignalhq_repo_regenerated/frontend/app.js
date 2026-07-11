@@ -241,6 +241,7 @@ function weeklyCardRowToIntelItem(row = {}) {
     price: row.evidence?.avg_price ?? null,
     movement: row.demand_score != null ? `${row.demand_score > 0 ? '+' : ''}${Number(row.demand_score).toFixed(1)}%` : '—',
     score: row.score != null ? Number(row.score).toFixed(1) : '—',
+    cs_card_id: row.cs_card_id || null,
   };
 }
 
@@ -638,9 +639,10 @@ function movementClass(movement = "") {
 /* Landing page — Quick Intelligence grid row */
 function renderCardIntelRow(item) {
   const moveClass = movementClass(item.movement);
+  const cardAttr = item.cs_card_id ? ` data-cs-card-id="${item.cs_card_id}"` : "";
 
   return `
-    <div class="qi-row">
+    <div class="qi-row cr-clickable"${cardAttr}>
       <div class="qi-row-thumb" aria-hidden="true"></div>
       <div class="qi-row-body">
         <span class="qi-row-name">${item.name}</span>
@@ -701,6 +703,7 @@ function renderCardSection(entries = [], cardIntel = null) {
       }
       return renderCardIntelBox({ ...box, items: rows });
     }).join("");
+    if (typeof wireCardPanelClicks === "function") wireCardPanelClicks(root);
     return;
   }
 
@@ -1004,50 +1007,6 @@ function deriveEvidenceQuality(score, missingKeys = [], requiredKey = null) {
   return null;
 }
 
-function getCardIdentityFields(card = {}) {
-  const source = card.identity || card.registry || card;
-  return {
-    year: source.card_year ?? source.year ?? null,
-    brand: source.brand ?? null,
-    set: source.set ?? null,
-    parallel: source.parallel ?? null,
-    card_number: source.card_number ?? null,
-    grade: source.grade ?? null,
-    grading_company: source.grading_company ?? null,
-  };
-}
-
-function hasCardRegistryIdentity(card = {}) {
-  const fields = getCardIdentityFields(card);
-  return !!(fields.year || fields.brand || fields.set);
-}
-
-function formatCardIdentityHtml(card = {}) {
-  const fields = getCardIdentityFields(card);
-  if (!hasCardRegistryIdentity(card)) return null;
-
-  const titleParts = [fields.year, fields.brand, fields.set].filter((part) => part != null && part !== "");
-  const lines = [];
-
-  if (titleParts.length) {
-    lines.push(`<p class="sr-card-title">${titleParts.join(" ")}</p>`);
-  }
-  if (fields.parallel) {
-    lines.push(`<p class="sr-card-meta">${fields.parallel}</p>`);
-  }
-  if (fields.card_number) {
-    lines.push(`<p class="sr-card-number">#${fields.card_number}</p>`);
-  }
-  if (fields.grade) {
-    const gradeLine = [fields.grading_company, fields.grade].filter(Boolean).join(" ");
-    lines.push(`<p class="sr-card-grade">${gradeLine}</p>`);
-  } else if (fields.grading_company) {
-    lines.push(`<p class="sr-card-grade">${fields.grading_company}</p>`);
-  }
-
-  return lines.length ? lines.join("") : null;
-}
-
 function parseStoredContributorDirection(value, fallback = "up") {
   const n = csIntelSafeToNumber(value);
   if (n === null) return fallback;
@@ -1285,14 +1244,25 @@ async function enrichPlayerCards(cards = []) {
       enriched.push(card);
     }
   }
-  return enriched;
+  return typeof rankPlayerCards === "function" ? rankPlayerCards(enriched) : enriched;
 }
 
 function resolveStoredCardRecommendation(card = {}) {
   return card.recommendation ? String(card.recommendation).toUpperCase() : "WATCH";
 }
 
-function renderReportCardPanel(card) {
+function renderCardComparisonItem(label, value, { badgeClass = "", badgeKind = "recommendation", pending = false } = {}) {
+  const valueClass = badgeClass
+    ? `${badgeKind === "evidence" ? "cs-evidence-badge" : "cs-recommendation-badge"} ${badgeClass} sr-card-compare-badge`
+    : `sr-card-compare-value${pending ? " sr-pending--inline" : ""}`;
+  return `
+    <div class="sr-card-compare-item">
+      <span class="sr-card-compare-label">${label}</span>
+      <span class="${valueClass}">${value}</span>
+    </div>`;
+}
+
+function renderReportCardPanel(card, { rank = null, isTopPick = false } = {}) {
   const evidence = card.evidence || {};
   const tags = evidence.tags || {};
   const psaPop = tags.psa10_count != null ? formatStatCount(tags.psa10_count, "PSA population pending.") : "PSA population pending.";
@@ -1300,6 +1270,28 @@ function renderReportCardPanel(card) {
   const rec = resolveStoredCardRecommendation(card);
   const recClass = csIntelRecommendationClass(rec.toLowerCase());
   const metrics = SRMetrics.srBuildCardMetrics(card, srMetricFormatters());
+  const formatters = srMetricFormatters();
+  const score = typeof resolveCardSignalScore === "function"
+    ? resolveCardSignalScore(card)
+    : (card.card_signal_score ?? card.score);
+  const scoreLabel = score != null ? formatScore(score) : "Pending";
+  const evidenceTier = typeof resolveCardEvidenceTier === "function"
+    ? resolveCardEvidenceTier(card)
+    : "INSUFFICIENT";
+  const evidenceClass = csIntelEvidenceClass(evidenceTier);
+  const evidenceText = typeof buildStoredCardEvidenceText === "function"
+    ? buildStoredCardEvidenceText(card)
+    : null;
+  const marketSnapshot = typeof buildCardMarketSnapshot === "function"
+    ? buildCardMarketSnapshot(card, formatters)
+    : "Market snapshot pending.";
+  const explanation = typeof buildStoredCardExplanation === "function"
+    ? buildStoredCardExplanation(card)
+    : null;
+  const rankLabel = rank != null ? `#${rank}` : "";
+  const topPickBadge = isTopPick
+    ? `<span class="sr-card-top-pick-badge">Top Pick</span>`
+    : "";
 
   const metricRow = (metric) => `
     <div class="sr-card-metric">
@@ -1307,10 +1299,39 @@ function renderReportCardPanel(card) {
       <span class="sr-card-metric-value${metric.pending ? " sr-pending--inline" : ""}">${metric.display}</span>
     </div>`;
 
+  const topPickSummary = isTopPick
+    ? `
+      <div class="sr-card-top-pick-summary">
+        <p class="sr-card-top-pick-copy">
+          ${explanation
+    ? explanation
+    : `<span class="sr-pending--inline">Card-level explanation pending.</span>`}
+        </p>
+      </div>`
+    : "";
+
   return `
-    <article class="sr-card-panel" data-cs-card-id="${card.cs_card_id || ""}">
+    <article class="sr-card-panel${isTopPick ? " sr-card-panel--top-pick" : ""}" data-cs-card-id="${card.cs_card_id || ""}">
+      <div class="sr-card-panel-head">
+        <div class="sr-card-rank-wrap">
+          ${rankLabel ? `<span class="sr-card-rank">${rankLabel}</span>` : ""}
+          ${topPickBadge}
+        </div>
+        <button
+          type="button"
+          class="sr-card-report-btn"
+          data-cr-view-report
+          data-cs-card-id="${card.cs_card_id || ""}"
+        >View Card Report</button>
+      </div>
       <div class="sr-card-identity">
-        ${identityHtml || `<p class="sr-pending">Card registry data is still being linked.</p>`}
+        ${identityHtml || `<p class="sr-pending">${CARD_REGISTRY_PENDING}</p>`}
+      </div>
+      <div class="sr-card-compare-grid">
+        ${renderCardComparisonItem("CardSignal Score", scoreLabel)}
+        ${renderCardComparisonItem("Recommendation", rec, { badgeClass: recClass })}
+        ${renderCardComparisonItem("Evidence", evidenceTier, { badgeClass: evidenceClass, badgeKind: "evidence" })}
+        ${renderCardComparisonItem("Market Snapshot", marketSnapshot, { pending: marketSnapshot === "Market snapshot pending." })}
       </div>
       <div class="sr-card-metrics">
         ${metricRow(metrics.medianActivePrice)}
@@ -1322,33 +1343,47 @@ function renderReportCardPanel(card) {
           <span class="sr-card-metric-label">PSA Population</span>
           <span class="sr-card-metric-value">${psaPop}</span>
         </div>
-        <div class="sr-card-metric">
-          <span class="sr-card-metric-label">CardSignal Score</span>
-          <span class="sr-card-metric-value">${card.card_signal_score != null ? formatScore(card.card_signal_score) : card.score != null ? formatScore(card.score) : "Pending"}</span>
-        </div>
-        <div class="sr-card-metric">
-          <span class="sr-card-metric-label">Recommendation</span>
-          <span class="cs-recommendation-badge ${recClass} sr-card-rec">${rec}</span>
-        </div>
       </div>
       <p class="sr-card-evidence">
         <span class="sr-evidence-label">Evidence</span>
-        ${evidence.listings_count
-    ? `Based on ${evidence.listings_count} active listing${evidence.listings_count === 1 ? "" : "s"} in stored market snapshots.`
-    : "Market history still building."}
+        ${evidenceText || `<span class="sr-pending--inline">Market history still building.</span>`}
       </p>
+      ${topPickSummary}
     </article>`;
 }
 
+function wireCardReportButtons(root = document) {
+  root.querySelectorAll("[data-cr-view-report]").forEach((btn) => {
+    if (btn.dataset.crViewBound === "1") return;
+    btn.dataset.crViewBound = "1";
+    btn.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const csCardId = btn.dataset.csCardId;
+      if (csCardId && typeof openCardReportModal === "function") {
+        openCardReportModal(csCardId);
+      }
+    });
+  });
+}
+
 function renderReportCards(cards = []) {
-  const body = cards.length
-    ? `<div class="sr-cards-list">${cards.map((c) => renderReportCardPanel(c)).join("")}</div>`
+  const rankedCards = typeof rankPlayerCards === "function" ? rankPlayerCards(cards) : cards;
+  const body = rankedCards.length
+    ? `<div class="sr-cards-list">${rankedCards.map((card, index) => renderReportCardPanel(card, {
+      rank: index + 1,
+      isTopPick: index === 0,
+    })).join("")}</div>`
     : `<p class="sr-pending">Card intelligence pending for this player.</p>`;
+  const rankingNote = typeof CARD_RANKING_EXPLANATION === "string"
+    ? `<p class="sr-cards-ranking-note">${CARD_RANKING_EXPLANATION}</p>`
+    : "";
 
   return `
-    <section class="sr-section">
+    <section class="sr-section sr-cards-section">
       <h3 class="sr-section-title">Cards</h3>
-      <p class="sr-section-lead">Tracked cards linked to this player through stored weekly intelligence.</p>
+      <p class="sr-section-lead">Cards ranked by CardSignal Card Score — highest intelligence signal first.</p>
+      ${rankingNote}
       ${body}
     </section>`;
 }
@@ -1692,6 +1727,8 @@ async function openPlayerIntelligenceModal(entry) {
     body.innerHTML = renderScoutingReport(player, intel, cards, weeklySnap);
 
     wirePlayerActions();
+    if (typeof wireCardPanelClicks === "function") wireCardPanelClicks(body);
+    wireCardReportButtons(body);
 
     modal.classList.remove("hidden");
     modal.setAttribute("aria-hidden", "false");
@@ -2915,6 +2952,8 @@ async function init() {
     latestEntries = entries;
     setupPlayerSearch();
     setupPlayerIntelligenceModal();
+    if (typeof setupCardReportModal === "function") setupCardReportModal();
+    if (typeof setupCardReportRouter === "function") setupCardReportRouter();
     setupSportTabs();
 
     status.textContent = 'Rendering Signal Center...';
