@@ -289,15 +289,8 @@ function buildLeaderboard(entries) {
             const score = entry.hotness?.total_score || 0;
             const performance = entry.hotness?.performance_score || 0;
             const market = entry.hotness?.market_score || 0;
-            const movement = entry.weekly_change != null && Number.isFinite(Number(entry.weekly_change))
-              ? (() => {
-                const delta = Number(entry.weekly_change);
-                const arrow = delta > 0.01 ? "↑" : delta < -0.01 ? "↓" : "→";
-                const signed = delta > 0 ? `+${delta.toFixed(1)}` : delta < 0 ? `${delta.toFixed(1)}` : `+0.0`;
-                return { arrow, signed };
-              })()
-              : computeSignalOfWeekMovement(entry);
-            const moveClass = movement.signed.startsWith("+") ? "metric-up" : movement.signed.startsWith("-") ? "metric-down" : "metric-flat";
+            const movement = formatWeeklyMovement(entry);
+            const moveClass = weeklyMovementClass(movement);
             const team = getTeamAbbrev(entry);
             const position = entry.position || "—";
 
@@ -315,7 +308,7 @@ function buildLeaderboard(entries) {
                 <span class="leader-number">${formatScore(score)}</span>
                 <span class="leader-metric">${formatScore(performance)}</span>
                 <span class="leader-metric">${formatScore(market)}</span>
-                <span class="leader-trend ${moveClass}">${movement.arrow} ${movement.signed}</span>
+                <span class="leader-trend ${moveClass}">${renderWeeklyMovementLabel(movement)}</span>
                 <span class="leader-report-pill">View Report</span>
               </button>
             `;
@@ -2384,37 +2377,25 @@ function getSignalOfWeekStatus(entry = {}) {
   return { label: "RISING", emoji: "📈", className: "signal-week-status--rising" };
 }
 
-function computeSignalOfWeekMovement(entry = {}) {
+function formatWeeklyMovement(entry = {}) {
   if (entry.weekly_change != null && Number.isFinite(Number(entry.weekly_change))) {
     const delta = Number(entry.weekly_change);
     const arrow = delta > 0.01 ? "↑" : delta < -0.01 ? "↓" : "→";
     const signed = delta > 0 ? `+${delta.toFixed(1)}` : delta < 0 ? `${delta.toFixed(1)}` : `+0.0`;
-    return { arrow, signed };
+    return { arrow, signed, pending: false };
   }
+  return { arrow: "", signed: "Pending", pending: true };
+}
 
-  const hotness = entry?.hotness || {};
-  const momentum = Number(hotness.momentum_score ?? NaN);
-  const market = Number(hotness.market_score ?? NaN);
-  const performance = Number(hotness.performance_score ?? NaN);
+function weeklyMovementClass(movement = {}) {
+  if (movement.pending) return "metric-pending";
+  if (movement.signed.startsWith("+")) return "metric-up";
+  if (movement.signed.startsWith("-")) return "metric-down";
+  return "metric-flat";
+}
 
-  let delta = 0;
-
-  // Use momentum_score when available (0..100-ish), convert it to a small week movement.
-  if (Number.isFinite(momentum)) {
-    // momentum 50 => 0; momentum 60 => +2.0-ish; momentum 70 => +4.0-ish.
-    delta = (momentum - 50) / 2.5;
-  } else if (Number.isFinite(market) && Number.isFinite(performance)) {
-    // Derive a direction from market vs performance.
-    delta = (market - performance) / 6;
-  }
-
-  // Keep the UI tidy even if upstream data is noisy.
-  delta = Math.max(-25, Math.min(25, delta));
-
-  const arrow = delta > 0.01 ? "↑" : delta < -0.01 ? "↓" : "→";
-  const signed = delta > 0 ? `+${delta.toFixed(1)}` : delta < 0 ? `${delta.toFixed(1)}` : `+0.0`;
-
-  return { arrow, signed };
+function renderWeeklyMovementLabel(movement = {}) {
+  return movement.pending ? movement.signed : `${movement.arrow} ${movement.signed}`;
 }
 
 function openSignalOfWeekReport(entry) {
@@ -2426,20 +2407,20 @@ function renderSignalOfTheWeek(entries = [], storedSignal = null) {
   if (!card) return;
 
   const signalEntry = signalOfWeekToEntry(storedSignal || weeklyIntelligence?.signal_of_the_week);
-  const topEntry = signalEntry || getSignalOfWeekTopEntry(entries);
-  const entry = topEntry;
-  const noSelection = !entry || (!signalEntry && !getSignalOfWeekTopEntry(entries) && storedSignal === null && weeklyIntelligence?.run);
 
-  if (noSelection) {
+  if (!signalEntry) {
     card.classList.remove("featured-signal-banner");
     card.removeAttribute("role");
     card.removeAttribute("tabindex");
     card.removeAttribute("aria-label");
+    const message = weeklyIntelligence?.run
+      ? "No player qualified this week — insufficient evidence across the Top 100 universe."
+      : "Weekly intelligence pending — Signal of the Week will publish after the next official refresh.";
     card.innerHTML = `
       <div class="signal-week-banner signal-week-banner--empty">
         <div class="signal-week-content">
           <div class="signal-week-label">Signal of the Week</div>
-          <p class="signal-week-reason">No player qualified this week — insufficient evidence across the Top 100 universe.</p>
+          <p class="signal-week-reason">${message}</p>
         </div>
       </div>`;
     card.onclick = null;
@@ -2447,19 +2428,18 @@ function renderSignalOfTheWeek(entries = [], storedSignal = null) {
     return;
   }
 
+  const entry = signalEntry;
   const score = Number(entry?.hotness?.total_score ?? 0);
-  const movement = computeSignalOfWeekMovement(entry);
+  const movement = formatWeeklyMovement(entry);
 
-  const aiReason = entry?.signal_of_week_reason
-    || "Collector demand is accelerating faster than market pricing.";
-  const aiReasonSentence = clampToOneSentence(aiReason) || "Collector demand is accelerating faster than market pricing.";
-
-  const convictionTier = entry?.conviction || "MEDIUM";
-  const aiAction = entry?.recommendation || csIntelRecommendationFromTier(convictionTier);
+  const aiReasonSentence = entry?.signal_of_week_reason
+    ? clampToOneSentence(entry.signal_of_week_reason)
+    : "Weekly signal rationale pending.";
+  const aiAction = entry?.recommendation ? String(entry.recommendation).toUpperCase() : "WATCH";
 
   const team = getTeamAbbrev(entry);
   const position = entry.position || "—";
-  const moveClass = movement.signed.startsWith("+") ? "metric-up" : movement.signed.startsWith("-") ? "metric-down" : "metric-flat";
+  const moveClass = weeklyMovementClass(movement);
 
   card.classList.add("featured-signal-banner");
   card.removeAttribute("role");
@@ -2491,7 +2471,7 @@ function renderSignalOfTheWeek(entries = [], storedSignal = null) {
               <span class="signal-week-stat-label">CardSignal Score</span>
             </div>
             <div class="signal-week-stat">
-              <span class="signal-week-stat-value ${moveClass}">${movement.arrow} ${movement.signed}</span>
+              <span class="signal-week-stat-value ${moveClass}">${renderWeeklyMovementLabel(movement)}</span>
               <span class="signal-week-stat-label">Weekly Movement</span>
             </div>
           </div>

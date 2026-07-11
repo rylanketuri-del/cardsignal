@@ -1324,6 +1324,14 @@ canvas {
   font-weight: 800;
 }
 
+.metric-pending {
+  color: var(--bronze);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-size: 11px;
+}
+
 .leader-report-pill {
   justify-self: start;
   border-radius: 999px;
@@ -4264,6 +4272,14 @@ button,
 
 .qi-move.metric-flat {
   color: var(--muted);
+}
+
+.metric-pending {
+  color: var(--bronze);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-size: 11px;
 }
 
 .qi-score-pill {
