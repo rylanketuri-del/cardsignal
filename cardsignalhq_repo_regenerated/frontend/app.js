@@ -1083,6 +1083,10 @@ function hasPerformanceStats(stats) {
   return stats && Number(stats.games) > 0;
 }
 
+function hasStoredPerformanceSnapshot(stats) {
+  return stats != null && typeof stats === "object";
+}
+
 function srMetricFormatters() {
   return {
     money: (value) => csIntelFormatMoney(value),
@@ -1091,11 +1095,12 @@ function srMetricFormatters() {
   };
 }
 
-function renderSnapshotStat(label, value, { title = "" } = {}) {
+function renderSnapshotStat(label, value, { title = "", pending = false } = {}) {
   const titleAttr = title ? ` title="${title}"` : "";
+  const pendingClass = pending ? " sr-pending--inline" : "";
   return `
     <div class="sr-snapshot-stat">
-      <span class="sr-snapshot-stat-value"${titleAttr}>${value}</span>
+      <span class="sr-snapshot-stat-value${pendingClass}"${titleAttr}>${value}</span>
       <span class="sr-snapshot-stat-label">${label}</span>
     </div>`;
 }
@@ -1103,27 +1108,25 @@ function renderSnapshotStat(label, value, { title = "" } = {}) {
 function renderPlayerSnapshot(intel) {
   const stats7d = intel.stats7d;
   const stats30d = intel.stats30d;
-  const has7d = hasPerformanceStats(stats7d);
-  const hasSeason = hasPerformanceStats(stats30d);
+  const has7d = hasStoredPerformanceSnapshot(stats7d);
+  const hasSeason = hasStoredPerformanceSnapshot(stats30d);
   const formatters = srMetricFormatters();
 
   const last7Body = has7d
     ? `
       <div class="sr-snapshot-grid">
-        ${SRMetrics.SR_PLAYER_STAT_SPECS.last7d.map((spec) => {
-    const stat = SRMetrics.srFormatPlayerStat(spec, stats7d, formatters);
-    return renderSnapshotStat(stat.label, stat.display, { title: stat.title });
-  }).join("")}
+        ${SRMetrics.srBuildPlayerSnapshotStats(SRMetrics.SR_PLAYER_SNAPSHOT_KEYS.LAST_7D, stats7d, formatters).map((stat) =>
+    renderSnapshotStat(stat.label, stat.display, { title: stat.title, pending: stat.pending })
+  ).join("")}
       </div>`
     : `<p class="sr-pending">Performance data pending.</p>`;
 
   const seasonBody = hasSeason
     ? `
       <div class="sr-snapshot-grid">
-        ${SRMetrics.SR_PLAYER_STAT_SPECS.season.map((spec) => {
-    const stat = SRMetrics.srFormatPlayerStat(spec, stats30d, formatters);
-    return renderSnapshotStat(stat.label, stat.display, { title: stat.title });
-  }).join("")}
+        ${SRMetrics.srBuildPlayerSnapshotStats(SRMetrics.SR_PLAYER_SNAPSHOT_KEYS.SEASON, stats30d, formatters).map((stat) =>
+    renderSnapshotStat(stat.label, stat.display, { title: stat.title, pending: stat.pending })
+  ).join("")}
       </div>`
     : `<p class="sr-pending">Performance data pending.</p>`;
 
