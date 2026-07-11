@@ -215,10 +215,26 @@
       </div>
     </div>
 
+    <div
+      id="card-report-modal"
+      class="pi-modal cr-modal hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="cr-modal-title"
+      aria-hidden="true"
+    >
+      <div class="pi-modal-backdrop" data-cr-close tabindex="-1"></div>
+      <div class="pi-modal-panel" role="document">
+        <header class="pi-modal-header" id="cr-modal-header"></header>
+        <div class="pi-modal-body" id="cr-modal-body"></div>
+      </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="./scouting-report-metrics.js"></script>
     <script src="./weekly-movement.js"></script>
+    <script src="./card-report.js"></script>
     <script src="./app.js"></script>
   </body>
 </html>

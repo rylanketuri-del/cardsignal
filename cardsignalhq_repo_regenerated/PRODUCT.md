@@ -28,7 +28,33 @@ The player modal is a **premium Scouting Report** — where collectors understan
 - Signal of the Week View Report CTA
 - Universal Search result selection
 
+Scouting Reports explain **"Why is this player moving?"**
+
+### Card Report (Individual Collectible)
+
+Card Reports are the destination for an individual collectible. They explain **"Why is THIS card moving?"** — never conflated with player-level Scouting Reports.
+
+Card Reports open from:
+
+- Card Intelligence rows on the Signal Center homepage
+- Cards section within a Scouting Report
+- Deep link: `/cards/{cs_card_id}`
+
 Report sections (scrollable, editorial layout):
+
+| Section | Purpose |
+|---------|---------|
+| **Header** | Card identity, player link, CardSignal Score, recommendation, evidence, updated timestamp, algorithm version |
+| **Card Identity** | Year, brand, set, parallel, card #, grade, grading company, serial number from Card Registry |
+| **Card Snapshot** | Median/average price, active listings, population, sales activity, data quality from stored intelligence |
+| **Price History** | Time series foundation (chart adapter pending) |
+| **Market Drivers** | Card-level market signals — separate from player signal drivers |
+| **Scarcity** | Population, serial number, parallel, print run, scarcity score |
+| **Card Outlook** | Recommendation, evidence, summary, and supporting factors |
+
+Card Report UX matches the Scouting Report premium research aesthetic: dark backdrop, centered panel on desktop, full-screen drawer on mobile, body scroll locked while open.
+
+Scouting Report sections (scrollable, editorial layout):
 
 | Section | Purpose |
 |---------|---------|
@@ -101,6 +127,7 @@ GET routes serve stored weekly intelligence only — they never trigger provider
 
 - Homepage = Signal Center / market-wide overview
 - Player modal = Intelligence Report / one-player deep dive
+- Card Report = individual collectible research destination
 - Frontend-only releases must not modify backend files unless explicitly scoped
 - No new dependencies without approval
 - Preserve existing homepage sections during modal and report releases

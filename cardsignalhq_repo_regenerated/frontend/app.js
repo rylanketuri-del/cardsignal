@@ -241,6 +241,7 @@ function weeklyCardRowToIntelItem(row = {}) {
     price: row.evidence?.avg_price ?? null,
     movement: row.demand_score != null ? `${row.demand_score > 0 ? '+' : ''}${Number(row.demand_score).toFixed(1)}%` : '—',
     score: row.score != null ? Number(row.score).toFixed(1) : '—',
+    cs_card_id: row.cs_card_id || null,
   };
 }
 
@@ -638,9 +639,10 @@ function movementClass(movement = "") {
 /* Landing page — Quick Intelligence grid row */
 function renderCardIntelRow(item) {
   const moveClass = movementClass(item.movement);
+  const cardAttr = item.cs_card_id ? ` data-cs-card-id="${item.cs_card_id}"` : "";
 
   return `
-    <div class="qi-row">
+    <div class="qi-row cr-clickable"${cardAttr}>
       <div class="qi-row-thumb" aria-hidden="true"></div>
       <div class="qi-row-body">
         <span class="qi-row-name">${item.name}</span>
@@ -701,6 +703,7 @@ function renderCardSection(entries = [], cardIntel = null) {
       }
       return renderCardIntelBox({ ...box, items: rows });
     }).join("");
+    if (typeof wireCardPanelClicks === "function") wireCardPanelClicks(root);
     return;
   }
 
@@ -1308,7 +1311,7 @@ function renderReportCardPanel(card) {
     </div>`;
 
   return `
-    <article class="sr-card-panel" data-cs-card-id="${card.cs_card_id || ""}">
+    <article class="sr-card-panel cr-clickable" data-cs-card-id="${card.cs_card_id || ""}">
       <div class="sr-card-identity">
         ${identityHtml || `<p class="sr-pending">Card registry data is still being linked.</p>`}
       </div>
@@ -1692,6 +1695,7 @@ async function openPlayerIntelligenceModal(entry) {
     body.innerHTML = renderScoutingReport(player, intel, cards, weeklySnap);
 
     wirePlayerActions();
+    if (typeof wireCardPanelClicks === "function") wireCardPanelClicks(body);
 
     modal.classList.remove("hidden");
     modal.setAttribute("aria-hidden", "false");
@@ -2915,6 +2919,8 @@ async function init() {
     latestEntries = entries;
     setupPlayerSearch();
     setupPlayerIntelligenceModal();
+    if (typeof setupCardReportModal === "function") setupCardReportModal();
+    if (typeof setupCardReportRouter === "function") setupCardReportRouter();
     setupSportTabs();
 
     status.textContent = 'Rendering Signal Center...';
