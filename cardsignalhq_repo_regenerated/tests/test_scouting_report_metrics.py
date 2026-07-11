@@ -27,6 +27,18 @@ class ScoutingReportMetricsJsTests(unittest.TestCase):
 
 
 class ScoutingReportStaticGuardTests(unittest.TestCase):
+    def test_no_derived_strikeout_rate_in_metrics_module(self):
+        metrics_js = (FRONTEND / "scouting-report-metrics.js").read_text(encoding="utf-8")
+        self.assertNotIn('derived: "strikeout_rate"', metrics_js)
+        self.assertNotIn("so / ab", metrics_js)
+        self.assertIn("strikeout_rate", metrics_js)
+
+    def test_player_snapshot_uses_centralized_builder(self):
+        app_js = (FRONTEND / "app.js").read_text(encoding="utf-8")
+        self.assertIn("srBuildPlayerSnapshotStats", app_js)
+        self.assertIn("SR_PLAYER_SNAPSHOT_KEYS.LAST_7D", app_js)
+        self.assertIn("SR_PLAYER_SNAPSHOT_KEYS.SEASON", app_js)
+
     def test_snapshot_count_not_labeled_auction_count(self):
         app_js = (FRONTEND / "app.js").read_text(encoding="utf-8")
         self.assertNotIn("snapshotCount", app_js)

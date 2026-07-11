@@ -47,6 +47,14 @@
   - [x] CardSignal Outlook with Evidence (replaces Conviction/Confidence)
   - [x] No fabricated report data — pending states when intelligence unavailable
 
+- **Release v0.10.3 — Sprint 9.1A Data Integrity**
+  - [x] Centralized player stat field mapping (display label, source field, formatter, pending label)
+  - [x] Last 7 Days populated only from stored `stats_7d` — no derived strikeout rate
+  - [x] Season Snapshot populated only from stored `stats_30d` — no cross-fallback
+  - [x] Missing metrics display `Pending` with optional tooltip
+  - [x] Validation guards: AVG≠OPS, Runs≠Hits, WAR never synthesized
+  - [ ] Verification pass pending — do not merge or deploy
+
 ### Real Card Intelligence (Sprint 8.x)
 
 - **Sprint 8.7 — partial in this branch**
@@ -69,18 +77,20 @@
 
 ## Current Milestone
 
-### Release v0.10.2 — Scouting Report 2.0
+### Release v0.10.3 — Sprint 9.1A Data Integrity
 
 In progress. Do not merge or deploy until verification pass.
 
-**Scouting Report** transforms the player modal into a premium single-page research experience:
+**Scouting Report** player statistics must come only from trusted stored sources:
 
-- Scrollable editorial report (no tabs): Header → Player Snapshot → Why This Signal → Cards → Market → Signal Analysis → Outlook
-- Real stored intelligence only — honest pending states when data is unavailable
-- Evidence replaces Conviction/Confidence throughout the report
-- Player performance from `stats_7d` / `stats_30d`; market from stored snapshots
-- Signal Analysis covers Performance, Market, Momentum, Scarcity, and Collector Demand
-- Homepage (Signal Center) unchanged
+- Centralized field mapping for every displayed stat (label, source, formatter, pending copy)
+- Last 7 Days from `stats_7d`; Season Snapshot from `stats_30d` — no cross-fallback
+- Missing values display `Pending` — never `—`, `0`, season proxies, or derived substitutes
+- Validation guards prevent AVG←OPS, Runs←Hits, and synthesized WAR
+
+### Release v0.10.2 — Scouting Report 2.0
+
+Shipped. Scouting Report editorial layout and pending-state foundation.
 
 ### Release v0.9.0 — Weekly Intelligence Pipeline
 

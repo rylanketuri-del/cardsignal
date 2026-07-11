@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Focused tests for Scouting Report metric mapping (Release v0.10.2).
+ * Focused tests for Scouting Report metric mapping (Release v0.10.3).
  * Run: node tests/test_scouting_report_metrics.js
  */
 const assert = require("assert");
@@ -12,9 +12,14 @@ const {
   srBuildMarketMetrics,
   srBuildCardMetrics,
   srFormatPlayerStat,
+  srBuildPlayerSnapshotStats,
+  srValidatePlayerStatSpecs,
   SR_STAT_PENDING,
+  SR_STAT_PENDING_TITLE,
+  SR_PLAYER_SNAPSHOT_KEYS,
   SR_MARKET_METRIC_SPECS,
   SR_CARD_METRIC_SPECS,
+  SR_PLAYER_STAT_SPECS,
 } = SRMetrics;
 
 const formatters = {
@@ -39,6 +44,44 @@ function test(name, fn) {
 }
 
 console.log("Scouting Report metrics tests");
+
+test("player stat spec validation passes", () => {
+  const result = srValidatePlayerStatSpecs();
+  assert.strictEqual(result.valid, true, result.errors.join("; "));
+});
+
+test("AVG never maps to OPS and Runs never maps to Hits", () => {
+  const avg7d = SR_PLAYER_STAT_SPECS.last7d.find((s) => s.display_label === "AVG");
+  const runs7d = SR_PLAYER_STAT_SPECS.last7d.find((s) => s.display_label === "Runs");
+  const warSeason = SR_PLAYER_STAT_SPECS.season.find((s) => s.display_label === "WAR");
+  assert.strictEqual(avg7d.source_field, "avg");
+  assert.notStrictEqual(avg7d.source_field, "ops");
+  assert.strictEqual(runs7d.source_field, "runs");
+  assert.notStrictEqual(runs7d.source_field, "hits");
+  assert.strictEqual(warSeason.source_field, "war");
+  assert.ok(!SR_PLAYER_STAT_SPECS.last7d.some((s) => s.source_field === "war"));
+});
+
+test("no player stat uses derived or multi-source fields", () => {
+  [...SR_PLAYER_STAT_SPECS.last7d, ...SR_PLAYER_STAT_SPECS.season].forEach((spec) => {
+    assert.ok(!spec.derived, `${spec.display_label} must not be derived`);
+    assert.ok(!spec.source_fields, `${spec.display_label} must use a single source_field`);
+  });
+});
+
+test("Last 7 Days includes all supported MLB fields", () => {
+  const labels = SR_PLAYER_STAT_SPECS.last7d.map((s) => s.display_label);
+  assert.deepStrictEqual(labels, [
+    "AVG", "OBP", "SLG", "OPS", "HR", "RBI", "Runs", "Hits", "SB", "BB", "Strikeout %",
+  ]);
+});
+
+test("Season Snapshot includes all supported MLB fields", () => {
+  const labels = SR_PLAYER_STAT_SPECS.season.map((s) => s.display_label);
+  assert.deepStrictEqual(labels, [
+    "Games", "AVG", "OBP", "SLG", "OPS", "HR", "RBI", "Runs", "Hits", "WAR", "SB", "BB",
+  ]);
+});
 
 test("snapshotCount is never presented as Auction Count", () => {
   const metrics = srBuildMarketMetrics(
@@ -120,30 +163,57 @@ test("Market Depth uses stored market_depth when present", () => {
   assert.strictEqual(metrics.marketDepth.pending, false);
 });
 
-test("missing WAR and Runs show Pending rather than dash or zero", () => {
-  const stats = { games: 82, avg: 0.285, home_runs: 12, rbi: 40, ops: 0.82 };
-  const war = srFormatPlayerStat(
-    SRMetrics.SR_PLAYER_STAT_SPECS.season.find((s) => s.label === "WAR"),
-    stats,
-    formatters
-  );
-  const runs = srFormatPlayerStat(
-    SRMetrics.SR_PLAYER_STAT_SPECS.last7d.find((s) => s.label === "Runs"),
-    { ...stats, at_bats: 100, strikeouts: 20 },
-    formatters
-  );
+test("missing WAR, Runs, and Strikeout % show Pending rather than dash, zero, or derived values", () => {
+  const stats = {
+    games: 82,
+    avg: 0.285,
+    obp: 0.35,
+    slg: 0.47,
+    home_runs: 12,
+    rbi: 40,
+    ops: 0.82,
+    hits: 90,
+    stolen_bases: 5,
+    walks: 20,
+    at_bats: 100,
+    strikeouts: 20,
+  };
+
+  const seasonStats = srBuildPlayerSnapshotStats(SR_PLAYER_SNAPSHOT_KEYS.SEASON, stats, formatters);
+  const last7dStats = srBuildPlayerSnapshotStats(SR_PLAYER_SNAPSHOT_KEYS.LAST_7D, stats, formatters);
+
+  const war = seasonStats.find((s) => s.label === "WAR");
+  const runsSeason = seasonStats.find((s) => s.label === "Runs");
+  const runs7d = last7dStats.find((s) => s.label === "Runs");
+  const kRate = last7dStats.find((s) => s.label === "Strikeout %");
+
   assert.strictEqual(war.display, SR_STAT_PENDING);
   assert.strictEqual(war.pending, true);
-  assert.strictEqual(runs.display, SR_STAT_PENDING);
-  assert.strictEqual(runs.pending, true);
+  assert.strictEqual(runsSeason.display, SR_STAT_PENDING);
+  assert.strictEqual(runs7d.display, SR_STAT_PENDING);
+  assert.strictEqual(kRate.display, SR_STAT_PENDING);
+  assert.notStrictEqual(kRate.display, "20.0%");
   assert.notStrictEqual(war.display, "—");
-  assert.notStrictEqual(runs.display, "0");
+  assert.notStrictEqual(runs7d.display, "0");
+});
+
+test("stored strikeout_rate displays without movement sign prefix", () => {
+  const kRate = srFormatPlayerStat(
+    SR_PLAYER_STAT_SPECS.last7d.find((s) => s.display_label === "Strikeout %"),
+    { strikeout_rate: 22.4 },
+    formatters
+  );
+  assert.strictEqual(kRate.display, "22.4%");
+  assert.strictEqual(kRate.pending, false);
+  assert.ok(!kRate.display.startsWith("+"));
 });
 
 test("real zero values still display as 0", () => {
   const stats = {
     games: 10,
     avg: 0.2,
+    obp: 0.3,
+    slg: 0.4,
     home_runs: 0,
     rbi: 0,
     ops: 0.6,
@@ -152,21 +222,21 @@ test("real zero values still display as 0", () => {
     hits: 0,
     stolen_bases: 0,
     walks: 0,
-    at_bats: 20,
-    strikeouts: 0,
+    strikeout_rate: 0,
   };
+
   const hr = srFormatPlayerStat(
-    SRMetrics.SR_PLAYER_STAT_SPECS.last7d.find((s) => s.label === "HR"),
+    SR_PLAYER_STAT_SPECS.last7d.find((s) => s.display_label === "HR"),
     stats,
     formatters
   );
   const runs = srFormatPlayerStat(
-    SRMetrics.SR_PLAYER_STAT_SPECS.last7d.find((s) => s.label === "Runs"),
+    SR_PLAYER_STAT_SPECS.last7d.find((s) => s.display_label === "Runs"),
     stats,
     formatters
   );
   const war = srFormatPlayerStat(
-    SRMetrics.SR_PLAYER_STAT_SPECS.season.find((s) => s.label === "WAR"),
+    SR_PLAYER_STAT_SPECS.season.find((s) => s.display_label === "WAR"),
     stats,
     formatters
   );
@@ -178,13 +248,35 @@ test("real zero values still display as 0", () => {
   assert.strictEqual(war.pending, false);
 });
 
+test("pending tooltip copy matches sprint spec", () => {
+  const stat = srFormatPlayerStat(
+    SR_PLAYER_STAT_SPECS.season.find((s) => s.display_label === "WAR"),
+    {},
+    formatters
+  );
+  assert.strictEqual(stat.title, SR_STAT_PENDING_TITLE);
+  assert.strictEqual(SR_STAT_PENDING_TITLE, "This statistic is not yet available in the current snapshot.");
+});
+
+test("Last 7 Days and Season never cross-fallback in snapshot builder", () => {
+  const stats7d = { games: 5, avg: 0.31, obp: 0.38, slg: 0.5, ops: 0.88, home_runs: 2, rbi: 6, hits: 8, stolen_bases: 1, walks: 3 };
+  const stats30d = { games: 40, avg: 0.27, obp: 0.34, slg: 0.44, ops: 0.78, home_runs: 10, rbi: 30, hits: 42, stolen_bases: 4, walks: 15, war: 2.1 };
+
+  const last7d = srBuildPlayerSnapshotStats(SR_PLAYER_SNAPSHOT_KEYS.LAST_7D, stats7d, formatters);
+  const season = srBuildPlayerSnapshotStats(SR_PLAYER_SNAPSHOT_KEYS.SEASON, stats30d, formatters);
+
+  assert.ok(!last7d.some((s) => s.label === "WAR"));
+  assert.strictEqual(season.find((s) => s.label === "WAR").display, "2.1");
+  assert.strictEqual(last7d.find((s) => s.label === "AVG").display, "0.310");
+  assert.strictEqual(season.find((s) => s.label === "AVG").display, "0.270");
+  assert.strictEqual(last7d.find((s) => s.label === "Strikeout %").display, SR_STAT_PENDING);
+});
+
 test("unavailable values never cause rendering errors", () => {
   assert.doesNotThrow(() => srBuildMarketMetrics(null, undefined, formatters));
   assert.doesNotThrow(() => srBuildCardMetrics(undefined, formatters));
   assert.doesNotThrow(() =>
-    SRMetrics.SR_PLAYER_STAT_SPECS.last7d.forEach((spec) =>
-      srFormatPlayerStat(spec, null, formatters)
-    )
+    SR_PLAYER_STAT_SPECS.last7d.forEach((spec) => srFormatPlayerStat(spec, null, formatters))
   );
   const market = srBuildMarketMetrics({}, null, formatters);
   Object.values(market).forEach((metric) => {
