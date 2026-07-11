@@ -32,7 +32,7 @@ Report sections (scrollable, editorial layout):
 
 | Section | Purpose |
 |---------|---------|
-| **Header** | Player, team, position, CardSignal Score, recommendation, status, updated timestamp, algorithm version |
+| **Header** | Player, team, position, CardSignal Score, recommendation, status, Evidence, Freshness, Updated timestamp, algorithm version |
 | **Player Snapshot** | Last 7 Days and Season Snapshot from stored MLB stats |
 | **Why This Signal** | Signal contributors explaining score changes from real evidence |
 | **Cards** | Player-linked card intelligence with pricing, movement, listings, PSA population when available |
@@ -64,6 +64,30 @@ Each player also receives:
 - **Status** — HOT / RISING / COOLING
 
 Forecast language uses tentative phrasing (“suggests,” “may,” “could”) and never implies guaranteed returns.
+
+## Data Confidence Principles
+
+Every score, recommendation, and report is backed by a **Data Confidence Layer** (`DATA_CONFIDENCE_V1`) that answers:
+
+1. How much verified evidence exists?
+2. How recent is the information?
+3. Why should collectors trust this recommendation?
+
+Key rules:
+
+- **Confidence ≠ Recommendation** — evidence quality is computed independently of BUY / HOLD / SELL / WATCH
+- **Evidence drives confidence** — player snapshots, market snapshots, signal drivers, registry completeness, and population availability from stored signals only
+- **Freshness is independent** — LIVE (&lt;60 min), RECENT (&lt;24 h), CURRENT (&lt;7 days), STALE (&gt;7 days), or UNKNOWN when timestamps are absent
+- **Explainability builds trust** — structured categories (Performance, Market, Collector Demand, Scarcity, Signal Drivers, Registry) show available / missing / pending states without proprietary percentages or scoring weights
+
+Scouting Report and Card Report headers display **Evidence**, **Freshness**, and **Updated** timestamps. An expandable **Why this report?** section summarizes verified inputs and honest evidence gaps.
+
+Read-only API:
+
+- `GET /api/confidence/player/{id}`
+- `GET /api/confidence/card/{id}`
+
+Returns confidence level, freshness, evidence summary, and missing inputs — never internal formulas or weighting.
 
 ## Data Sources
 

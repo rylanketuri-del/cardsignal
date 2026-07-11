@@ -12,6 +12,12 @@ from pydantic import BaseModel
 
 from cardchase_ai.clients.mlb import MLBClient
 from cardchase_ai.config import get_settings
+from cardchase_ai.data_confidence import (
+    build_card_confidence,
+    build_player_confidence,
+    confidence_response_to_public_dict,
+)
+from cardchase_ai.models.weekly import CardWeeklyIntelligenceSnapshot, PlayerWeeklySignalSnapshot
 from cardchase_ai.pipeline import run_pipeline
 from cardchase_ai.storage import SupabaseError, SupabaseStorage
 from cardchase_ai.weekly_intelligence import build_latest_weekly_api_payload, build_weekly_storage, run_weekly_intelligence
@@ -70,7 +76,7 @@ class WeeklyRunRequest(BaseModel):
     market_enabled: bool | None = None
     population_enabled: bool | None = None
 
-app = FastAPI(title="CardChase AI API", version="0.6.0")
+app = FastAPI(title="CardChase AI API", version="0.14.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -258,6 +264,63 @@ def search_players(q: str = "") -> JSONResponse:
         return JSONResponse(results)
     except Exception:
         return JSONResponse([])
+
+
+def _resolve_cs_player_id(player_id: str) -> str:
+    return player_id if ":" in player_id else f"mlb:{player_id}"
+
+
+def _latest_player_weekly_snapshot(
+    cs_player_id: str,
+    storage,
+) -> tuple[PlayerWeeklySignalSnapshot | None, list[dict]]:
+    history = storage.fetch_player_weekly_history(cs_player_id, 52)
+    if not history:
+        return None, []
+    latest = history[-1]
+    try:
+        snap = PlayerWeeklySignalSnapshot.model_validate(latest)
+    except Exception:
+        snap = None
+    return snap, history
+
+
+def _latest_card_weekly_snapshot(
+    cs_card_id: str,
+    storage,
+) -> tuple[CardWeeklyIntelligenceSnapshot | None, list[dict]]:
+    history = storage.fetch_card_weekly_history(cs_card_id, 52)
+    if not history:
+        return None, []
+    latest = history[-1]
+    try:
+        snap = CardWeeklyIntelligenceSnapshot.model_validate(latest)
+    except Exception:
+        snap = None
+    return snap, history
+
+
+@app.get("/api/confidence/player/{player_id}")
+def get_player_confidence(player_id: str) -> JSONResponse:
+    """Read-only player data confidence — evidence quality, not recommendation."""
+    payload, _ = _load_player(player_id)
+    settings = _settings()
+    storage = build_weekly_storage(settings)
+    cs_id = _resolve_cs_player_id(player_id)
+    weekly_snap, history = _latest_player_weekly_snapshot(cs_id, storage)
+    response = build_player_confidence(player_id, payload, weekly_snap, history)
+    return JSONResponse(confidence_response_to_public_dict(response))
+
+
+@app.get("/api/confidence/card/{cs_card_id}")
+def get_card_confidence(cs_card_id: str) -> JSONResponse:
+    """Read-only card data confidence — evidence quality, not recommendation."""
+    settings = _settings()
+    storage = build_weekly_storage(settings)
+    weekly_snap, history = _latest_card_weekly_snapshot(cs_card_id, storage)
+    registry_linked = bool(weekly_snap and weekly_snap.card_label) if weekly_snap else False
+    response = build_card_confidence(cs_card_id, weekly_snap, history, registry_linked=registry_linked)
+    return JSONResponse(confidence_response_to_public_dict(response))
 
 
 @app.get("/api/players/{player_id}")

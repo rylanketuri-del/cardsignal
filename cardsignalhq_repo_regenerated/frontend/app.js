@@ -17,6 +17,8 @@ let piModalEntry = null;
 let piModalIntel = null;
 let piModalWeeklySnap = null;
 let piModalCards = [];
+let piModalConfidence = null;
+let piModalCardConfidence = {};
 let piModalKeydownHandler = null;
 let weeklyIntelligence = null;
 const SCOUTING_REPORT_ALGO = "WEEKLY_INTELLIGENCE_V1";
@@ -72,6 +74,23 @@ async function fetchWeeklyLatest(league = 'MLB') {
 }
 async function fetchPlayerWeeklySignals(playerId) {
   return apiFetch(`/api/players/${playerId}/signals/weekly?limit=12`);
+}
+
+async function fetchPlayerConfidence(playerId) {
+  const csId = normalizeCsPlayerId({ player_id: playerId }) || playerId;
+  try {
+    return await apiFetch(`/api/confidence/player/${encodeURIComponent(csId)}`);
+  } catch (_) {
+    return null;
+  }
+}
+
+async function fetchCardConfidence(csCardId) {
+  try {
+    return await apiFetch(`/api/confidence/card/${encodeURIComponent(csCardId)}`);
+  } catch (_) {
+    return null;
+  }
 }
 
 async function fetchCardWeeklyIntelligence(csCardId) {
@@ -1292,7 +1311,7 @@ function resolveStoredCardRecommendation(card = {}) {
   return card.recommendation ? String(card.recommendation).toUpperCase() : "WATCH";
 }
 
-function renderReportCardPanel(card) {
+function renderReportCardPanel(card, cardConfidence = null) {
   const evidence = card.evidence || {};
   const tags = evidence.tags || {};
   const psaPop = tags.psa10_count != null ? formatStatCount(tags.psa10_count, "PSA population pending.") : "PSA population pending.";
@@ -1300,6 +1319,10 @@ function renderReportCardPanel(card) {
   const rec = resolveStoredCardRecommendation(card);
   const recClass = csIntelRecommendationClass(rec.toLowerCase());
   const metrics = SRMetrics.srBuildCardMetrics(card, srMetricFormatters());
+  const dcBadges = typeof DataConfidence !== "undefined"
+    ? DataConfidence.dcRenderCardHeaderBadges(cardConfidence)
+    : "";
+  const updatedLabel = card.captured_at ? formatTimestamp(card.captured_at) : "Pending";
 
   const metricRow = (metric) => `
     <div class="sr-card-metric">
@@ -1309,6 +1332,11 @@ function renderReportCardPanel(card) {
 
   return `
     <article class="sr-card-panel" data-cs-card-id="${card.cs_card_id || ""}">
+      <div class="sr-card-report-header">
+        <p class="sr-card-report-kicker">Card Report</p>
+        ${dcBadges}
+        <p class="sr-card-report-updated">Updated ${updatedLabel}</p>
+      </div>
       <div class="sr-card-identity">
         ${identityHtml || `<p class="sr-pending">Card registry data is still being linked.</p>`}
       </div>
@@ -1340,9 +1368,9 @@ function renderReportCardPanel(card) {
     </article>`;
 }
 
-function renderReportCards(cards = []) {
+function renderReportCards(cards = [], cardConfidenceMap = {}) {
   const body = cards.length
-    ? `<div class="sr-cards-list">${cards.map((c) => renderReportCardPanel(c)).join("")}</div>`
+    ? `<div class="sr-cards-list">${cards.map((c) => renderReportCardPanel(c, cardConfidenceMap[c.cs_card_id] || null)).join("")}</div>`
     : `<p class="sr-pending">Card intelligence pending for this player.</p>`;
 
   return `
@@ -1528,13 +1556,16 @@ function renderOutlook(entry, intel, weeklySnap = null) {
     </section>`;
 }
 
-function renderScoutingReportHeader(entry, intel) {
+function renderScoutingReportHeader(entry, intel, confidencePayload = null) {
   const team = getTeamAbbrev(entry);
   const position = entry.position || "—";
   const recommendation = intel.recommendation;
   const recommendationClass = csIntelRecommendationClass(recommendation.toLowerCase());
   const status = getReportStatus(entry, piModalWeeklySnap);
   const updatedLabel = intel.capturedAt ? formatTimestamp(intel.capturedAt) : "Pending";
+  const dcBadges = typeof DataConfidence !== "undefined"
+    ? DataConfidence.dcRenderHeaderBadges(confidencePayload)
+    : "";
 
   return `
     <div class="pi-modal-header-main sr-header">
@@ -1569,6 +1600,8 @@ function renderScoutingReportHeader(entry, intel) {
         </div>
       </div>
 
+      ${dcBadges}
+
       <div class="sr-header-meta">
         <span>Updated ${updatedLabel}</span>
         <span class="sr-header-meta-sep" aria-hidden="true">·</span>
@@ -1588,12 +1621,17 @@ function renderScoutingReportHeader(entry, intel) {
     </div>`;
 }
 
-function renderScoutingReport(entry, intel, cards = [], weeklySnap = null) {
+function renderScoutingReport(entry, intel, cards = [], weeklySnap = null, confidencePayload = null, cardConfidenceMap = {}) {
+  const trustSection = typeof DataConfidence !== "undefined"
+    ? DataConfidence.dcRenderTrustSection(confidencePayload)
+    : "";
+
   return `
     <div class="sr-report">
+      ${trustSection}
       ${renderPlayerSnapshot(intel)}
       ${renderWhyThisSignal(entry, intel, weeklySnap)}
-      ${renderReportCards(cards)}
+      ${renderReportCards(cards, cardConfidenceMap)}
       ${renderReportMarket(entry, intel, weeklySnap)}
       ${renderSignalAnalysis(entry, intel)}
       ${renderOutlook(entry, intel, weeklySnap)}
@@ -1655,6 +1693,8 @@ function closePlayerIntelligenceModal() {
   piModalIntel = null;
   piModalWeeklySnap = null;
   piModalCards = [];
+  piModalConfidence = null;
+  piModalCardConfidence = {};
 }
 
 async function openPlayerIntelligenceModal(entry) {
@@ -1683,13 +1723,27 @@ async function openPlayerIntelligenceModal(entry) {
     const cardRows = collectPlayerCards(player);
     const cards = await enrichPlayerCards(cardRows);
 
+    let confidencePayload = null;
+    const cardConfidenceMap = {};
+    if (player.player_id) {
+      confidencePayload = await fetchPlayerConfidence(player.player_id);
+      await Promise.all(
+        cards.map(async (card) => {
+          if (!card.cs_card_id) return;
+          cardConfidenceMap[card.cs_card_id] = await fetchCardConfidence(card.cs_card_id);
+        }),
+      );
+    }
+
     piModalEntry = player;
     piModalIntel = intel;
     piModalWeeklySnap = weeklySnap;
     piModalCards = cards;
+    piModalConfidence = confidencePayload;
+    piModalCardConfidence = cardConfidenceMap;
 
-    header.innerHTML = renderScoutingReportHeader(player, intel);
-    body.innerHTML = renderScoutingReport(player, intel, cards, weeklySnap);
+    header.innerHTML = renderScoutingReportHeader(player, intel, confidencePayload);
+    body.innerHTML = renderScoutingReport(player, intel, cards, weeklySnap, confidencePayload, cardConfidenceMap);
 
     wirePlayerActions();
 
