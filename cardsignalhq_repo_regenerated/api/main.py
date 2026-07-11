@@ -14,6 +14,7 @@ from cardchase_ai.clients.mlb import MLBClient
 from cardchase_ai.config import get_settings
 from cardchase_ai.pipeline import run_pipeline
 from cardchase_ai.storage import SupabaseError, SupabaseStorage
+from cardchase_ai.card_report import build_card_report, parse_cs_card_id
 from cardchase_ai.weekly_intelligence import build_latest_weekly_api_payload, build_weekly_storage, run_weekly_intelligence
 
 
@@ -379,6 +380,68 @@ def get_card_weekly_intelligence(cs_card_id: str, limit: int = 12) -> JSONRespon
     storage = build_weekly_storage(settings)
     items = storage.fetch_card_weekly_history(cs_card_id, max(2, min(limit, 52)))
     return JSONResponse({"items": items})
+
+
+def _fetch_card_snapshot(cs_card_id: str) -> tuple[dict[str, Any], list[dict[str, Any]], str]:
+    """Load latest card snapshot and history from stored weekly intelligence only."""
+    try:
+        parse_cs_card_id(cs_card_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    settings = _settings()
+    storage = build_weekly_storage(settings)
+    history = storage.fetch_card_weekly_history(cs_card_id, 52)
+    if not history:
+        raise HTTPException(status_code=404, detail=f"Card {cs_card_id} not found in stored intelligence.")
+    return history[-1], history, "stored"
+
+
+@app.get("/api/cards/{cs_card_id}")
+def get_card_report(cs_card_id: str) -> JSONResponse:
+    """Card Report — read-only aggregate from stored weekly intelligence."""
+    snapshot, history, source = _fetch_card_snapshot(cs_card_id)
+    report = build_card_report(snapshot, history)
+    payload = report.model_dump(mode="json")
+    payload["data_source"] = source
+    return JSONResponse(payload)
+
+
+@app.get("/api/cards/{cs_card_id}/history")
+def get_card_price_history(cs_card_id: str, limit: int = 52) -> JSONResponse:
+    """Card price history time series — read-only, chart adapter pending."""
+    snapshot, history, source = _fetch_card_snapshot(cs_card_id)
+    report = build_card_report(snapshot, history[-max(2, min(limit, 52)):])
+    return JSONResponse({
+        "cs_card_id": cs_card_id,
+        "data_source": source,
+        "price_history": report.price_history.model_dump(mode="json"),
+    })
+
+
+@app.get("/api/cards/{cs_card_id}/market")
+def get_card_market(cs_card_id: str) -> JSONResponse:
+    """Card market snapshot — read-only."""
+    snapshot, _, source = _fetch_card_snapshot(cs_card_id)
+    report = build_card_report(snapshot, [snapshot])
+    return JSONResponse({
+        "cs_card_id": cs_card_id,
+        "data_source": source,
+        "market": report.market.model_dump(mode="json"),
+    })
+
+
+@app.get("/api/cards/{cs_card_id}/drivers")
+def get_card_drivers(cs_card_id: str) -> JSONResponse:
+    """Card market and scarcity drivers — read-only, separate from player signal drivers."""
+    snapshot, _, source = _fetch_card_snapshot(cs_card_id)
+    report = build_card_report(snapshot, [snapshot])
+    return JSONResponse({
+        "cs_card_id": cs_card_id,
+        "data_source": source,
+        "market_drivers": [d.model_dump(mode="json") for d in report.market_drivers],
+        "scarcity_drivers": [d.model_dump(mode="json") for d in report.scarcity_drivers],
+    })
 
 
 @app.post("/api/weekly/run")

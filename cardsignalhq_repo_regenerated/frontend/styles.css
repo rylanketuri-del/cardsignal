@@ -5946,3 +5946,238 @@ body.pi-modal-open {
 .hidden {
   display: none !important;
 }
+
+/* Card Report — Sprint 9.5 */
+.cr-clickable {
+  cursor: pointer;
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.cr-clickable:hover,
+.cr-clickable:focus-visible {
+  transform: translateY(-1px);
+}
+
+.qi-row.cr-clickable:hover {
+  background: rgba(187, 132, 85, 0.06);
+  border-radius: var(--radius-sm);
+}
+
+.sr-card-panel.cr-clickable:hover {
+  box-shadow: var(--shadow-hover);
+}
+
+.cr-header-identity-block {
+  display: grid;
+  gap: 10px;
+}
+
+.cr-header-identity-fallback {
+  margin: 0;
+  font-family: Cormorant, Georgia, serif;
+  font-size: 36px;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  color: var(--cream);
+}
+
+.cr-header-player-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.cr-header-player-label {
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: rgba(247, 245, 242, 0.62);
+}
+
+.cr-player-link {
+  appearance: none;
+  border: none;
+  background: transparent;
+  padding: 0;
+  font-family: Inter, system-ui, sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--copper);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.cr-player-link:hover,
+.cr-player-link:focus-visible {
+  color: #d4a574;
+}
+
+.cr-player-link--muted {
+  color: rgba(247, 245, 242, 0.55);
+  text-decoration: none;
+  cursor: default;
+}
+
+.cr-header-score {
+  font-family: Cormorant, Georgia, serif;
+  font-size: 42px !important;
+  line-height: 1;
+}
+
+.cr-identity-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 16px 24px;
+  margin: 0;
+}
+
+.cr-identity-item dt {
+  margin: 0 0 4px;
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+}
+
+.cr-identity-item dd {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--charcoal);
+}
+
+.cr-snapshot-grid {
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+}
+
+.cr-price-history-placeholder {
+  padding: 28px 24px;
+  border-radius: var(--radius-lg);
+  border: 1px dashed rgba(220, 214, 206, 0.95);
+  background: var(--paper);
+  text-align: center;
+}
+
+.cr-price-history-soon {
+  margin: 0 0 8px;
+  font-family: Cormorant, Georgia, serif;
+  font-size: 28px;
+  letter-spacing: -0.02em;
+  color: var(--charcoal);
+}
+
+.cr-price-history-meta {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.cr-drivers {
+  display: grid;
+  gap: 0;
+  margin-top: 16px;
+  border: 1px solid rgba(220, 214, 206, 0.9);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--panel);
+}
+
+.cr-drivers--compact {
+  margin-top: 20px;
+}
+
+.cr-driver {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 18px;
+  border-top: 1px solid rgba(220, 214, 206, 0.7);
+}
+
+.cr-driver:first-child {
+  border-top: none;
+}
+
+.cr-driver-arrow {
+  flex-shrink: 0;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.cr-driver-arrow--up {
+  color: var(--signal-green);
+}
+
+.cr-driver-arrow--down {
+  color: var(--clay);
+}
+
+.cr-driver-arrow--neutral {
+  color: var(--muted);
+}
+
+.cr-driver-copy {
+  display: grid;
+  gap: 2px;
+}
+
+.cr-driver-copy strong {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--charcoal);
+}
+
+.cr-driver-copy span {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.cr-outlook-summary {
+  margin: 0 0 16px;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--text);
+}
+
+.cr-outlook-supported-label {
+  margin: 0 0 8px;
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--bronze);
+}
+
+.cr-outlook-support {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.cr-loading,
+.cr-error {
+  padding: 8px 0;
+  color: rgba(247, 245, 242, 0.8);
+  font-size: 14px;
+}
+
+.cr-report {
+  padding-bottom: 32px;
+}
+
+@media (max-width: 980px) {
+  .cr-header-score {
+    font-size: 34px !important;
+  }
+
+  .cr-header-identity-fallback {
+    font-size: 28px;
+  }
+}

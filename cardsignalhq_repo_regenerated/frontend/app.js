@@ -241,6 +241,7 @@ function weeklyCardRowToIntelItem(row = {}) {
     price: row.evidence?.avg_price ?? null,
     movement: row.demand_score != null ? `${row.demand_score > 0 ? '+' : ''}${Number(row.demand_score).toFixed(1)}%` : '—',
     score: row.score != null ? Number(row.score).toFixed(1) : '—',
+    cs_card_id: row.cs_card_id || null,
   };
 }
 
@@ -638,9 +639,10 @@ function movementClass(movement = "") {
 /* Landing page — Quick Intelligence grid row */
 function renderCardIntelRow(item) {
   const moveClass = movementClass(item.movement);
+  const cardAttr = item.cs_card_id ? ` data-cs-card-id="${item.cs_card_id}"` : "";
 
   return `
-    <div class="qi-row">
+    <div class="qi-row cr-clickable"${cardAttr}>
       <div class="qi-row-thumb" aria-hidden="true"></div>
       <div class="qi-row-body">
         <span class="qi-row-name">${item.name}</span>
@@ -701,6 +703,7 @@ function renderCardSection(entries = [], cardIntel = null) {
       }
       return renderCardIntelBox({ ...box, items: rows });
     }).join("");
+    if (typeof wireCardPanelClicks === "function") wireCardPanelClicks(root);
     return;
   }
 
@@ -1004,50 +1007,6 @@ function deriveEvidenceQuality(score, missingKeys = [], requiredKey = null) {
   return null;
 }
 
-function getCardIdentityFields(card = {}) {
-  const source = card.identity || card.registry || card;
-  return {
-    year: source.card_year ?? source.year ?? null,
-    brand: source.brand ?? null,
-    set: source.set ?? null,
-    parallel: source.parallel ?? null,
-    card_number: source.card_number ?? null,
-    grade: source.grade ?? null,
-    grading_company: source.grading_company ?? null,
-  };
-}
-
-function hasCardRegistryIdentity(card = {}) {
-  const fields = getCardIdentityFields(card);
-  return !!(fields.year || fields.brand || fields.set);
-}
-
-function formatCardIdentityHtml(card = {}) {
-  const fields = getCardIdentityFields(card);
-  if (!hasCardRegistryIdentity(card)) return null;
-
-  const titleParts = [fields.year, fields.brand, fields.set].filter((part) => part != null && part !== "");
-  const lines = [];
-
-  if (titleParts.length) {
-    lines.push(`<p class="sr-card-title">${titleParts.join(" ")}</p>`);
-  }
-  if (fields.parallel) {
-    lines.push(`<p class="sr-card-meta">${fields.parallel}</p>`);
-  }
-  if (fields.card_number) {
-    lines.push(`<p class="sr-card-number">#${fields.card_number}</p>`);
-  }
-  if (fields.grade) {
-    const gradeLine = [fields.grading_company, fields.grade].filter(Boolean).join(" ");
-    lines.push(`<p class="sr-card-grade">${gradeLine}</p>`);
-  } else if (fields.grading_company) {
-    lines.push(`<p class="sr-card-grade">${fields.grading_company}</p>`);
-  }
-
-  return lines.length ? lines.join("") : null;
-}
-
 function parseStoredContributorDirection(value, fallback = "up") {
   const n = csIntelSafeToNumber(value);
   if (n === null) return fallback;
@@ -1308,9 +1267,9 @@ function renderReportCardPanel(card) {
     </div>`;
 
   return `
-    <article class="sr-card-panel" data-cs-card-id="${card.cs_card_id || ""}">
+    <article class="sr-card-panel cr-clickable" data-cs-card-id="${card.cs_card_id || ""}">
       <div class="sr-card-identity">
-        ${identityHtml || `<p class="sr-pending">Card registry data is still being linked.</p>`}
+        ${identityHtml || `<p class="sr-pending">${CARD_REGISTRY_PENDING}</p>`}
       </div>
       <div class="sr-card-metrics">
         ${metricRow(metrics.medianActivePrice)}
@@ -1692,6 +1651,7 @@ async function openPlayerIntelligenceModal(entry) {
     body.innerHTML = renderScoutingReport(player, intel, cards, weeklySnap);
 
     wirePlayerActions();
+    if (typeof wireCardPanelClicks === "function") wireCardPanelClicks(body);
 
     modal.classList.remove("hidden");
     modal.setAttribute("aria-hidden", "false");
@@ -2915,6 +2875,8 @@ async function init() {
     latestEntries = entries;
     setupPlayerSearch();
     setupPlayerIntelligenceModal();
+    if (typeof setupCardReportModal === "function") setupCardReportModal();
+    if (typeof setupCardReportRouter === "function") setupCardReportRouter();
     setupSportTabs();
 
     status.textContent = 'Rendering Signal Center...';
