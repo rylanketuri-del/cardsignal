@@ -18,7 +18,11 @@ let piModalIntel = null;
 let piModalWeeklySnap = null;
 let piModalCards = [];
 let piModalKeydownHandler = null;
+let piIntelCache = new Map();
 let weeklyIntelligence = null;
+let nflWeeklyIntelligence = null;
+let nflDataAvailable = false;
+let activeSportFilter = 'all';
 const SCOUTING_REPORT_ALGO = "WEEKLY_INTELLIGENCE_V1";
 
 function tagClass(tag) {
@@ -48,19 +52,66 @@ function renderRuleSummary(rule) {
   return `<span class="rule-chip">${parts.join(' • ') || 'custom rule'}</span>`;
 }
 
-async function apiFetch(path, options = {}) {
-  const headers = { ...(options.headers || {}) };
-  if (authToken) headers.Authorization = `Bearer ${authToken}`;
-  const response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
-  if (!response.ok) throw new Error(await response.text() || `Request failed for ${path}`);
-  return response.json();
+function apiInferContext(path = "") {
+  if (path.includes("/watchlist")) return COLLECTOR_ERROR_CONTEXT.WATCHLIST;
+  if (path.includes("/notifications")) return COLLECTOR_ERROR_CONTEXT.NOTIFICATIONS;
+  return COLLECTOR_ERROR_CONTEXT.GENERIC;
 }
+
+function safeUserMessage(error, context, fallback = null) {
+  if (typeof collectorUserMessage === "function") {
+    return collectorUserMessage(error, context, fallback);
+  }
+  return fallback || COLLECTOR_USER_MESSAGES?.[COLLECTOR_ERROR_CONTEXT.GENERIC]
+    || "CardSignal is temporarily unavailable. Please try again.";
+}
+
+function safeAuthErrorMessage(context) {
+  return COLLECTOR_USER_MESSAGES?.[context]
+    || COLLECTOR_USER_MESSAGES?.[COLLECTOR_ERROR_CONTEXT.AUTH_SIGN_IN]
+    || "We couldn't sign you in. Check your details and try again.";
+}
+
+async function apiFetch(path, options = {}) {
+  const { context: requestContext, ...fetchOptions } = options;
+  const context = requestContext || apiInferContext(path);
+  const headers = { ...(fetchOptions.headers || {}) };
+  if (authToken) headers.Authorization = `Bearer ${authToken}`;
+  try {
+    const response = await fetch(`${API_BASE_URL}${path}`, { ...fetchOptions, headers });
+    if (!response.ok) {
+      const bodyText = await response.text();
+      const error = createCollectorApiError(response, bodyText, context);
+      logCollectorError(error, context);
+      throw error;
+    }
+    return response.json();
+  } catch (error) {
+    if (error?.name === "CollectorApiError") throw error;
+    const networkError = createNetworkCollectorError(context);
+    logCollectorError(networkError, context);
+    throw networkError;
+  }
+}
+
 async function adminFetch(path, options = {}) {
   const headers = { ...(options.headers || {}) };
   if (adminToken) headers.Authorization = `Bearer ${adminToken}`;
-  const response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
-  if (!response.ok) throw new Error(await response.text() || `Admin request failed for ${path}`);
-  return response.json();
+  try {
+    const response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
+    if (!response.ok) {
+      const bodyText = await response.text();
+      const error = createCollectorApiError(response, bodyText, COLLECTOR_ERROR_CONTEXT.GENERIC);
+      logCollectorError(error, "admin");
+      throw error;
+    }
+    return response.json();
+  } catch (error) {
+    if (error?.name === "CollectorApiError") throw error;
+    const networkError = createNetworkCollectorError(COLLECTOR_ERROR_CONTEXT.GENERIC);
+    logCollectorError(networkError, "admin");
+    throw networkError;
+  }
 }
 async function fetchPlayer(playerId) { return apiFetch(`/api/players/${playerId}`); }
 async function fetchPlayerHistory(playerId) { return apiFetch(`/api/players/${playerId}/history?limit=14`); }
@@ -77,11 +128,46 @@ async function fetchPlayerWeeklySignals(playerId) {
 async function fetchCardWeeklyIntelligence(csCardId) {
   return apiFetch(`/api/cards/${encodeURIComponent(csCardId)}/intelligence/weekly?limit=2`);
 }
-async function fetchPlayerSearch(query) {
-  const response = await fetch(`${API_BASE_URL}/api/players/search?q=${encodeURIComponent(query)}`);
-  if (!response.ok) return [];
-  const data = await response.json();
-  return Array.isArray(data) ? data : (data.items || []);
+async function fetchPlayerSearch(query, sport = null) {
+  const filter = sport || activeSportFilter;
+  const endpoints = [];
+  if (filter === 'all' || filter === 'mlb') {
+    endpoints.push(fetch(`${API_BASE_URL}/api/players/search?q=${encodeURIComponent(query)}&sport=MLB`).then((r) => (r.ok ? r.json() : [])));
+  }
+  if ((filter === 'all' || filter === 'nfl') && nflDataAvailable) {
+    endpoints.push(fetch(`${API_BASE_URL}/api/nfl/players/search?q=${encodeURIComponent(query)}`).then((r) => (r.ok ? r.json() : [])));
+  }
+  if (!endpoints.length) return [];
+  const batches = await Promise.all(endpoints);
+  return batches.flat().filter(Boolean);
+}
+
+async function fetchNflPlayer(playerId) {
+  const response = await fetch(`${API_BASE_URL}/api/nfl/players/${encodeURIComponent(playerId)}`);
+  if (!response.ok) throw new Error("NFL player not found.");
+  return response.json();
+}
+
+async function fetchNflPerformance(playerId) {
+  const response = await fetch(`${API_BASE_URL}/api/nfl/players/${encodeURIComponent(playerId)}/performance`);
+  if (!response.ok) return null;
+  return response.json();
+}
+
+function resolveSearchEntryByPlayerId(matches, playerId) {
+  const needle = String(playerId || "");
+  if (!needle) return null;
+  return matches.find((item) => String(SRNfl.srNflResolvePlayerId(item) || item.player_id || "") === needle) || null;
+}
+
+async function fetchNflStatus() {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/nfl/status`);
+    if (!response.ok) return { available: false };
+    return response.json();
+  } catch (_) {
+    return { available: false };
+  }
 }
 
 function setAuthStatus(message, isError = false) {
@@ -671,7 +757,7 @@ function renderCardIntelPendingBox({ title, modifier, description }) {
     <article class="qi-card qi-card--${modifier} qi-card--pending">
       <h3 class="qi-card-title">${title}</h3>
       <p class="qi-card-desc">${description}</p>
-      <p class="qi-pending-copy">Card intelligence will appear after the next weekly refresh.</p>
+      <p class="qi-pending-copy">${typeof COLLECTOR_COPY !== "undefined" ? COLLECTOR_COPY.CARD_INTEL_PENDING : "Card intelligence will appear after the next weekly refresh."}</p>
     </article>
   `;
 }
@@ -947,9 +1033,19 @@ function formatStatCount(value, pending = "—") {
 }
 
 function normalizeCsPlayerId(entry = {}) {
-  const pid = entry.player_id || entry.cs_player_id || entry.source_player_id;
+  const pid = entry.cs_player_id || entry.player_id || entry.source_player_id;
   if (!pid) return null;
-  return String(pid).includes(":") ? String(pid) : `mlb:${pid}`;
+  const raw = String(pid);
+  if (raw.startsWith('CS-NFL-P-') || raw.includes(':')) return raw;
+  const league = String(entry.league || entry.sport || '').toUpperCase();
+  if (league === 'NFL' || league === 'FOOTBALL') return `CS-NFL-P-${raw}`;
+  return `mlb:${raw}`;
+}
+
+function isNflEntry(entry = {}) {
+  const league = String(entry.league || entry.sport || '').toUpperCase();
+  const csId = String(entry.cs_player_id || '');
+  return league === 'NFL' || league === 'FOOTBALL' || csId.startsWith('CS-NFL-P-');
 }
 
 function resolveWeeklySnapshot(entry = {}, weeklyHistory = []) {
@@ -1004,50 +1100,6 @@ function deriveEvidenceQuality(score, missingKeys = [], requiredKey = null) {
   return null;
 }
 
-function getCardIdentityFields(card = {}) {
-  const source = card.identity || card.registry || card;
-  return {
-    year: source.card_year ?? source.year ?? null,
-    brand: source.brand ?? null,
-    set: source.set ?? null,
-    parallel: source.parallel ?? null,
-    card_number: source.card_number ?? null,
-    grade: source.grade ?? null,
-    grading_company: source.grading_company ?? null,
-  };
-}
-
-function hasCardRegistryIdentity(card = {}) {
-  const fields = getCardIdentityFields(card);
-  return !!(fields.year || fields.brand || fields.set);
-}
-
-function formatCardIdentityHtml(card = {}) {
-  const fields = getCardIdentityFields(card);
-  if (!hasCardRegistryIdentity(card)) return null;
-
-  const titleParts = [fields.year, fields.brand, fields.set].filter((part) => part != null && part !== "");
-  const lines = [];
-
-  if (titleParts.length) {
-    lines.push(`<p class="sr-card-title">${titleParts.join(" ")}</p>`);
-  }
-  if (fields.parallel) {
-    lines.push(`<p class="sr-card-meta">${fields.parallel}</p>`);
-  }
-  if (fields.card_number) {
-    lines.push(`<p class="sr-card-number">#${fields.card_number}</p>`);
-  }
-  if (fields.grade) {
-    const gradeLine = [fields.grading_company, fields.grade].filter(Boolean).join(" ");
-    lines.push(`<p class="sr-card-grade">${gradeLine}</p>`);
-  } else if (fields.grading_company) {
-    lines.push(`<p class="sr-card-grade">${fields.grading_company}</p>`);
-  }
-
-  return lines.length ? lines.join("") : null;
-}
-
 function parseStoredContributorDirection(value, fallback = "up") {
   const n = csIntelSafeToNumber(value);
   if (n === null) return fallback;
@@ -1057,6 +1109,9 @@ function parseStoredContributorDirection(value, fallback = "up") {
 function buildStoredPlayerIntel(entry = {}, weeklySnap = null) {
   const hotness = entry.hotness || {};
   const missing = weeklySnap?.missing_inputs || [];
+  const snapEvidence = weeklySnap?.evidence || {};
+  const isNfl = isNflEntry(entry) || weeklySnap?.league === 'NFL' || weeklySnap?.sport === 'FOOTBALL';
+  const nflReport = isNfl ? SRNfl.srNflMapScoutingReport(entry, weeklySnap) : null;
 
   return {
     score: csIntelSafeToNumber(weeklySnap?.card_signal_score ?? hotness.total_score),
@@ -1069,13 +1124,16 @@ function buildStoredPlayerIntel(entry = {}, weeklySnap = null) {
     recommendation: resolveRecommendation(entry, weeklySnap),
     hasStoredRecommendation: hasStoredRecommendation(entry, weeklySnap),
     weeklyChange: csIntelSafeToNumber(weeklySnap?.weekly_change ?? entry.weekly_change),
-    evidence: weeklySnap?.evidence || {},
+    evidence: snapEvidence,
     missingInputs: missing,
     algorithmVersion: weeklySnap?.algorithm_version || weeklyIntelligence?.run?.algorithm_version || SCOUTING_REPORT_ALGO,
     capturedAt: weeklySnap?.captured_at || entry.generated_at || weeklyIntelligence?.run?.completed_at,
-    stats7d: entry.stats_7d || null,
-    stats30d: entry.stats_30d || null,
+    stats7d: nflReport?.recentStats || entry.stats_7d || snapEvidence.nfl_recent_stats || null,
+    stats30d: nflReport?.seasonStats || entry.stats_30d || snapEvidence.nfl_season_stats || null,
     marketSnapshots: entry.market_snapshots || {},
+    isNfl,
+    nfl: nflReport,
+    nflSeasonPhase: nflReport?.nflSeasonPhase || null,
   };
 }
 
@@ -1100,51 +1158,103 @@ function renderSnapshotStat(label, value, { title = "" } = {}) {
     </div>`;
 }
 
-function renderPlayerSnapshot(intel) {
+function renderPlayerSnapshot(intel, entry = {}) {
   const stats7d = intel.stats7d;
   const stats30d = intel.stats30d;
-  const has7d = hasPerformanceStats(stats7d);
-  const hasSeason = hasPerformanceStats(stats30d);
+  const has7d = hasPerformanceStats(stats7d) || (stats7d && Object.keys(stats7d).length > 1);
+  const hasSeason = hasPerformanceStats(stats30d) || (stats30d && Object.keys(stats30d).length > 1);
   const formatters = srMetricFormatters();
+  const position = entry.position || piModalEntry?.position || '';
+  const nflSpecs = intel.isNfl ? SRMetrics.srGetNflStatSpecs(position) : null;
+  const nfl = intel.nfl;
+
+  let recentTitle = 'Last 7 Days';
+  let seasonTitle = 'Season Snapshot';
+  let recentMeta = '';
+  let seasonMeta = '';
+  if (intel.isNfl && nfl) {
+    recentTitle = nfl.recentWindowLabel;
+    seasonTitle = nfl.seasonWindowLabel;
+    recentMeta = `<p class="sr-section-lead">${nfl.performancePeriodNote}: ${nfl.recentDateRange}${nfl.gamesInWindow != null ? ` · ${nfl.gamesInWindow} games` : ""}</p>`;
+    seasonMeta = `<p class="sr-section-lead">${nfl.performancePeriodNote}: ${nfl.seasonDateRange}</p>`;
+  }
 
   const last7Body = has7d
     ? `
       <div class="sr-snapshot-grid">
-        ${SRMetrics.SR_PLAYER_STAT_SPECS.last7d.map((spec) => {
+        ${(nflSpecs ? nflSpecs.recent : SRMetrics.SR_PLAYER_STAT_SPECS.last7d).map((spec) => {
     const stat = SRMetrics.srFormatPlayerStat(spec, stats7d, formatters);
     return renderSnapshotStat(stat.label, stat.display, { title: stat.title });
   }).join("")}
       </div>`
-    : `<p class="sr-pending">Performance data pending.</p>`;
+    : `<p class="sr-pending">${COLLECTOR_COPY?.PERFORMANCE_PENDING || "Performance data will appear after the next completed snapshot."}</p>`;
 
   const seasonBody = hasSeason
     ? `
       <div class="sr-snapshot-grid">
-        ${SRMetrics.SR_PLAYER_STAT_SPECS.season.map((spec) => {
+        ${(nflSpecs ? nflSpecs.season : SRMetrics.SR_PLAYER_STAT_SPECS.season).map((spec) => {
     const stat = SRMetrics.srFormatPlayerStat(spec, stats30d, formatters);
     return renderSnapshotStat(stat.label, stat.display, { title: stat.title });
   }).join("")}
       </div>`
-    : `<p class="sr-pending">Performance data pending.</p>`;
+    : `<p class="sr-pending">${COLLECTOR_COPY?.PERFORMANCE_PENDING || "Performance data will appear after the next completed snapshot."}</p>`;
+
+  const showRecent = !intel.isNfl || (nfl && nfl.showRecentPanel);
 
   return `
     <section class="sr-section sr-snapshot">
       <h3 class="sr-section-title">Player Snapshot</h3>
       <div class="sr-snapshot-panels">
-        <article class="sr-panel">
-          <h4 class="sr-panel-title">Last 7 Days</h4>
+        ${showRecent ? `<article class="sr-panel">
+          <h4 class="sr-panel-title">${recentTitle}</h4>
+          ${recentMeta}
           ${last7Body}
-        </article>
+        </article>` : ''}
         <article class="sr-panel">
-          <h4 class="sr-panel-title">Season Snapshot</h4>
+          <h4 class="sr-panel-title">${seasonTitle}</h4>
+          ${seasonMeta}
           ${seasonBody}
         </article>
       </div>
     </section>`;
 }
 
+function renderNflSignalDrivers(intel) {
+  if (!intel?.isNfl || !intel?.nfl) return "";
+  const drivers = intel.nfl.signalDrivers || [];
+  const noDrivers = COLLECTOR_COPY?.NO_SIGNAL_DRIVERS || SRNfl.SR_NFL_NO_DRIVERS;
+  const body = drivers.length
+    ? `
+      <div class="sr-nfl-drivers">
+        ${drivers.map((driver) => `
+          <article class="sr-nfl-driver">
+            <div class="sr-nfl-driver-head">
+              <strong>${driver.title}</strong>
+              <span class="sr-nfl-driver-source">${driver.sourceType}</span>
+            </div>
+            <p class="sr-nfl-driver-summary">${driver.summary}</p>
+            <div class="sr-nfl-driver-meta">
+              <span>Impact: ${driver.impact}</span>
+              <span>Evidence: ${driver.evidenceQuality}</span>
+              <span>Occurred: ${driver.occurredAt}</span>
+            </div>
+          </article>`).join("")}
+      </div>`
+    : `<p class="sr-pending">${noDrivers}</p>`;
+
+  return `
+    <section class="sr-section sr-signal-drivers sr-nfl-drivers-section">
+      <h3 class="sr-section-title">Signal Drivers</h3>
+      <p class="sr-section-lead">${COLLECTOR_COPY?.SIGNAL_DRIVERS_LEAD || "Verified football developments from stored evidence only."}</p>
+      ${body}
+    </section>`;
+}
+
 function buildSignalContributors(entry, intel, weeklySnap = null) {
   const contributors = [];
+  if (intel.isNfl) {
+    return contributors;
+  }
   const stats7d = intel.stats7d;
   const stats30d = intel.stats30d;
   const evidence = intel.evidence || {};
@@ -1228,27 +1338,31 @@ function buildSignalContributors(entry, intel, weeklySnap = null) {
   return contributors;
 }
 
-function renderWhyThisSignal(entry, intel, weeklySnap = null) {
+function renderSignalDrivers(entry, intel, weeklySnap = null) {
+  if (intel.isNfl) {
+    return renderNflSignalDrivers(intel);
+  }
+
   const contributors = buildSignalContributors(entry, intel, weeklySnap);
+  const noDrivers = COLLECTOR_COPY?.NO_SIGNAL_DRIVERS || "No verified Signal Drivers are available.";
   const body = contributors.length
     ? `
       <div class="sr-contributors">
-        <p class="sr-contributors-label">Signal Contributors</p>
         ${contributors.map((c) => `
           <div class="sr-contributor">
-            <span class="sr-contributor-arrow sr-contributor-arrow--${c.direction}">${c.direction === "up" ? "⬆" : "⬇"}</span>
+            <span class="sr-contributor-arrow sr-contributor-arrow--${c.direction}" aria-hidden="true">${c.direction === "up" ? "⬆" : "⬇"}</span>
             <div class="sr-contributor-copy">
               <strong>${c.label}</strong>
               <span>${c.detail}</span>
             </div>
           </div>`).join("")}
       </div>`
-    : `<p class="sr-pending">Signal contributor data pending.</p>`;
+    : `<p class="sr-pending">${noDrivers}</p>`;
 
   return `
-    <section class="sr-section">
-      <h3 class="sr-section-title">Why This Signal</h3>
-      <p class="sr-section-lead">How recent performance and market activity shaped this week's CardSignal Score.</p>
+    <section class="sr-section sr-signal-drivers">
+      <h3 class="sr-section-title">Signal Drivers</h3>
+      <p class="sr-section-lead">${COLLECTOR_COPY?.SIGNAL_DRIVERS_LEAD || "How recent performance and market activity shaped this week's CardSignal Score."}</p>
       ${body}
     </section>`;
 }
@@ -1285,70 +1399,107 @@ async function enrichPlayerCards(cards = []) {
       enriched.push(card);
     }
   }
-  return enriched;
+  return typeof rankPlayerCards === "function" ? rankPlayerCards(enriched) : enriched;
+}
+
+function wireCardReportButtons(root = document) {
+  root.querySelectorAll("[data-cr-view-report]").forEach((btn) => {
+    if (btn.dataset.crViewBound === "1") return;
+    btn.dataset.crViewBound = "1";
+    btn.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const csCardId = btn.dataset.csCardId;
+      if (csCardId && typeof openCardReportModal === "function") {
+        openCardReportModal(csCardId);
+      }
+    });
+  });
 }
 
 function resolveStoredCardRecommendation(card = {}) {
   return card.recommendation ? String(card.recommendation).toUpperCase() : "WATCH";
 }
 
-function renderReportCardPanel(card) {
-  const evidence = card.evidence || {};
-  const tags = evidence.tags || {};
-  const psaPop = tags.psa10_count != null ? formatStatCount(tags.psa10_count, "PSA population pending.") : "PSA population pending.";
+function renderReportCardPanel(card, { rank = null, isTopPick = false } = {}) {
   const identityHtml = formatCardIdentityHtml(card);
   const rec = resolveStoredCardRecommendation(card);
   const recClass = csIntelRecommendationClass(rec.toLowerCase());
-  const metrics = SRMetrics.srBuildCardMetrics(card, srMetricFormatters());
-
-  const metricRow = (metric) => `
-    <div class="sr-card-metric">
-      <span class="sr-card-metric-label">${metric.label}</span>
-      <span class="sr-card-metric-value${metric.pending ? " sr-pending--inline" : ""}">${metric.display}</span>
-    </div>`;
+  const score = typeof resolveCardSignalScore === "function"
+    ? resolveCardSignalScore(card)
+    : (card.card_signal_score ?? card.score);
+  const scorePending = COLLECTOR_COPY?.CARD_SCORE_PENDING || "CardSignal Card Score pending";
+  const scoreLabel = score != null ? formatScore(score) : scorePending;
+  const evidenceTier = typeof resolveCardEvidenceTier === "function"
+    ? resolveCardEvidenceTier(card)
+    : "INSUFFICIENT";
+  const evidenceClass = csIntelEvidenceClass(evidenceTier);
+  const evidenceText = typeof buildStoredCardEvidenceText === "function"
+    ? buildStoredCardEvidenceText(card)
+    : null;
+  const evidencePending = COLLECTOR_COPY?.EVIDENCE_PENDING || "Evidence will appear when stored market snapshots are available.";
+  const rankLabel = rank != null ? `#${rank}` : "";
+  const topPickBadge = isTopPick ? `<span class="sr-card-top-pick-badge">Top Pick</span>` : "";
+  const registryPending = COLLECTOR_COPY?.REGISTRY_PENDING || CARD_REGISTRY_PENDING;
 
   return `
-    <article class="sr-card-panel" data-cs-card-id="${card.cs_card_id || ""}">
-      <div class="sr-card-identity">
-        ${identityHtml || `<p class="sr-pending">Card registry data is still being linked.</p>`}
+    <article class="sr-card-panel sr-card-row${isTopPick ? " sr-card-panel--top-pick" : ""}" data-cs-card-id="${card.cs_card_id || ""}">
+      <div class="sr-card-row-main">
+        <div class="sr-card-row-head">
+          ${rankLabel ? `<span class="sr-card-rank">${rankLabel}</span>` : ""}
+          ${topPickBadge}
+        </div>
+        <div class="sr-card-identity">
+          ${identityHtml || `<p class="sr-pending">${registryPending}</p>`}
+        </div>
+        <div class="sr-card-compare-grid sr-card-row-metrics">
+          <div class="sr-card-compare-item sr-card-score-item">
+            <span class="sr-card-compare-label">CardSignal Card Score</span>
+            <span class="sr-card-compare-value sr-card-score-value">${scoreLabel}</span>
+          </div>
+          <div class="sr-card-compare-item">
+            <span class="sr-card-compare-label">Recommendation</span>
+            <span class="cs-recommendation-badge ${recClass} sr-card-compare-badge">${rec}</span>
+          </div>
+          <div class="sr-card-compare-item">
+            <span class="sr-card-compare-label">Evidence</span>
+            <span class="cs-evidence-badge ${evidenceClass} sr-card-compare-badge">${evidenceTier}</span>
+          </div>
+        </div>
+        <p class="sr-card-evidence sr-card-row-evidence">
+          <span class="sr-evidence-label">Evidence</span>
+          ${evidenceText || `<span class="sr-pending--inline">${evidencePending}</span>`}
+        </p>
       </div>
-      <div class="sr-card-metrics">
-        ${metricRow(metrics.medianActivePrice)}
-        ${metricRow(metrics.averageActivePrice)}
-        ${metricRow(metrics.priceMovement7d)}
-        ${!metrics.momentumScore.pending ? metricRow(metrics.momentumScore) : ""}
-        ${metricRow(metrics.activeListings)}
-        <div class="sr-card-metric">
-          <span class="sr-card-metric-label">PSA Population</span>
-          <span class="sr-card-metric-value">${psaPop}</span>
-        </div>
-        <div class="sr-card-metric">
-          <span class="sr-card-metric-label">CardSignal Score</span>
-          <span class="sr-card-metric-value">${card.card_signal_score != null ? formatScore(card.card_signal_score) : card.score != null ? formatScore(card.score) : "Pending"}</span>
-        </div>
-        <div class="sr-card-metric">
-          <span class="sr-card-metric-label">Recommendation</span>
-          <span class="cs-recommendation-badge ${recClass} sr-card-rec">${rec}</span>
-        </div>
+      <div class="sr-card-row-action">
+        <button
+          type="button"
+          class="sr-card-report-btn"
+          data-cr-view-report
+          data-cs-card-id="${card.cs_card_id || ""}"
+          aria-label="View Card Report"
+        >View Card Report</button>
       </div>
-      <p class="sr-card-evidence">
-        <span class="sr-evidence-label">Evidence</span>
-        ${evidence.listings_count
-    ? `Based on ${evidence.listings_count} active listing${evidence.listings_count === 1 ? "" : "s"} in stored market snapshots.`
-    : "Market history still building."}
-      </p>
     </article>`;
 }
 
 function renderReportCards(cards = []) {
-  const body = cards.length
-    ? `<div class="sr-cards-list">${cards.map((c) => renderReportCardPanel(c)).join("")}</div>`
-    : `<p class="sr-pending">Card intelligence pending for this player.</p>`;
+  const rankedCards = typeof rankPlayerCards === "function" ? rankPlayerCards(cards) : cards;
+  const body = rankedCards.length
+    ? `<div class="sr-cards-list">${rankedCards.map((card, index) => renderReportCardPanel(card, {
+      rank: index + 1,
+      isTopPick: index === 0,
+    })).join("")}</div>`
+    : `<p class="sr-pending">${COLLECTOR_COPY?.CARD_INTEL_PENDING || "Card intelligence will appear after the next weekly refresh."}</p>`;
+  const rankingNote = typeof CARD_RANKING_EXPLANATION === "string"
+    ? `<p class="sr-cards-ranking-note">${CARD_RANKING_EXPLANATION}</p>`
+    : "";
 
   return `
-    <section class="sr-section">
+    <section class="sr-section sr-cards-section">
       <h3 class="sr-section-title">Cards</h3>
-      <p class="sr-section-lead">Tracked cards linked to this player through stored weekly intelligence.</p>
+      <p class="sr-section-lead">Cards ranked by CardSignal Card Score — highest intelligence signal first.</p>
+      ${rankingNote}
       ${body}
     </section>`;
 }
@@ -1362,9 +1513,9 @@ function renderReportMarket(entry, intel, weeklySnap = null) {
 
   if (!hasAnyMarketField) {
     return `
-      <section class="sr-section">
-        <h3 class="sr-section-title">Market</h3>
-        <p class="sr-pending">Market history still building.</p>
+      <section class="sr-section sr-market">
+        <h3 class="sr-section-title">Market Snapshot</h3>
+        <p class="sr-pending">${COLLECTOR_COPY?.MARKET_HISTORY_PENDING || "Market history still building — snapshots will populate after the next weekly refresh."}</p>
       </section>`;
   }
 
@@ -1375,8 +1526,8 @@ function renderReportMarket(entry, intel, weeklySnap = null) {
     </div>`;
 
   return `
-    <section class="sr-section">
-      <h3 class="sr-section-title">Market</h3>
+    <section class="sr-section sr-market">
+      <h3 class="sr-section-title">Market Snapshot</h3>
       <p class="sr-section-lead">${summary}</p>
       <div class="sr-market-grid">
         ${marketItem(metrics.medianActivePrice)}
@@ -1391,7 +1542,7 @@ function renderReportMarket(entry, intel, weeklySnap = null) {
         </div>
         <div class="sr-market-item">
           <span class="sr-market-label">Captured</span>
-          <span class="sr-market-value">${intel.capturedAt ? formatTimestamp(intel.capturedAt) : "Pending"}</span>
+          <span class="sr-market-value">${intel.capturedAt ? formatTimestamp(intel.capturedAt) : (COLLECTOR_COPY?.UPDATED_PENDING || "Updated timestamp pending")}</span>
         </div>
       </div>
     </section>`;
@@ -1446,14 +1597,14 @@ function renderSignalAnalysis(entry, intel) {
       label: "Scarcity",
       score: intel.scarcity,
       explanation: (evidence.scarcity_evidence || [])[0]
-        || (intel.scarcity != null ? "Scarcity score captured from stored weekly intelligence." : "PSA population pending."),
+        || (intel.scarcity != null ? "Scarcity score captured from stored weekly intelligence." : "PSA population data will appear when registry integration completes."),
       quality: deriveEvidenceQuality(intel.scarcity, missing),
     },
     {
       label: "Collector Demand",
       score: intel.collector,
       explanation: (evidence.collector_evidence || [])[0]
-        || (intel.collector != null ? "Collector demand score captured from stored weekly intelligence." : "Collector demand signals are pending."),
+        || (intel.collector != null ? "Collector demand score captured from stored weekly intelligence." : "Collector demand signals will appear after the next completed snapshot."),
       quality: deriveEvidenceQuality(intel.collector, missing, "market_snapshots"),
     },
   ];
@@ -1501,7 +1652,7 @@ function renderOutlook(entry, intel, weeklySnap = null) {
 
   return `
     <section class="sr-section sr-outlook">
-      <h3 class="sr-section-title">CardSignal Outlook</h3>
+      <h3 class="sr-section-title">Outlook</h3>
       <div class="sr-outlook-grid">
         <div class="sr-outlook-item">
           <span class="cs-recommendation-badge ${recommendationClass} sr-outlook-rec">${recommendation}</span>
@@ -1512,11 +1663,11 @@ function renderOutlook(entry, intel, weeklySnap = null) {
           <span class="sr-outlook-label">Evidence</span>
         </div>
         <div class="sr-outlook-item">
-          <span class="pi-risk-badge ${riskClass || "sr-pending-pill"}">${risk || "Pending"}</span>
+          <span class="pi-risk-badge ${riskClass || "sr-pending-pill"}">${risk || (COLLECTOR_COPY?.RISK_PENDING || "Risk assessment pending")}</span>
           <span class="sr-outlook-label">Risk</span>
         </div>
         <div class="sr-outlook-item">
-          <span class="sr-outlook-horizon">${weeklySnap?.time_horizon || "Pending"}</span>
+          <span class="sr-outlook-horizon">${weeklySnap?.time_horizon || (COLLECTOR_COPY?.HORIZON_PENDING || "Time horizon will appear after the next completed snapshot.")}</span>
           <span class="sr-outlook-label">Time Horizon</span>
         </div>
       </div>
@@ -1534,7 +1685,9 @@ function renderScoutingReportHeader(entry, intel) {
   const recommendation = intel.recommendation;
   const recommendationClass = csIntelRecommendationClass(recommendation.toLowerCase());
   const status = getReportStatus(entry, piModalWeeklySnap);
-  const updatedLabel = intel.capturedAt ? formatTimestamp(intel.capturedAt) : "Pending";
+  const updatedLabel = intel.capturedAt
+    ? formatTimestamp(intel.capturedAt)
+    : (COLLECTOR_COPY?.UPDATED_PENDING || "Updated timestamp pending");
 
   return `
     <div class="pi-modal-header-main sr-header">
@@ -1572,7 +1725,7 @@ function renderScoutingReportHeader(entry, intel) {
       <div class="sr-header-meta">
         <span>Updated ${updatedLabel}</span>
         <span class="sr-header-meta-sep" aria-hidden="true">·</span>
-        <span>${intel.algorithmVersion}</span>
+        <span class="sr-header-algo">${intel.algorithmVersion}</span>
       </div>
 
       ${!intel.hasStoredRecommendation
@@ -1591,8 +1744,8 @@ function renderScoutingReportHeader(entry, intel) {
 function renderScoutingReport(entry, intel, cards = [], weeklySnap = null) {
   return `
     <div class="sr-report">
-      ${renderPlayerSnapshot(intel)}
-      ${renderWhyThisSignal(entry, intel, weeklySnap)}
+      ${renderPlayerSnapshot(intel, entry)}
+      ${renderSignalDrivers(entry, intel, weeklySnap)}
       ${renderReportCards(cards)}
       ${renderReportMarket(entry, intel, weeklySnap)}
       ${renderSignalAnalysis(entry, intel)}
@@ -1655,6 +1808,7 @@ function closePlayerIntelligenceModal() {
   piModalIntel = null;
   piModalWeeklySnap = null;
   piModalCards = [];
+  piIntelCache.clear();
 }
 
 async function openPlayerIntelligenceModal(entry) {
@@ -1666,13 +1820,24 @@ async function openPlayerIntelligenceModal(entry) {
   selectedPlayer = entry;
 
   try {
-    const player = entry.player_id ? await fetchPlayer(entry.player_id) : entry;
+    let player = entry;
+    const playerId = SRNfl.srNflResolvePlayerId(entry);
+    if (isNflEntry(entry) && playerId) {
+      try {
+        player = await fetchNflPlayer(playerId);
+      } catch (_) {
+        player = { ...entry, player_id: playerId };
+      }
+    } else if (entry.player_id && !isNflEntry(entry)) {
+      player = await fetchPlayer(entry.player_id);
+    }
     selectedPlayer = player;
 
     let weeklySnap = null;
-    if (player.player_id) {
+    const weeklyPlayerKey = player.cs_player_id || normalizeCsPlayerId(player);
+    if (weeklyPlayerKey) {
       try {
-        const weeklyData = await fetchPlayerWeeklySignals(player.player_id);
+        const weeklyData = await fetchPlayerWeeklySignals(weeklyPlayerKey);
         weeklySnap = resolveWeeklySnapshot(player, weeklyData?.items || []);
       } catch (_) {
         weeklySnap = null;
@@ -1692,6 +1857,8 @@ async function openPlayerIntelligenceModal(entry) {
     body.innerHTML = renderScoutingReport(player, intel, cards, weeklySnap);
 
     wirePlayerActions();
+    if (typeof wireCardPanelClicks === "function") wireCardPanelClicks(body);
+    wireCardReportButtons(body);
 
     modal.classList.remove("hidden");
     modal.setAttribute("aria-hidden", "false");
@@ -1701,7 +1868,18 @@ async function openPlayerIntelligenceModal(entry) {
       modal.querySelector(".pi-modal-close")?.focus();
     });
   } catch (error) {
-    body.innerHTML = `<div class="pi-tab-placeholder"><p class="pi-tab-placeholder-copy">${error.message}</p></div>`;
+    const message = typeof formatCollectorError === "function"
+      ? formatCollectorError(error, COLLECTOR_COPY?.REPORT_UNAVAILABLE)
+      : (COLLECTOR_COPY?.REPORT_UNAVAILABLE || "This Scouting Report could not be loaded.");
+    header.innerHTML = `
+      <div class="pi-modal-header-main sr-header">
+        <p class="eyebrow pi-modal-kicker">Scouting Report</p>
+        <h2 class="pi-modal-title" id="pi-modal-title">Report Unavailable</h2>
+        <div class="pi-modal-header-actions">
+          <button type="button" class="pi-modal-close" data-pi-close aria-label="Close scouting report">✕</button>
+        </div>
+      </div>`;
+    body.innerHTML = `<div class="pi-tab-placeholder"><p class="pi-tab-placeholder-copy">${message}</p></div>`;
     modal.classList.remove("hidden");
     modal.setAttribute("aria-hidden", "false");
     lockBodyScrollForModal();
@@ -1769,7 +1947,9 @@ async function loadWatchlist() {
       await Promise.all([loadRules(), loadWatchlist()]);
     }));
     syncRuleForm();
-  } catch (error) { root.innerHTML = `<div class="detail-empty">${error.message}</div>`; }
+  } catch (error) {
+    root.innerHTML = `<div class="detail-empty">${safeUserMessage(error, COLLECTOR_ERROR_CONTEXT.WATCHLIST)}</div>`;
+  }
 }
 
 async function loadAlerts() {
@@ -1795,7 +1975,9 @@ async function loadNotifications() {
     const payload = await apiFetch('/api/notifications');
     notifications = payload.items || [];
     renderNotifications(notifications, payload.summary || {});
-  } catch (error) { root.innerHTML = `<div class="detail-empty">${error.message}</div>`; }
+  } catch (error) {
+    root.innerHTML = `<div class="detail-empty">${safeUserMessage(error, COLLECTOR_ERROR_CONTEXT.NOTIFICATIONS)}</div>`;
+  }
 }
 function destroyChart(instance) {
   if (instance) instance.destroy();
@@ -2019,7 +2201,7 @@ function wirePlayerActions() {
         await apiFetch('/api/watchlist', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ player_id: selectedPlayer.player_id, player_name: selectedPlayer.player_name }) });
         setAuthStatus(`${selectedPlayer.player_name} saved to your watchlist.`);
         await Promise.all([loadWatchlist(), loadRules()]);
-      } catch (error) { setAuthStatus(error.message, true); }
+      } catch (error) { setAuthStatus(safeUserMessage(error, COLLECTOR_ERROR_CONTEXT.WATCHLIST), true); }
     });
   }
 }
@@ -2044,14 +2226,14 @@ function bindAuthActions() {
     const email = document.getElementById('auth-email').value.trim();
     const password = document.getElementById('auth-password').value;
     const { error } = await supabaseClient.auth.signUp({ email, password });
-    setAuthStatus(error ? error.message : 'Check your email to confirm your account.', !!error);
+    setAuthStatus(error ? safeAuthErrorMessage(COLLECTOR_ERROR_CONTEXT.AUTH_SIGN_UP) : 'Check your email to confirm your account.', !!error);
   });
   document.getElementById('sign-in-btn').addEventListener('click', async () => {
     if (!supabaseClient) return setAuthStatus('Supabase auth is not configured.', true);
     const email = document.getElementById('auth-email').value.trim();
     const password = document.getElementById('auth-password').value;
     const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
-    if (error) return setAuthStatus(error.message, true);
+    if (error) return setAuthStatus(safeAuthErrorMessage(COLLECTOR_ERROR_CONTEXT.AUTH_SIGN_IN), true);
     authToken = data.session?.access_token || null;
     currentUser = data.user || null;
     setAuthStatus(`Signed in as ${currentUser?.email || currentUser?.id}`);
@@ -2075,7 +2257,7 @@ function bindAuthActions() {
         daily_digest_enabled: document.getElementById('alert-digest').checked,
       })});
       setAuthStatus('Alert preferences saved.');
-    } catch (error) { setAuthStatus(error.message, true); }
+    } catch (error) { setAuthStatus(safeUserMessage(error, COLLECTOR_ERROR_CONTEXT.WATCHLIST), true); }
   });
   document.getElementById('rule-player-name').addEventListener('change', syncRuleForm);
   document.getElementById('player-rule-form').addEventListener('submit', async (event) => {
@@ -2093,7 +2275,7 @@ function bindAuthActions() {
       })});
       setAuthStatus(`Saved rule for ${playerName}.`);
       await Promise.all([loadRules(), loadWatchlist()]);
-    } catch (error) { setAuthStatus(error.message, true); }
+    } catch (error) { setAuthStatus(safeUserMessage(error, COLLECTOR_ERROR_CONTEXT.WATCHLIST), true); }
   });
   document.getElementById('rule-delete-btn').addEventListener('click', async () => {
     if (!currentUser || !authToken) return setAuthStatus('Sign in first to manage player rules.', true);
@@ -2127,7 +2309,7 @@ function bindAdminActions() {
       })});
       setAdminStatus('Admin settings saved.');
       await loadAdmin();
-    } catch (error) { setAdminStatus(error.message, true); }
+    } catch (error) { setAdminStatus(safeUserMessage(error, COLLECTOR_ERROR_CONTEXT.GENERIC), true); }
   });
   document.getElementById('admin-player-form').addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -2141,7 +2323,7 @@ function bindAdminActions() {
       event.target.reset();
       document.getElementById('admin-player-active').checked = true;
       await loadAdmin();
-    } catch (error) { setAdminStatus(error.message, true); }
+    } catch (error) { setAdminStatus(safeUserMessage(error, COLLECTOR_ERROR_CONTEXT.GENERIC), true); }
   });
 }
 
@@ -2164,7 +2346,7 @@ async function loadAdmin() {
       await loadAdmin();
     }));
     setAdminStatus('Admin tools unlocked.');
-  } catch (error) { setAdminStatus(error.message, true); }
+  } catch (error) { setAdminStatus(safeUserMessage(error, COLLECTOR_ERROR_CONTEXT.GENERIC), true); }
 }
 /* ==========================================================
    Signal Center — UI Render Helpers
@@ -2580,6 +2762,10 @@ function renderSearchResultHeadshot(entry = {}) {
 
 function renderSearchResultBadge(entry) {
   const isTop20 = isLeaderboardPlayer(entry);
+  if (isNflEntry(entry)) {
+    const label = isTop20 ? 'NFL Top' : 'NFL Search';
+    return `<span class="player-search-result-badge player-search-result-badge--nfl">${label}</span>`;
+  }
   const label = isTop20 ? "Top 20" : "MLB Search";
   const modifier = isTop20 ? "top20" : "mlb";
   return `<span class="player-search-result-badge player-search-result-badge--${modifier}">${label}</span>`;
@@ -2646,7 +2832,7 @@ function renderSearchResults(matches, query, { loading = false } = {}) {
         type="button"
         role="option"
         aria-selected="${index === searchHighlightIndex ? "true" : "false"}"
-        data-player-id="${entry.player_id || ""}"
+        data-player-id="${SRNfl.srNflResolvePlayerId(entry) || entry.player_id || ""}"
         data-is-leaderboard="${scored ? "1" : "0"}"
       >
         ${renderSearchResultHeadshot(entry)}
@@ -2827,8 +3013,7 @@ function setupPlayerSearch() {
     if (!button) return;
 
     const playerId = button.dataset.playerId;
-    const entry = currentSearchMatches.find((item) => String(item.player_id || "") === playerId)
-      || currentSearchMatches.find((item) => item.player_name === button.querySelector("strong")?.textContent);
+    const entry = resolveSearchEntryByPlayerId(currentSearchMatches, playerId);
     if (!entry) return;
 
     await handleSearchResultPick(entry);
@@ -2846,15 +3031,38 @@ function setupSportTabs() {
   const nflSoon = document.getElementById("sport-coming-soon-nfl");
   if (!tabs.length) return;
 
-  const applySportFilter = (filter) => {
+  const applySportFilter = async (filter) => {
     const normalized = String(filter || "all").toLowerCase();
+    activeSportFilter = normalized;
     const showMlb = normalized === "all" || normalized === "mlb";
     const showNba = normalized === "nba";
-    const showNfl = normalized === "nfl";
+    const showNflOnly = normalized === "nfl";
+    const showNflSoon = showNflOnly && !nflDataAvailable;
 
-    if (mlbContent) mlbContent.classList.toggle("hidden", !showMlb);
+    if (mlbContent) mlbContent.classList.toggle("hidden", !showMlb && !showNflOnly);
     if (nbaSoon) nbaSoon.classList.toggle("hidden", !showNba);
-    if (nflSoon) nflSoon.classList.toggle("hidden", !showNfl);
+    if (nflSoon) nflSoon.classList.toggle("hidden", !showNflSoon);
+
+    if (showNflOnly && nflDataAvailable) {
+      const nflPayload = await fetchWeeklyLatest('NFL').catch(() => null);
+      if (nflPayload?.todays_leaders?.length) {
+        nflWeeklyIntelligence = nflPayload;
+        latestEntries = nflPayload.todays_leaders.map(weeklyLeaderToEntry);
+        renderSignalCenter(latestEntries);
+        const leaderboardRoot = document.getElementById('leaderboard-table');
+        if (leaderboardRoot) leaderboardRoot.innerHTML = buildLeaderboard(latestEntries);
+      }
+    } else if (showMlb || normalized === 'all') {
+      const source = normalized === 'all' && nflDataAvailable && weeklyIntelligence?.todays_leaders?.length
+        ? mergeAllSportLeaders(weeklyIntelligence?.todays_leaders || [], nflWeeklyIntelligence?.todays_leaders || [])
+        : (weeklyIntelligence?.todays_leaders || []).map(weeklyLeaderToEntry);
+      if (source.length) {
+        latestEntries = source;
+        renderSignalCenter(latestEntries);
+        const leaderboardRoot = document.getElementById('leaderboard-table');
+        if (leaderboardRoot) leaderboardRoot.innerHTML = buildLeaderboard(latestEntries);
+      }
+    }
 
     tabs.forEach((tab) => {
       const tabFilter = tab.dataset.sportFilter;
@@ -2880,6 +3088,20 @@ function setupSportTabs() {
   applySportFilter("all");
 }
 
+function mergeAllSportLeaders(mlbLeaders = [], nflLeaders = []) {
+  const combined = [
+    ...mlbLeaders.map((e) => ({ ...weeklyLeaderToEntry(e), sport: 'MLB', league: 'MLB' })),
+    ...nflLeaders.map((e) => ({ ...weeklyLeaderToEntry(e), sport: 'FOOTBALL', league: 'NFL' })),
+  ];
+  return combined
+    .filter((e) => e.card_signal_score != null || e.hotness?.total_score != null)
+    .sort((a, b) => {
+      const aScore = a.card_signal_score ?? a.hotness?.total_score ?? -1;
+      const bScore = b.card_signal_score ?? b.hotness?.total_score ?? -1;
+      return bScore - aScore;
+    });
+}
+
 async function init() {
   const status = document.getElementById('load-status');
 
@@ -2897,19 +3119,32 @@ async function init() {
     bindAdminActions();
 
     status.textContent = 'Loading leaderboard...';
-    const [payload, weeklyPayload] = await Promise.all([
-      fetch(SOURCE_URL).then(res => {
-        if (!res.ok) throw new Error(`Could not load ${SOURCE_URL}.`);
+    const nflStatus = await fetchNflStatus();
+    nflDataAvailable = !!nflStatus.available;
+
+    const weeklyRequests = [fetchWeeklyLatest('MLB').catch(() => null)];
+    if (nflDataAvailable) weeklyRequests.push(fetchWeeklyLatest('NFL').catch(() => null));
+
+    const [payload, ...weeklyResults] = await Promise.all([
+      fetch(SOURCE_URL).then(async (res) => {
+        if (!res.ok) {
+          const bodyText = await res.text();
+          throw createCollectorApiError(res, bodyText, COLLECTOR_ERROR_CONTEXT.APP_INIT);
+        }
         return res.json();
       }),
-      fetchWeeklyLatest('MLB').catch(() => null),
+      ...weeklyRequests,
     ]);
 
-    weeklyIntelligence = weeklyPayload;
+    weeklyIntelligence = weeklyResults[0] || null;
+    nflWeeklyIntelligence = nflDataAvailable ? (weeklyResults[1] || null) : null;
     let entries = payload.items || [];
 
-    if (weeklyPayload?.todays_leaders?.length) {
-      entries = weeklyPayload.todays_leaders.map(weeklyLeaderToEntry);
+    if (weeklyIntelligence?.todays_leaders?.length) {
+      entries = weeklyIntelligence.todays_leaders.map(weeklyLeaderToEntry);
+    }
+    if (nflDataAvailable && nflWeeklyIntelligence?.todays_leaders?.length && activeSportFilter === 'all') {
+      entries = mergeAllSportLeaders(weeklyIntelligence?.todays_leaders || [], nflWeeklyIntelligence?.todays_leaders || []);
     }
 
     latestEntries = entries;
@@ -2947,9 +3182,9 @@ async function init() {
     if (adminToken) await loadAdmin();
 
   } catch (error) {
-    console.error("CardSignal load error:", error);
-
-    status.textContent = `Load failed: ${error.message}`;
+    logCollectorError(error, COLLECTOR_ERROR_CONTEXT.APP_INIT);
+    const initMessage = safeUserMessage(error, COLLECTOR_ERROR_CONTEXT.APP_INIT);
+    status.textContent = initMessage;
     status.style.color = '#9A6656';
 
     // Graceful fallback: still show Signal of the Week and card section.
@@ -2960,8 +3195,7 @@ async function init() {
 
     const leaderboardRoot = document.getElementById('leaderboard-table');
     if (leaderboardRoot) {
-      leaderboardRoot.innerHTML =
-        `<div class="detail-empty">Load failed: ${error.message}</div>`;
+      leaderboardRoot.innerHTML = `<div class="detail-empty">${initMessage}</div>`;
     }
   }
 }

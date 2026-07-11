@@ -40,6 +40,9 @@ class Settings:
     weekly_timezone: str
     weekly_refresh_day: int
     weekly_refresh_hour: int
+    nfl_season: int
+    nfl_player_limit: int
+    nfl_enabled: bool
 
 
 def get_settings() -> Settings:
@@ -78,4 +81,7 @@ def get_settings() -> Settings:
         weekly_timezone=os.getenv("WEEKLY_TIMEZONE", "America/New_York"),
         weekly_refresh_day=int(os.getenv("WEEKLY_REFRESH_DAY", "1")),
         weekly_refresh_hour=int(os.getenv("WEEKLY_REFRESH_HOUR", "6")),
+        nfl_season=int(os.getenv("NFL_SEASON", "2025")),
+        nfl_player_limit=int(os.getenv("NFL_PLAYER_LIMIT", "100")),
+        nfl_enabled=os.getenv("NFL_ENABLED", "false").lower() in {"1", "true", "yes"},
     )

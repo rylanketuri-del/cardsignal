@@ -28,67 +28,88 @@
 ### Player Intelligence Modal (Sprint 7.x)
 
 - **Sprint 7.1** — Player Intelligence modal complete (backdrop, header, tab shell, open/close UX, mobile drawer)
-- **Release v0.8.0** — Player Intelligence Report complete (placeholder beta):
-  - [x] **Overview** — score, recommendation, conviction, movement, status, breakdown, why-it-matters
-  - [x] **Cards** — player-specific trending, movers, buy-low, most-chased sections
-  - [x] **Market** — placeholder sale volume, listings, liquidity, summary
-  - [x] **Signals** — performance, market, collector demand, momentum explanations
-  - [x] **Forecast** — recommendation, conviction, horizon, risk, summary, bullet reasons
+- **Release v0.8.0** — Player Intelligence Report complete (placeholder beta)
 
 ### Scouting Report 2.0 (Sprint 9.x)
 
 - **Release v0.10.2 — Scouting Report 2.0**
   - [x] Single-page editorial report replacing tabbed modal
   - [x] Player Snapshot (Last 7 Days + Season Snapshot from stored stats)
-  - [x] Why This Signal contributors from real evidence
+  - [x] Signal Drivers from real evidence
   - [x] Cards section with stored card intelligence or pending states
   - [x] Market research panel from stored snapshots
   - [x] Signal Analysis (Performance, Market, Momentum, Scarcity, Collector Demand)
-  - [x] CardSignal Outlook with Evidence (replaces Conviction/Confidence)
+  - [x] Outlook with Evidence (replaces Conviction/Confidence)
   - [x] No fabricated report data — pending states when intelligence unavailable
+
+- **Sprint 9.3 — Scouting Report data integrity** *(complete)*
+  - [x] Centralized metric mapping with pending states
+  - [x] No proxy fallbacks in Scouting Report metrics
+  - [x] Evidence tier replaces conviction in report UX
+
+- **Release v0.12.0 — Sprint 9.4 NFL Performance Adapter** *(complete)*
+  - [x] Provider-neutral `NFLPerformanceProvider` interface
+  - [x] Position-aware scoring (QB, RB, WR, TE) with `NFL_PERFORMANCE_V1`
+  - [x] Recent 3-game window with bye-week and inactive-game handling
+  - [x] NFL Signal Drivers from stored evidence only
+  - [x] NFL API routes and Universal Search integration when registry exists
+  - [x] NFL Scouting Report position-aware stat specs
+
+- **Release v0.13.0 — Card Report Foundation (Sprint 9.5)** *(complete)*
+  - [x] `CardReport` model with card identity, score, market, population, price history, drivers
+  - [x] Read-only API: `GET /api/cards/{cs_card_id}`, `/history`, `/market`, `/drivers`
+  - [x] CardReportRouter with deep linking at `/cards/{cs_card_id}`
+  - [x] Premium Card Report UI reusing design system and Card Registry formatting
+
+- **Release v0.13.1 — Card Intelligence Ranking (Sprint 9.6)** *(complete)*
+  - [x] Cards ranked by stored CardSignal Card Score within player Scouting Reports
+  - [x] Top Pick badge and comparison row (CardSignal Card Score, Recommendation, Evidence)
+  - [x] View Card Report action on every ranked card
+
+- **Release v0.13.2 — Collector Experience Polish (Sprint 9.7)** *(complete in this branch)*
+  - [x] Consistent Scouting Report section order across MLB and NFL
+  - [x] Signal Drivers terminology and collector-friendly pending states
+  - [x] Card row consistency: Card Identity, CardSignal Card Score, Recommendation, Evidence, View Card Report
+  - [x] Card Report identity, Market Snapshot, and Evidence polish
+  - [x] Informative error states — no stack traces or raw JSON
+  - [x] Typography hierarchy, spacing, responsive, and accessibility improvements
 
 ### Real Card Intelligence (Sprint 8.x)
 
-- **Sprint 8.7 — partial in this branch**
+- **Sprint 8.7 — partial**
   - [x] eBay market snapshots in manual pipeline
   - [x] Card intelligence synthesis from stored eBay query templates
-  - [ ] Card registry (not present in this branch)
-  - [ ] PSA population provider/integration (not present; optional stage interface only)
-  - [x] Historical market movement foundation (stored snapshot comparison; no live provider reads on GET)
+  - [x] Historical market movement foundation
 
-- **Sprint 8.8 — Weekly Intelligence Pipeline** *(in progress — verification pass pending)*
-  - Weekly orchestration layer for Tuesday refresh
-  - Top 100 MLB beta universe
-  - Append-only player/card weekly snapshots
-  - Signal of the Week selection with evidence requirements
-  - Today's Leaders from latest completed official run
-  - Explicit stage outcomes with FAILED / PARTIAL / SKIPPED / UNAVAILABLE handling
-  - `GET /api/weekly/latest`, weekly history endpoints
-  - Admin `POST /api/weekly/run` with duplicate guard and force option
-  - Local JSON fallback when Supabase is unavailable
+- **Sprint 8.8 — Weekly Intelligence Pipeline** *(complete)*
+  - [x] Weekly orchestration layer for Tuesday refresh
+  - [x] Top 100 MLB beta universe
+  - [x] Append-only player/card weekly snapshots
+  - [x] Signal of the Week selection with evidence requirements
+  - [x] Today's Leaders from latest completed official run
 
 ## Current Milestone
 
-### Release v0.10.2 — Scouting Report 2.0
+### Release v0.13.2 — Collector Experience Polish (Sprint 9.7)
 
-In progress. Do not merge or deploy until verification pass.
+Complete in this branch. Do not merge or deploy until verification pass.
 
-**Scouting Report** transforms the player modal into a premium single-page research experience:
+Polish pass for MLB and NFL collector experience — clarity, consistency, and trust:
 
-- Scrollable editorial report (no tabs): Header → Player Snapshot → Why This Signal → Cards → Market → Signal Analysis → Outlook
-- Real stored intelligence only — honest pending states when data is unavailable
-- Evidence replaces Conviction/Confidence throughout the report
-- Player performance from `stats_7d` / `stats_30d`; market from stored snapshots
-- Signal Analysis covers Performance, Market, Momentum, Scarcity, and Collector Demand
-- Homepage (Signal Center) unchanged
-
-### Release v0.9.0 — Weekly Intelligence Pipeline
-
-Shipped in prior release. Verification pass complete for weekly pipeline foundation.
-
-**Beta schedule (documented, idempotent guard):** Tuesday 6:00 AM America/New_York via external scheduler calling `POST /api/weekly/run` with admin token.
+- Scouting Report section order: Header → Player Snapshot → Signal Drivers → Cards → Market → Signal Analysis → Outlook
+- Card rows show Card Identity, CardSignal Card Score, Recommendation, Evidence, View Card Report
+- Card Report pending states explain why data is unavailable
+- Standardized copy: CardSignal Score, CardSignal Card Score, Evidence, Signal Drivers, Scouting Report, Card Report, Market Snapshot, Recommendation
+- No scoring changes, no fabricated data, homepage unchanged
 
 ## Up Next
+
+### Sprint 10.0 — NBA Performance Adapter
+
+- Provider-neutral NBA performance interface
+- NBA season phases and position-aware scoring
+- NBA weekly period rules
+- NBA Universal Search and Scouting Report integration
 
 ### v0.9.1 — Production QA and Data Seeding
 
@@ -96,10 +117,11 @@ Shipped in prior release. Verification pass complete for weekly pipeline foundat
 - Seed historical weekly snapshots for chart coverage
 - Supabase migration apply + rollback test
 - PSA population provider implementation (when credentials/source available)
+- Seed verified NFL import data for beta universe activation
 
 ### v1.0.0 — Multi-Sport Expansion
 
-- Enable NBA, NFL, NHL sport tabs
+- Enable NBA, NFL, NHL sport tabs with live data
 - Sport-specific leaderboards and scoring adjustments
 - Cross-sport Signal Center filters
 
@@ -116,8 +138,7 @@ Shipped in prior release. Verification pass complete for weekly pipeline foundat
 - **Tuesday email report** — weekly digest from stored homepage intelligence
 - **Signal Vault** — searchable archive of weekly signals and card intelligence
 - **Weekly push notifications** — Signal of the Week and mover alerts
-- **NFL weekly period support** — Thursday–Monday reporting windows
-- **NBA weekly period support** — league-specific period rules
+- **NFL defensive-player intelligence** — separate scoring model for defensive players
 - **Signal Accuracy tracking** — compare weekly forecasts to outcomes
 - Sold-comps integration beyond active eBay listings
 - Portfolio tracking and cost-basis views

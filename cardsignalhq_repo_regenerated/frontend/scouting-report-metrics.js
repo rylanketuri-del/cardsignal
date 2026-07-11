@@ -2,8 +2,29 @@
  * Centralized Scouting Report metric mapping.
  * Each metric maps to exactly one stored source field — no proxy fallbacks.
  */
-const SR_STAT_PENDING = "Pending";
-const SR_STAT_PENDING_TITLE = "This statistic is not available in the current data snapshot.";
+let CC = null;
+try {
+  CC = require("./collector-copy.js");
+} catch (_) {
+  CC = null;
+}
+
+function srCollectorCopy() {
+  if (CC) return CC;
+  if (typeof window !== "undefined" && typeof window.ccResolveStatUnavailable === "function") {
+    return {
+      ccResolveStatUnavailable: window.ccResolveStatUnavailable,
+      ccResolveMarketMetricUnavailable: window.ccResolveMarketMetricUnavailable,
+    };
+  }
+  return null;
+}
+
+const SR_STAT_UNAVAILABLE = CC?.ccResolveStatUnavailable
+  ? CC.ccResolveStatUnavailable("AVG")
+  : { display: "Unavailable", title: "Statistic unavailable for this period", pending: true };
+const SR_STAT_PENDING = SR_STAT_UNAVAILABLE.display;
+const SR_STAT_PENDING_TITLE = SR_STAT_UNAVAILABLE.title;
 
 function srSafeToNumber(value) {
   const n = typeof value === "number" ? value : Number(value);
@@ -20,12 +41,21 @@ function srPickStoredField(source, fields = []) {
   return null;
 }
 
-function srResolveMetric(spec, source, formatters = {}) {
+function srResolveMetric(spec, source, formatters = {}, metricKey = null) {
   const raw = srPickStoredField(source, spec.source_fields || [spec.source_field].filter(Boolean));
   if (raw == null) {
+    const copy = srCollectorCopy();
+    const unavailable = metricKey && copy?.ccResolveMarketMetricUnavailable
+      ? copy.ccResolveMarketMetricUnavailable(metricKey)
+      : {
+        display: spec.unavailable_label || SR_STAT_PENDING,
+        title: spec.unavailable_title || SR_STAT_PENDING_TITLE,
+        pending: true,
+      };
     return {
       label: spec.display_label,
-      display: spec.unavailable_label,
+      display: unavailable.display,
+      title: unavailable.title || unavailable.helper_text || "",
       raw: null,
       pending: true,
     };
@@ -75,7 +105,8 @@ const SR_MARKET_METRIC_SPECS = {
     display_label: "Active Listings",
     source_fields: ["active_listings", "listings_count"],
     value_type: "integer",
-    unavailable_label: "Pending",
+    unavailable_label: "Unavailable",
+    unavailable_title: "Listing data unavailable",
   },
   auctionCount: {
     display_label: "Auction Count",
@@ -87,7 +118,8 @@ const SR_MARKET_METRIC_SPECS = {
     display_label: "Listings With Bids",
     source_fields: ["listings_with_bids", "bid_count"],
     value_type: "integer",
-    unavailable_label: "Pending",
+    unavailable_label: "Unavailable",
+    unavailable_title: "Bid activity unavailable",
   },
   marketDepth: {
     display_label: "Market Depth",
@@ -120,13 +152,15 @@ const SR_CARD_METRIC_SPECS = {
     display_label: "Momentum Score",
     source_fields: ["momentum_score"],
     value_type: "score",
-    unavailable_label: "Pending",
+    unavailable_label: "Unavailable",
+    unavailable_title: "Momentum score unavailable",
   },
   activeListings: {
     display_label: "Active Listings",
     source_fields: ["active_listings", "listings_count"],
     value_type: "integer",
-    unavailable_label: "Pending",
+    unavailable_label: "Unavailable",
+    unavailable_title: "Listing data unavailable",
   },
 };
 
@@ -154,6 +188,96 @@ const SR_PLAYER_STAT_SPECS = {
   ],
 };
 
+const SR_NFL_STAT_SPECS = {
+  QB: {
+    recent: [
+      { label: "Pass Yards", source_field: "passing_yards", value_type: "integer" },
+      { label: "Pass TD", source_field: "passing_touchdowns", value_type: "integer" },
+      { label: "INT", source_field: "interceptions", value_type: "integer" },
+      { label: "Completion %", source_field: "completion_percentage", value_type: "decimal1" },
+      { label: "Passer Rating", source_field: "passer_rating", value_type: "decimal1" },
+      { label: "Rush Yards", source_field: "rushing_yards", value_type: "integer" },
+    ],
+    season: [
+      { label: "Pass Yards", source_field: "passing_yards", value_type: "integer" },
+      { label: "Pass TD", source_field: "passing_touchdowns", value_type: "integer" },
+      { label: "INT", source_field: "interceptions", value_type: "integer" },
+      { label: "Completion %", source_field: "completion_percentage", value_type: "decimal1" },
+      { label: "Passer Rating", source_field: "passer_rating", value_type: "decimal1" },
+      { label: "Rush Yards", source_field: "rushing_yards", value_type: "integer" },
+    ],
+  },
+  RB: {
+    recent: [
+      { label: "Rush Yards", source_field: "rushing_yards", value_type: "integer" },
+      { label: "Rush TD", source_field: "rushing_touchdowns", value_type: "integer" },
+      { label: "Yards/Carry", source_field: "yards_per_carry", value_type: "decimal1" },
+      { label: "Receptions", source_field: "receptions", value_type: "integer" },
+      { label: "Receiving Yards", source_field: "receiving_yards", value_type: "integer" },
+      { label: "Total TD", source_field: "total_touchdowns", value_type: "integer" },
+    ],
+    season: [
+      { label: "Rush Yards", source_field: "rushing_yards", value_type: "integer" },
+      { label: "Rush TD", source_field: "rushing_touchdowns", value_type: "integer" },
+      { label: "Yards/Carry", source_field: "yards_per_carry", value_type: "decimal1" },
+      { label: "Receptions", source_field: "receptions", value_type: "integer" },
+      { label: "Receiving Yards", source_field: "receiving_yards", value_type: "integer" },
+      { label: "Total TD", source_field: "total_touchdowns", value_type: "integer" },
+    ],
+  },
+  WR: {
+    recent: [
+      { label: "Targets", source_field: "targets", value_type: "integer" },
+      { label: "Receptions", source_field: "receptions", value_type: "integer" },
+      { label: "Receiving Yards", source_field: "receiving_yards", value_type: "integer" },
+      { label: "Receiving TD", source_field: "receiving_touchdowns", value_type: "integer" },
+      { label: "Catch Rate", source_field: "catch_rate", value_type: "decimal1" },
+      { label: "Yards/Reception", source_field: "yards_per_reception", value_type: "decimal1" },
+    ],
+    season: [
+      { label: "Targets", source_field: "targets", value_type: "integer" },
+      { label: "Receptions", source_field: "receptions", value_type: "integer" },
+      { label: "Receiving Yards", source_field: "receiving_yards", value_type: "integer" },
+      { label: "Receiving TD", source_field: "receiving_touchdowns", value_type: "integer" },
+      { label: "Catch Rate", source_field: "catch_rate", value_type: "decimal1" },
+      { label: "Yards/Reception", source_field: "yards_per_reception", value_type: "decimal1" },
+    ],
+  },
+  TE: {
+    recent: [
+      { label: "Targets", source_field: "targets", value_type: "integer" },
+      { label: "Receptions", source_field: "receptions", value_type: "integer" },
+      { label: "Receiving Yards", source_field: "receiving_yards", value_type: "integer" },
+      { label: "Receiving TD", source_field: "receiving_touchdowns", value_type: "integer" },
+      { label: "Catch Rate", source_field: "catch_rate", value_type: "decimal1" },
+      { label: "Yards/Reception", source_field: "yards_per_reception", value_type: "decimal1" },
+    ],
+    season: [
+      { label: "Targets", source_field: "targets", value_type: "integer" },
+      { label: "Receptions", source_field: "receptions", value_type: "integer" },
+      { label: "Receiving Yards", source_field: "receiving_yards", value_type: "integer" },
+      { label: "Receiving TD", source_field: "receiving_touchdowns", value_type: "integer" },
+      { label: "Catch Rate", source_field: "catch_rate", value_type: "decimal1" },
+      { label: "Yards/Reception", source_field: "yards_per_reception", value_type: "decimal1" },
+    ],
+  },
+};
+
+function srResolveNflPositionGroup(position = "") {
+  const pos = String(position || "").toUpperCase();
+  if (pos === "QB") return "QB";
+  if (pos === "RB" || pos === "FB") return "RB";
+  if (pos === "WR") return "WR";
+  if (pos === "TE") return "TE";
+  return null;
+}
+
+function srGetNflStatSpecs(position = "") {
+  const group = srResolveNflPositionGroup(position);
+  if (!group || !SR_NFL_STAT_SPECS[group]) return null;
+  return SR_NFL_STAT_SPECS[group];
+}
+
 function srBuildMarketSource(intel = {}, weeklySnap = null) {
   const safeIntel = intel && typeof intel === "object" ? intel : {};
   const safeWeekly = weeklySnap && typeof weeklySnap === "object" ? weeklySnap : null;
@@ -174,8 +298,13 @@ function srBuildCardSource(card = {}) {
 }
 
 function srFormatPlayerStat(spec, stats = {}, formatters = {}) {
+  const copy = srCollectorCopy();
+  const unavailable = copy?.ccResolveStatUnavailable
+    ? copy.ccResolveStatUnavailable(spec.label)
+    : { display: SR_STAT_PENDING, title: SR_STAT_PENDING_TITLE, pending: true };
+
   if (!stats || typeof stats !== "object") {
-    return { label: spec.label, display: SR_STAT_PENDING, pending: true, title: SR_STAT_PENDING_TITLE };
+    return { label: spec.label, display: unavailable.display, pending: true, title: unavailable.title };
   }
 
   let raw = null;
@@ -190,7 +319,7 @@ function srFormatPlayerStat(spec, stats = {}, formatters = {}) {
   }
 
   if (raw == null) {
-    return { label: spec.label, display: SR_STAT_PENDING, pending: true, title: SR_STAT_PENDING_TITLE };
+    return { label: spec.label, display: unavailable.display, pending: true, title: unavailable.title };
   }
 
   if (spec.value_type === "integer") {
@@ -203,18 +332,18 @@ function srFormatPlayerStat(spec, stats = {}, formatters = {}) {
     const n = srSafeToNumber(raw);
     return {
       label: spec.label,
-      display: n == null ? SR_STAT_PENDING : n.toFixed(3),
+      display: n == null ? unavailable.display : n.toFixed(3),
       pending: n == null,
-      title: n == null ? SR_STAT_PENDING_TITLE : "",
+      title: n == null ? unavailable.title : "",
     };
   }
   if (spec.value_type === "decimal1") {
     const n = srSafeToNumber(raw);
     return {
       label: spec.label,
-      display: n == null ? SR_STAT_PENDING : n.toFixed(1),
+      display: n == null ? unavailable.display : n.toFixed(1),
       pending: n == null,
-      title: n == null ? SR_STAT_PENDING_TITLE : "",
+      title: n == null ? unavailable.title : "",
     };
   }
 
@@ -225,7 +354,7 @@ function srBuildMarketMetrics(intel = {}, weeklySnap = null, formatters = {}) {
   const source = srBuildMarketSource(intel, weeklySnap);
   const metrics = {};
   Object.entries(SR_MARKET_METRIC_SPECS).forEach(([key, spec]) => {
-    metrics[key] = srResolveMetric(spec, source, formatters);
+    metrics[key] = srResolveMetric(spec, source, formatters, key);
   });
   return metrics;
 }
@@ -234,7 +363,7 @@ function srBuildCardMetrics(card = {}, formatters = {}) {
   const source = srBuildCardSource(card);
   const metrics = {};
   Object.entries(SR_CARD_METRIC_SPECS).forEach(([key, spec]) => {
-    metrics[key] = srResolveMetric(spec, source, formatters);
+    metrics[key] = srResolveMetric(spec, source, formatters, key);
   });
   return metrics;
 }
@@ -259,6 +388,9 @@ const SRMetrics = {
   SR_MARKET_METRIC_SPECS,
   SR_CARD_METRIC_SPECS,
   SR_PLAYER_STAT_SPECS,
+  SR_NFL_STAT_SPECS,
+  srResolveNflPositionGroup,
+  srGetNflStatSpecs,
   srSafeToNumber,
   srPickStoredField,
   srResolveMetric,
