@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from cardchase_ai.clients.mlb import MLBClient
+from cardchase_ai.adapters import get_league_adapter, list_registered_leagues, list_searchable_leagues, search_players as adapter_search_players
 from cardchase_ai.config import get_settings
 from cardchase_ai.pipeline import run_pipeline
 from cardchase_ai.storage import SupabaseError, SupabaseStorage
@@ -248,16 +249,41 @@ def get_latest_run() -> JSONResponse:
 
 
 @app.get("/api/players/search")
-def search_players(q: str = "") -> JSONResponse:
+def search_players(q: str = "", league: str = "MLB") -> JSONResponse:
     query = (q or "").strip()
     if len(query) < 2:
         return JSONResponse([])
 
     try:
-        results = MLBClient().search_players(query, limit=10)
+        results = adapter_search_players(query, league=league.upper(), limit=10)
         return JSONResponse(results)
+    except KeyError:
+        return JSONResponse([])
     except Exception:
         return JSONResponse([])
+
+
+@app.get("/api/leagues")
+def get_registered_leagues() -> JSONResponse:
+    """Return registered leagues and search support for universal search."""
+    leagues = []
+    for code in list_registered_leagues():
+        adapter = get_league_adapter(code)
+        leagues.append(
+            {
+                "league": code,
+                "sport": adapter.metadata.sport,
+                "search_support": adapter.metadata.search_support,
+                "card_support": adapter.metadata.card_support,
+                "recent_window": {
+                    "kind": adapter.metadata.recent_window.kind,
+                    "value": adapter.metadata.recent_window.value,
+                },
+                "supported_positions": list(adapter.metadata.supported_positions),
+                "player_signal_algorithm_version": adapter.metadata.player_signal_algorithm_version,
+            }
+        )
+    return JSONResponse({"leagues": leagues, "searchable": list_searchable_leagues()})
 
 
 @app.get("/api/players/{player_id}")

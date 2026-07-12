@@ -8,6 +8,20 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 WEEKLY_INTELLIGENCE_V1 = "WEEKLY_INTELLIGENCE_V1"
+MLB_PLAYER_SIGNAL_V1 = "MLB_PLAYER_SIGNAL_V1"
+NFL_PLAYER_SIGNAL_V1 = "NFL_PLAYER_SIGNAL_V1"
+NBA_PLAYER_SIGNAL_V1 = "NBA_PLAYER_SIGNAL_V1"
+
+LEAGUE_PLAYER_SIGNAL_VERSIONS: dict[str, str] = {
+    "MLB": MLB_PLAYER_SIGNAL_V1,
+    "NFL": NFL_PLAYER_SIGNAL_V1,
+    "NBA": NBA_PLAYER_SIGNAL_V1,
+}
+
+
+def player_signal_algorithm_version(league: str) -> str:
+    """Resolve the player-signal algorithm version for a league."""
+    return LEAGUE_PLAYER_SIGNAL_VERSIONS.get(league.upper(), WEEKLY_INTELLIGENCE_V1)
 
 WeeklyRunStatus = Literal["PENDING", "RUNNING", "COMPLETED", "PARTIAL", "FAILED", "SKIPPED"]
 WeeklyTriggeredBy = Literal["scheduler", "manual", "admin", "test"]

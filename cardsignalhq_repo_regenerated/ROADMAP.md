@@ -2,6 +2,19 @@
 
 ## Shipped
 
+### Sport Adapter Framework (Sprint 11.0)
+
+- **Release v0.15.0 — Sport Adapter Framework**
+  - [x] Three-layer adapter model: SportAdapter → LeagueAdapter → PerformanceAdapter
+  - [x] Shared contracts for season, signal drivers, player snapshots, card signals, and reports
+  - [x] Centralized `register_league()` registry — MLB and NFL registered; no scattered switch statements
+  - [x] Reusable league metadata (recent window, positions, metrics, season phases, card/search support)
+  - [x] Season rules moved into LeagueAdapter (MLB: 7 days; NFL: 3 games; NFL Thu–Mon reporting period)
+  - [x] MLB performance scoring relocated behind PerformanceAdapter without formula changes
+  - [x] League-specific signal driver adapters (MLB narratives; NFL stubs for future)
+  - [x] Universal search registers supported leagues via `GET /api/leagues` and `?league=` on search
+  - [x] Algorithm versioning: `MLB_PLAYER_SIGNAL_V1`, `NFL_PLAYER_SIGNAL_V1`, `NBA_PLAYER_SIGNAL_V1` constants
+
 ### Foundation (Sprints 1–3)
 
 - MLB pipeline, hotness scoring, FastAPI layer, Supabase persistence
@@ -69,7 +82,21 @@
 
 ## Current Milestone
 
-### Release v0.10.2 — Scouting Report 2.0
+### Release v0.15.0 — Sport Adapter Framework
+
+Sprint 11.0 complete. Verification pass required before merge.
+
+Generalizes CardSignal architecture so every supported sport plugs into one shared framework. MLB production behavior preserved; NFL metadata and period rules registered with pipeline stub for Sprint 11.1.
+
+## Up Next
+
+### Sprint 11.1 — NBA Performance Adapter
+
+- NBA league adapter with performance formulas
+- NBA recent window (5 games) and position rules (Guard, Wing, Forward, Center)
+- Enable NBA sport tab when adapter is production-ready
+
+### Release v0.10.2 — Scouting Report 2.0 (prior milestone)
 
 In progress. Do not merge or deploy until verification pass.
 

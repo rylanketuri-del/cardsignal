@@ -189,9 +189,6 @@ def card_intelligence_from_snapshot(
     }
 
 
-CARD_QUERY_LABELS = {
-    "broad": "Base Cards",
-    "bowman_chrome": "Bowman Chrome",
-    "auto": "Autographs",
-    "psa10": "PSA 10",
-}
+from cardchase_ai.adapters.league_constants import MLB_CARD_QUERY_LABELS
+
+CARD_QUERY_LABELS = MLB_CARD_QUERY_LABELS

@@ -82,7 +82,7 @@ def _season_for_league(league: str, period_start: datetime, explicit_season: int
     return period_start.year
 
 
-def build_reporting_period(
+def _build_reporting_period_direct(
     league: str = "MLB",
     sport: str | None = None,
     *,
@@ -90,7 +90,7 @@ def build_reporting_period(
     timezone_name: str = DEFAULT_TIMEZONE,
     season: int | None = None,
 ) -> ReportingPeriod:
-    """Build the reporting period containing anchor (default: now)."""
+    """Build reporting period without adapter dispatch (used by season adapters)."""
     tz = _league_tz(timezone_name)
     anchor_dt = (anchor or datetime.now(tz)).astimezone(tz)
     period_start, period_end = _period_bounds_for_date(league, anchor_dt, timezone_name)
@@ -104,6 +104,34 @@ def build_reporting_period(
         period_start=period_start,
         period_end=period_end,
     )
+
+
+def build_reporting_period(
+    league: str = "MLB",
+    sport: str | None = None,
+    *,
+    anchor: datetime | None = None,
+    timezone_name: str = DEFAULT_TIMEZONE,
+    season: int | None = None,
+) -> ReportingPeriod:
+    """Build the reporting period containing anchor (default: now)."""
+    try:
+        from cardchase_ai.adapters import get_league_adapter
+
+        adapter = get_league_adapter(league)
+        return adapter.season.build_reporting_period(
+            anchor=anchor,
+            timezone_name=timezone_name,
+            season=season,
+        )
+    except KeyError:
+        return _build_reporting_period_direct(
+            league=league,
+            sport=sport,
+            anchor=anchor,
+            timezone_name=timezone_name,
+            season=season,
+        )
 
 
 def current_reporting_period(
