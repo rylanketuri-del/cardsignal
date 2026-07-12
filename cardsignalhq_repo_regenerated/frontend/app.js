@@ -21,6 +21,8 @@ let piModalKeydownHandler = null;
 let weeklyIntelligence = null;
 let nflWeeklyIntelligence = null;
 let nflDataAvailable = false;
+let nbaWeeklyIntelligence = null;
+let nbaDataAvailable = false;
 let activeSportFilter = 'all';
 const SCOUTING_REPORT_ALGO = "WEEKLY_INTELLIGENCE_V1";
 
@@ -89,6 +91,9 @@ async function fetchPlayerSearch(query, sport = null) {
   if ((filter === 'all' || filter === 'nfl') && nflDataAvailable) {
     endpoints.push(fetch(`${API_BASE_URL}/api/nfl/players/search?q=${encodeURIComponent(query)}`).then((r) => (r.ok ? r.json() : [])));
   }
+  if ((filter === 'all' || filter === 'nba') && nbaDataAvailable) {
+    endpoints.push(fetch(`${API_BASE_URL}/api/nba/players/search?q=${encodeURIComponent(query)}`).then((r) => (r.ok ? r.json() : [])));
+  }
   if (!endpoints.length) return [];
   const batches = await Promise.all(endpoints);
   return batches.flat().filter(Boolean);
@@ -106,10 +111,36 @@ async function fetchNflPerformance(playerId) {
   return response.json();
 }
 
+async function fetchNbaPlayer(playerId) {
+  const response = await fetch(`${API_BASE_URL}/api/nba/players/${encodeURIComponent(playerId)}`);
+  if (!response.ok) throw new Error("NBA player not found.");
+  return response.json();
+}
+
+async function fetchNbaPerformance(playerId) {
+  const response = await fetch(`${API_BASE_URL}/api/nba/players/${encodeURIComponent(playerId)}/performance`);
+  if (!response.ok) return null;
+  return response.json();
+}
+
 function resolveSearchEntryByPlayerId(matches, playerId) {
   const needle = String(playerId || "");
   if (!needle) return null;
-  return matches.find((item) => String(SRNfl.srNflResolvePlayerId(item) || item.player_id || "") === needle) || null;
+  return matches.find((item) => {
+    const nflId = SRNfl.srNflResolvePlayerId(item);
+    const nbaId = SRNba.srNbaResolvePlayerId(item);
+    return String(nflId || nbaId || item.player_id || "") === needle;
+  }) || null;
+}
+
+async function fetchNbaStatus() {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/nba/status`);
+    if (!response.ok) return { available: false };
+    return response.json();
+  } catch (_) {
+    return { available: false };
+  }
 }
 
 async function fetchNflStatus() {
@@ -988,10 +1019,17 @@ function normalizeCsPlayerId(entry = {}) {
   const pid = entry.cs_player_id || entry.player_id || entry.source_player_id;
   if (!pid) return null;
   const raw = String(pid);
-  if (raw.startsWith('CS-NFL-P-') || raw.includes(':')) return raw;
+  if (raw.startsWith('CS-NFL-P-') || raw.startsWith('CS-NBA-P-') || raw.includes(':')) return raw;
   const league = String(entry.league || entry.sport || '').toUpperCase();
   if (league === 'NFL' || league === 'FOOTBALL') return `CS-NFL-P-${raw}`;
+  if (league === 'NBA' || league === 'BASKETBALL') return `CS-NBA-P-${raw}`;
   return `mlb:${raw}`;
+}
+
+function isNbaEntry(entry = {}) {
+  const league = String(entry.league || entry.sport || '').toUpperCase();
+  const csId = String(entry.cs_player_id || '');
+  return league === 'NBA' || league === 'BASKETBALL' || csId.startsWith('CS-NBA-P-');
 }
 
 function isNflEntry(entry = {}) {
@@ -1107,7 +1145,9 @@ function buildStoredPlayerIntel(entry = {}, weeklySnap = null) {
   const missing = weeklySnap?.missing_inputs || [];
   const snapEvidence = weeklySnap?.evidence || {};
   const isNfl = isNflEntry(entry) || weeklySnap?.league === 'NFL' || weeklySnap?.sport === 'FOOTBALL';
+  const isNba = isNbaEntry(entry) || weeklySnap?.league === 'NBA' || weeklySnap?.sport === 'BASKETBALL';
   const nflReport = isNfl ? SRNfl.srNflMapScoutingReport(entry, weeklySnap) : null;
+  const nbaReport = isNba ? SRNba.srNbaMapScoutingReport(entry, weeklySnap) : null;
 
   return {
     score: csIntelSafeToNumber(weeklySnap?.card_signal_score ?? hotness.total_score),
@@ -1124,12 +1164,15 @@ function buildStoredPlayerIntel(entry = {}, weeklySnap = null) {
     missingInputs: missing,
     algorithmVersion: weeklySnap?.algorithm_version || weeklyIntelligence?.run?.algorithm_version || SCOUTING_REPORT_ALGO,
     capturedAt: weeklySnap?.captured_at || entry.generated_at || weeklyIntelligence?.run?.completed_at,
-    stats7d: nflReport?.recentStats || entry.stats_7d || snapEvidence.nfl_recent_stats || null,
-    stats30d: nflReport?.seasonStats || entry.stats_30d || snapEvidence.nfl_season_stats || null,
+    stats7d: nbaReport?.recentStats || nflReport?.recentStats || entry.stats_7d || snapEvidence.nba_recent_stats || snapEvidence.nfl_recent_stats || null,
+    stats30d: nbaReport?.seasonStats || nflReport?.seasonStats || entry.stats_30d || snapEvidence.nba_season_stats || snapEvidence.nfl_season_stats || null,
     marketSnapshots: entry.market_snapshots || {},
     isNfl,
+    isNba,
     nfl: nflReport,
+    nba: nbaReport,
     nflSeasonPhase: nflReport?.nflSeasonPhase || null,
+    nbaSeasonPhase: nbaReport?.nbaSeasonPhase || null,
   };
 }
 
@@ -1162,7 +1205,9 @@ function renderPlayerSnapshot(intel, entry = {}) {
   const formatters = srMetricFormatters();
   const position = entry.position || piModalEntry?.position || '';
   const nflSpecs = intel.isNfl ? SRMetrics.srGetNflStatSpecs(position) : null;
+  const nbaSpecs = intel.isNba ? SRMetrics.srGetNbaStatSpecs() : null;
   const nfl = intel.nfl;
+  const nba = intel.nba;
 
   let recentTitle = 'Last 7 Days';
   let seasonTitle = 'Season Snapshot';
@@ -1173,12 +1218,17 @@ function renderPlayerSnapshot(intel, entry = {}) {
     seasonTitle = nfl.seasonWindowLabel;
     recentMeta = `<p class="sr-section-lead">${nfl.performancePeriodNote}: ${nfl.recentDateRange}${nfl.gamesInWindow != null ? ` · ${nfl.gamesInWindow} games` : ""}</p>`;
     seasonMeta = `<p class="sr-section-lead">${nfl.performancePeriodNote}: ${nfl.seasonDateRange}</p>`;
+  } else if (intel.isNba && nba) {
+    recentTitle = nba.recentWindowLabel;
+    seasonTitle = nba.seasonWindowLabel;
+    recentMeta = `<p class="sr-section-lead">${nba.performancePeriodNote}: ${nba.recentDateRange}${nba.gamesInWindow != null ? ` · ${nba.gamesInWindow} games` : ""}</p>`;
+    seasonMeta = `<p class="sr-section-lead">${nba.performancePeriodNote}: ${nba.seasonDateRange}</p>`;
   }
 
   const last7Body = has7d
     ? `
       <div class="sr-snapshot-grid">
-        ${(nflSpecs ? nflSpecs.recent : SRMetrics.SR_PLAYER_STAT_SPECS.last7d).map((spec) => {
+        ${(nbaSpecs ? nbaSpecs.recent : nflSpecs ? nflSpecs.recent : SRMetrics.SR_PLAYER_STAT_SPECS.last7d).map((spec) => {
     const stat = SRMetrics.srFormatPlayerStat(spec, stats7d, formatters);
     return renderSnapshotStat(stat.label, stat.display, { title: stat.title });
   }).join("")}
@@ -1188,14 +1238,14 @@ function renderPlayerSnapshot(intel, entry = {}) {
   const seasonBody = hasSeason
     ? `
       <div class="sr-snapshot-grid">
-        ${(nflSpecs ? nflSpecs.season : SRMetrics.SR_PLAYER_STAT_SPECS.season).map((spec) => {
+        ${(nbaSpecs ? nbaSpecs.season : nflSpecs ? nflSpecs.season : SRMetrics.SR_PLAYER_STAT_SPECS.season).map((spec) => {
     const stat = SRMetrics.srFormatPlayerStat(spec, stats30d, formatters);
     return renderSnapshotStat(stat.label, stat.display, { title: stat.title });
   }).join("")}
       </div>`
     : `<p class="sr-pending">Performance data pending.</p>`;
 
-  const showRecent = !intel.isNfl || (nfl && nfl.showRecentPanel);
+  const showRecent = (!intel.isNfl && !intel.isNba) || (nfl && nfl.showRecentPanel) || (nba && nba.showRecentPanel);
 
   return `
     <section class="sr-section sr-snapshot">
@@ -1245,9 +1295,38 @@ function renderNflSignalDrivers(intel) {
     </section>`;
 }
 
+function renderNbaSignalDrivers(intel) {
+  if (!intel?.isNba || !intel?.nba) return "";
+  const drivers = intel.nba.signalDrivers || [];
+  const body = drivers.length
+    ? `
+      <div class="sr-nba-drivers">
+        ${drivers.map((driver) => `
+          <article class="sr-nba-driver">
+            <div class="sr-nba-driver-head">
+              <strong>${driver.title}</strong>
+              <span class="sr-nba-driver-source">${driver.sourceType}</span>
+            </div>
+            <p class="sr-nba-driver-summary">${driver.summary}</p>
+            <div class="sr-nba-driver-meta">
+              <span>Impact: ${driver.impact}</span>
+              <span>Evidence: ${driver.evidenceQuality}</span>
+              <span>Occurred: ${driver.occurredAt}</span>
+            </div>
+          </article>`).join("")}
+      </div>`
+    : `<p class="sr-pending">${SRNba.SR_NBA_NO_DRIVERS}</p>`;
+
+  return `
+    <section class="sr-section sr-nba-drivers-section">
+      <h3 class="sr-section-title">NBA Signal Drivers</h3>
+      ${body}
+    </section>`;
+}
+
 function buildSignalContributors(entry, intel, weeklySnap = null) {
   const contributors = [];
-  if (intel.isNfl) {
+  if (intel.isNfl || intel.isNba) {
     return contributors;
   }
   const stats7d = intel.stats7d;
@@ -1336,6 +1415,7 @@ function buildSignalContributors(entry, intel, weeklySnap = null) {
 function renderWhyThisSignal(entry, intel, weeklySnap = null) {
   const contributors = buildSignalContributors(entry, intel, weeklySnap);
   const nflDriversSection = intel.isNfl ? renderNflSignalDrivers(intel) : "";
+  const nbaDriversSection = intel.isNba ? renderNbaSignalDrivers(intel) : "";
   const body = contributors.length
     ? `
       <div class="sr-contributors">
@@ -1357,6 +1437,7 @@ function renderWhyThisSignal(entry, intel, weeklySnap = null) {
       <p class="sr-section-lead">How recent performance and market activity shaped this week's CardSignal Score.</p>
       ${body}
       ${nflDriversSection}
+      ${nbaDriversSection}
     </section>`;
 }
 
@@ -1774,14 +1855,21 @@ async function openPlayerIntelligenceModal(entry) {
 
   try {
     let player = entry;
-    const playerId = SRNfl.srNflResolvePlayerId(entry);
-    if (isNflEntry(entry) && playerId) {
+    const nflPlayerId = SRNfl.srNflResolvePlayerId(entry);
+    const nbaPlayerId = SRNba.srNbaResolvePlayerId(entry);
+    if (isNflEntry(entry) && nflPlayerId) {
       try {
-        player = await fetchNflPlayer(playerId);
+        player = await fetchNflPlayer(nflPlayerId);
       } catch (_) {
-        player = { ...entry, player_id: playerId };
+        player = { ...entry, player_id: nflPlayerId };
       }
-    } else if (entry.player_id && !isNflEntry(entry)) {
+    } else if (isNbaEntry(entry) && nbaPlayerId) {
+      try {
+        player = await fetchNbaPlayer(nbaPlayerId);
+      } catch (_) {
+        player = { ...entry, player_id: nbaPlayerId };
+      }
+    } else if (entry.player_id && !isNflEntry(entry) && !isNbaEntry(entry)) {
       player = await fetchPlayer(entry.player_id);
     }
     selectedPlayer = player;
@@ -2702,6 +2790,10 @@ function renderSearchResultBadge(entry) {
     const label = isTop20 ? 'NFL Top' : 'NFL Search';
     return `<span class="player-search-result-badge player-search-result-badge--nfl">${label}</span>`;
   }
+  if (isNbaEntry(entry)) {
+    const label = isTop20 ? 'NBA Top' : 'NBA Search';
+    return `<span class="player-search-result-badge player-search-result-badge--nba">${label}</span>`;
+  }
   const label = isTop20 ? "Top 20" : "MLB Search";
   const modifier = isTop20 ? "top20" : "mlb";
   return `<span class="player-search-result-badge player-search-result-badge--${modifier}">${label}</span>`;
@@ -2768,7 +2860,7 @@ function renderSearchResults(matches, query, { loading = false } = {}) {
         type="button"
         role="option"
         aria-selected="${index === searchHighlightIndex ? "true" : "false"}"
-        data-player-id="${SRNfl.srNflResolvePlayerId(entry) || entry.player_id || ""}"
+        data-player-id="${SRNba.srNbaResolvePlayerId(entry) || SRNfl.srNflResolvePlayerId(entry) || entry.player_id || ""}"
         data-is-leaderboard="${scored ? "1" : "0"}"
       >
         ${renderSearchResultHeadshot(entry)}
@@ -2972,14 +3064,24 @@ function setupSportTabs() {
     activeSportFilter = normalized;
     const showMlb = normalized === "all" || normalized === "mlb";
     const showNba = normalized === "nba";
+    const showNbaSoon = showNba && !nbaDataAvailable;
     const showNflOnly = normalized === "nfl";
     const showNflSoon = showNflOnly && !nflDataAvailable;
 
-    if (mlbContent) mlbContent.classList.toggle("hidden", !showMlb && !showNflOnly);
-    if (nbaSoon) nbaSoon.classList.toggle("hidden", !showNba);
+    if (mlbContent) mlbContent.classList.toggle("hidden", !showMlb && !showNflOnly && !(showNba && nbaDataAvailable));
+    if (nbaSoon) nbaSoon.classList.toggle("hidden", !showNbaSoon);
     if (nflSoon) nflSoon.classList.toggle("hidden", !showNflSoon);
 
-    if (showNflOnly && nflDataAvailable) {
+    if (showNba && nbaDataAvailable) {
+      const nbaPayload = await fetchWeeklyLatest('NBA').catch(() => null);
+      if (nbaPayload?.todays_leaders?.length) {
+        nbaWeeklyIntelligence = nbaPayload;
+        latestEntries = nbaPayload.todays_leaders.map(weeklyLeaderToEntry);
+        renderSignalCenter(latestEntries);
+        const leaderboardRoot = document.getElementById('leaderboard-table');
+        if (leaderboardRoot) leaderboardRoot.innerHTML = buildLeaderboard(latestEntries);
+      }
+    } else if (showNflOnly && nflDataAvailable) {
       const nflPayload = await fetchWeeklyLatest('NFL').catch(() => null);
       if (nflPayload?.todays_leaders?.length) {
         nflWeeklyIntelligence = nflPayload;
@@ -2989,8 +3091,12 @@ function setupSportTabs() {
         if (leaderboardRoot) leaderboardRoot.innerHTML = buildLeaderboard(latestEntries);
       }
     } else if (showMlb || normalized === 'all') {
-      const source = normalized === 'all' && nflDataAvailable && weeklyIntelligence?.todays_leaders?.length
-        ? mergeAllSportLeaders(weeklyIntelligence?.todays_leaders || [], nflWeeklyIntelligence?.todays_leaders || [])
+      const source = normalized === 'all'
+        ? mergeAllSportLeaders(
+          weeklyIntelligence?.todays_leaders || [],
+          nflDataAvailable ? (nflWeeklyIntelligence?.todays_leaders || []) : [],
+          nbaDataAvailable ? (nbaWeeklyIntelligence?.todays_leaders || []) : [],
+        )
         : (weeklyIntelligence?.todays_leaders || []).map(weeklyLeaderToEntry);
       if (source.length) {
         latestEntries = source;
@@ -3024,10 +3130,11 @@ function setupSportTabs() {
   applySportFilter("all");
 }
 
-function mergeAllSportLeaders(mlbLeaders = [], nflLeaders = []) {
+function mergeAllSportLeaders(mlbLeaders = [], nflLeaders = [], nbaLeaders = []) {
   const combined = [
     ...mlbLeaders.map((e) => ({ ...weeklyLeaderToEntry(e), sport: 'MLB', league: 'MLB' })),
     ...nflLeaders.map((e) => ({ ...weeklyLeaderToEntry(e), sport: 'FOOTBALL', league: 'NFL' })),
+    ...nbaLeaders.map((e) => ({ ...weeklyLeaderToEntry(e), sport: 'BASKETBALL', league: 'NBA' })),
   ];
   return combined
     .filter((e) => e.card_signal_score != null || e.hotness?.total_score != null)
@@ -3057,9 +3164,12 @@ async function init() {
     status.textContent = 'Loading leaderboard...';
     const nflStatus = await fetchNflStatus();
     nflDataAvailable = !!nflStatus.available;
+    const nbaStatus = await fetchNbaStatus();
+    nbaDataAvailable = !!nbaStatus.available;
 
     const weeklyRequests = [fetchWeeklyLatest('MLB').catch(() => null)];
     if (nflDataAvailable) weeklyRequests.push(fetchWeeklyLatest('NFL').catch(() => null));
+    if (nbaDataAvailable) weeklyRequests.push(fetchWeeklyLatest('NBA').catch(() => null));
 
     const [payload, ...weeklyResults] = await Promise.all([
       fetch(SOURCE_URL).then(res => {
@@ -3070,14 +3180,21 @@ async function init() {
     ]);
 
     weeklyIntelligence = weeklyResults[0] || null;
-    nflWeeklyIntelligence = nflDataAvailable ? (weeklyResults[1] || null) : null;
+    let weeklyIdx = 1;
+    nflWeeklyIntelligence = nflDataAvailable ? (weeklyResults[weeklyIdx++] || null) : null;
+    nbaWeeklyIntelligence = nbaDataAvailable ? (weeklyResults[weeklyIdx++] || null) : null;
     let entries = payload.items || [];
 
     if (weeklyIntelligence?.todays_leaders?.length) {
       entries = weeklyIntelligence.todays_leaders.map(weeklyLeaderToEntry);
     }
-    if (nflDataAvailable && nflWeeklyIntelligence?.todays_leaders?.length && activeSportFilter === 'all') {
-      entries = mergeAllSportLeaders(weeklyIntelligence?.todays_leaders || [], nflWeeklyIntelligence?.todays_leaders || []);
+    if (activeSportFilter === 'all') {
+      const merged = mergeAllSportLeaders(
+        weeklyIntelligence?.todays_leaders || [],
+        nflDataAvailable ? (nflWeeklyIntelligence?.todays_leaders || []) : [],
+        nbaDataAvailable ? (nbaWeeklyIntelligence?.todays_leaders || []) : [],
+      );
+      if (merged.length) entries = merged;
     }
 
     latestEntries = entries;

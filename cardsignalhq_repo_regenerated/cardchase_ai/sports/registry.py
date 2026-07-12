@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from cardchase_ai.clients.nfl_import import NFLImportProvider, get_nfl_provider
+from cardchase_ai.clients.nba_import import get_nba_provider
+from cardchase_ai.clients.nfl_import import get_nfl_provider
 from cardchase_ai.clients.mlb import MLBClient
 from cardchase_ai.config import Settings, get_settings
 
@@ -16,6 +17,8 @@ def get_performance_client(league: str, settings: Settings | None = None):
         return MLBClient()
     if league_upper == "NFL":
         return get_nfl_provider(settings)
+    if league_upper == "NBA":
+        return get_nba_provider(settings)
     raise ValueError(f"Unsupported league: {league}")
 
 
@@ -27,11 +30,17 @@ def is_league_available(league: str, settings: Settings | None = None) -> bool:
     if league_upper == "NFL":
         provider = get_nfl_provider(settings)
         return provider.is_available()
+    if league_upper == "NBA":
+        provider = get_nba_provider(settings)
+        return provider.is_available()
     return False
 
 
 def season_for_league(league: str, settings: Settings | None = None) -> int:
     settings = settings or get_settings()
-    if league.upper() == "NFL":
+    league_upper = league.upper()
+    if league_upper == "NFL":
         return settings.nfl_season
+    if league_upper == "NBA":
+        return settings.nba_season
     return settings.mlb_season

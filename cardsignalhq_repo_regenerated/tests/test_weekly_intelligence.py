@@ -224,6 +224,9 @@ class WeeklyRunIntegrationTests(unittest.TestCase):
                 nfl_season=2025,
                 nfl_player_limit=100,
                 nfl_enabled=False,
+                nba_season=2025,
+                nba_player_limit=100,
+                nba_enabled=False,
             )
             storage = WeeklyStorage(None, WeeklyJsonStorage(Path(tmp)))
 
@@ -328,6 +331,9 @@ class PlayerLimitTests(unittest.TestCase):
                 nfl_season=2025,
                 nfl_player_limit=100,
                 nfl_enabled=False,
+                nba_season=2025,
+                nba_player_limit=100,
+                nba_enabled=False,
             )
             storage = WeeklyStorage(None, WeeklyJsonStorage(Path(tmp)))
             processed_ids: list[int] = []
@@ -408,6 +414,9 @@ class CatastrophicFailureTests(unittest.TestCase):
             nfl_season=2025,
             nfl_player_limit=100,
             nfl_enabled=False,
+            nba_season=2025,
+            nba_player_limit=100,
+            nba_enabled=False,
         )
 
     def test_catastrophic_exception_marks_failed_not_running(self):
@@ -469,6 +478,9 @@ class PartialStatusTests(unittest.TestCase):
                 nfl_season=2025,
                 nfl_player_limit=100,
                 nfl_enabled=False,
+                nba_season=2025,
+                nba_player_limit=100,
+                nba_enabled=False,
             )
             storage = WeeklyStorage(None, WeeklyJsonStorage(Path(tmp)))
 
@@ -596,6 +608,9 @@ class GetEndpointReadOnlyTests(unittest.TestCase):
                 nfl_season=2025,
                 nfl_player_limit=100,
                 nfl_enabled=False,
+                nba_season=2025,
+                nba_player_limit=100,
+                nba_enabled=False,
             )
             storage = WeeklyStorage(None, WeeklyJsonStorage(Path(tmp)))
             with patch("cardchase_ai.clients.mlb.MLBClient") as mock_mlb:

@@ -46,6 +46,7 @@ class PlayerPipelineOutput(BaseModel):
     candidate_source: str = "dynamic"
     source_player_id: str | None = None
     nfl_season_phase: str | None = None
+    nba_season_phase: str | None = None
 
 
 class PipelineResult(BaseModel):

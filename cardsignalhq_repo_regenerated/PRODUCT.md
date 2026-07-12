@@ -10,7 +10,7 @@ The homepage is the **Signal Center** — a market-wide overview dashboard.
 
 Primary sections:
 
-- **Universal Search** — find any MLB player; leaderboard players show scores, others show search results from the backend player pool
+- **Universal Search** — find MLB, NFL, and NBA players when league data is available; leaderboard players show scores, others show search results from the backend player pool
 - **Featured Signal (Signal of the Week)** — editorial hero highlighting the top signal with score, weekly movement, recommendation pill, and View Report CTA
 - **Card Intelligence** — market-wide card sections: Trending Cards, Biggest Movers, Buy Low Watch, Most Chased
 - **Today's Leaders** — ranked table of tracked players with signal, performance, market, trend, and View Report action
@@ -33,7 +33,7 @@ Report sections (scrollable, editorial layout):
 | Section | Purpose |
 |---------|---------|
 | **Header** | Player, team, position, CardSignal Score, recommendation, status, updated timestamp, algorithm version |
-| **Player Snapshot** | Last 7 Days and Season Snapshot from stored MLB stats |
+| **Player Snapshot** | Recent window and Season Snapshot from stored league stats (MLB: Last 7 Days; NBA: Recent 5 Games; NFL: Recent 3 Games) |
 | **Why This Signal** | Signal contributors explaining score changes from real evidence |
 | **Cards** | Player-linked card intelligence with pricing, movement, listings, PSA population when available |
 | **Market** | Research-style market summary from stored eBay snapshots |
@@ -71,7 +71,8 @@ Current production scope:
 
 - **MLB hitters** — MLB Stats API for performance
 - **NFL (beta adapter):** approved import path; unavailable until verified data is seeded — no fabricated intelligence
-- **NBA, NHL** — shown as coming soon
+- **NBA (beta adapter):** approved import path; unavailable until verified data is seeded — no fabricated intelligence
+- **NHL** — shown as coming soon
 - eBay Browse API for active listings
 - Supabase for leaderboard persistence, auth, watchlists, alerts, and notifications
 
@@ -106,7 +107,25 @@ NFL support follows the same evidence-first architecture as MLB, with football-s
 - **Provider policy:** NFL uses a provider-neutral interface; approved imports are labeled `APPROVED_IMPORT`; NFL stays unavailable until real data is loaded
 - **Identity:** deterministic IDs use `CS-NFL-P-{SOURCE_PLAYER_ID}` and never change on team trades
 
+## NBA Intelligence Principles
+
+NBA support follows the same evidence-first Sport Adapter architecture as MLB and NFL, with basketball-specific rules:
+
+- **Supported positions:** PG, SG, SF, PF, C — unknown positions receive `performance_score = null` and `data_quality = INSUFFICIENT`
+- **Recent window:** `recent_window_type = COMPLETED_GAMES`, `recent_window_value = 5` (from league metadata, not hardcoded in UI)
+- **Recent performance fields:** points, rebounds, assists, steals, blocks, turnovers, FG%, 3PT%, FT%, minutes, games played
+- **Season snapshot:** season totals where available — no fabricated advanced analytics
+- **Performance scoring:** `NBA_PERFORMANCE_V1` from stored basketball stats only (no market or fantasy inputs)
+- **CardSignal player signal:** `NBA_PLAYER_SIGNAL_V1` integrates market, collector demand, scarcity, and Signal Drivers without altering MLB/NFL algorithms
+- **Signal Drivers:** verified basketball drivers only (HOT_STREAK, ROLE_EXPANSION, STARTER_CHANGE, MINUTES_SURGE, TRADE, CONTRACT, INJURY, INJURY_RETURN, ALL_STAR_SELECTION, PLAYOFF_PERFORMANCE)
+- **Scouting Report:** Recent 5 Games shows PPG, RPG, APG, SPG, BPG, FG%, 3PT%, FT%, MPG — never MLB/NFL labels
+- **Provider policy:** provider-neutral `NBAPerformanceProvider`; approved imports labeled `APPROVED_IMPORT`; NBA stays unavailable until real data is loaded
+- **Identity:** deterministic IDs use `CS-NBA-P-{STABLE_SOURCE_PLAYER_ID}` — never derived from rankings or array order
+- **Homepage:** NBA tab activates only when genuine weekly intelligence exists; otherwise Coming Soon
+
 ## User Layers
+
+- **Anonymous** — browse Signal Center, search players, open Intelligence Reports
 - **Authenticated** — save watchlist players, configure alert preferences, per-player alert rules, notification center
 - **Admin** — hidden from public UI; protected by admin token for settings and tracked-player management
 

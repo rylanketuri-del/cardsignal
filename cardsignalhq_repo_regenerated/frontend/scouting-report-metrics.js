@@ -244,6 +244,35 @@ function srGetNflStatSpecs(position = "") {
   return SR_NFL_STAT_SPECS[group];
 }
 
+const SR_NBA_STAT_SPECS = {
+  recent: [
+    { label: "PPG", source_field: "points_per_game", value_type: "decimal1" },
+    { label: "RPG", source_field: "rebounds_per_game", value_type: "decimal1" },
+    { label: "APG", source_field: "assists_per_game", value_type: "decimal1" },
+    { label: "SPG", source_field: "steals_per_game", value_type: "decimal1" },
+    { label: "BPG", source_field: "blocks_per_game", value_type: "decimal1" },
+    { label: "FG%", source_field: "field_goal_percentage", value_type: "decimal1" },
+    { label: "3PT%", source_field: "three_point_percentage", value_type: "decimal1" },
+    { label: "FT%", source_field: "free_throw_percentage", value_type: "decimal1" },
+    { label: "MPG", source_field: "minutes_per_game", value_type: "decimal1" },
+  ],
+  season: [
+    { label: "PPG", source_field: "points_per_game", value_type: "decimal1" },
+    { label: "RPG", source_field: "rebounds_per_game", value_type: "decimal1" },
+    { label: "APG", source_field: "assists_per_game", value_type: "decimal1" },
+    { label: "SPG", source_field: "steals_per_game", value_type: "decimal1" },
+    { label: "BPG", source_field: "blocks_per_game", value_type: "decimal1" },
+    { label: "FG%", source_field: "field_goal_percentage", value_type: "decimal1" },
+    { label: "3PT%", source_field: "three_point_percentage", value_type: "decimal1" },
+    { label: "FT%", source_field: "free_throw_percentage", value_type: "decimal1" },
+    { label: "MPG", source_field: "minutes_per_game", value_type: "decimal1" },
+  ],
+};
+
+function srGetNbaStatSpecs() {
+  return SR_NBA_STAT_SPECS;
+}
+
 function srBuildMarketSource(intel = {}, weeklySnap = null) {
   const safeIntel = intel && typeof intel === "object" ? intel : {};
   const safeWeekly = weeklySnap && typeof weeklySnap === "object" ? weeklySnap : null;
@@ -350,8 +379,10 @@ const SRMetrics = {
   SR_CARD_METRIC_SPECS,
   SR_PLAYER_STAT_SPECS,
   SR_NFL_STAT_SPECS,
+  SR_NBA_STAT_SPECS,
   srResolveNflPositionGroup,
   srGetNflStatSpecs,
+  srGetNbaStatSpecs,
   srSafeToNumber,
   srPickStoredField,
   srResolveMetric,

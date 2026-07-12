@@ -20,6 +20,14 @@ from cardchase_ai.nfl_api import (
     nfl_availability_payload,
     search_nfl_players,
 )
+from cardchase_ai.nba_api import (
+    fetch_nba_leaderboard,
+    fetch_nba_performance,
+    fetch_nba_player,
+    fetch_nba_signal_drivers,
+    nba_availability_payload,
+    search_nba_players,
+)
 from cardchase_ai.pipeline import run_pipeline
 from cardchase_ai.storage import SupabaseError, SupabaseStorage
 from cardchase_ai.weekly_intelligence import build_latest_weekly_api_payload, build_weekly_storage, run_weekly_intelligence
@@ -264,6 +272,8 @@ def search_players(q: str = "", sport: str = "MLB") -> JSONResponse:
     sport_upper = (sport or "MLB").upper()
     if sport_upper == "NFL":
         return JSONResponse(search_nfl_players(query, limit=10))
+    if sport_upper == "NBA":
+        return JSONResponse(search_nba_players(query, limit=10))
 
     try:
         results = MLBClient().search_players(query, limit=10)
@@ -306,6 +316,42 @@ def get_nfl_player_signal_drivers(player_id: str) -> JSONResponse:
 @app.get("/api/nfl/status")
 def get_nfl_status() -> JSONResponse:
     return JSONResponse(nfl_availability_payload())
+
+
+@app.get("/api/nba/players/search")
+def search_nba_players_route(q: str = "") -> JSONResponse:
+    query = (q or "").strip()
+    if len(query) < 2:
+        return JSONResponse([])
+    return JSONResponse(search_nba_players(query, limit=10))
+
+
+@app.get("/api/nba/leaderboard/latest")
+def get_nba_leaderboard_latest() -> JSONResponse:
+    return JSONResponse(fetch_nba_leaderboard())
+
+
+@app.get("/api/nba/players/{player_id}")
+def get_nba_player(player_id: str) -> JSONResponse:
+    payload = fetch_nba_player(player_id)
+    if not payload:
+        raise HTTPException(status_code=404, detail="NBA player not found or NBA data unavailable.")
+    return JSONResponse(payload)
+
+
+@app.get("/api/nba/players/{player_id}/performance")
+def get_nba_player_performance(player_id: str) -> JSONResponse:
+    return JSONResponse(fetch_nba_performance(player_id))
+
+
+@app.get("/api/nba/players/{player_id}/signal-drivers")
+def get_nba_player_signal_drivers(player_id: str) -> JSONResponse:
+    return JSONResponse(fetch_nba_signal_drivers(player_id))
+
+
+@app.get("/api/nba/status")
+def get_nba_status() -> JSONResponse:
+    return JSONResponse(nba_availability_payload())
 
 
 @app.get("/api/players/{player_id}")
@@ -415,7 +461,7 @@ def get_player_weekly_signals(player_id: str, limit: int = 12) -> JSONResponse:
     """Player weekly signal history — read-only."""
     settings = _settings()
     storage = build_weekly_storage(settings)
-    cs_id = player_id if ":" in player_id or player_id.startswith("CS-NFL-P-") else f"mlb:{player_id}"
+    cs_id = player_id if ":" in player_id or player_id.startswith("CS-NFL-P-") or player_id.startswith("CS-NBA-P-") else f"mlb:{player_id}"
     items = storage.fetch_player_weekly_history(cs_id, max(2, min(limit, 52)))
     return JSONResponse({"items": items})
 

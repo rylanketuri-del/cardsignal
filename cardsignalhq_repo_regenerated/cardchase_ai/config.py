@@ -43,6 +43,9 @@ class Settings:
     nfl_season: int
     nfl_player_limit: int
     nfl_enabled: bool
+    nba_season: int
+    nba_player_limit: int
+    nba_enabled: bool
 
 
 def get_settings() -> Settings:
@@ -84,4 +87,7 @@ def get_settings() -> Settings:
         nfl_season=int(os.getenv("NFL_SEASON", "2025")),
         nfl_player_limit=int(os.getenv("NFL_PLAYER_LIMIT", "100")),
         nfl_enabled=os.getenv("NFL_ENABLED", "false").lower() in {"1", "true", "yes"},
+        nba_season=int(os.getenv("NBA_SEASON", "2025")),
+        nba_player_limit=int(os.getenv("NBA_PLAYER_LIMIT", "100")),
+        nba_enabled=os.getenv("NBA_ENABLED", "false").lower() in {"1", "true", "yes"},
     )
