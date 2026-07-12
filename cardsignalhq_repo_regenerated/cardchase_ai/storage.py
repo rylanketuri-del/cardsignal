@@ -476,3 +476,33 @@ class SupabaseStorage:
             user_token,
         )
         return rows[0] if rows else None
+
+    def insert_beta_feedback(self, payload: dict[str, Any]) -> dict[str, Any]:
+        rows = self._post("beta_feedback", payload, prefer="return=representation")
+        return rows[0] if rows else {}
+
+    def fetch_beta_feedback(
+        self,
+        *,
+        status: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
+        params: dict[str, str] = {
+            "select": "id,feedback_type,message,page_url,current_route,entity_type,entity_id,sport,app_version,build_id,browser_summary,viewport_width,viewport_height,status,created_at,user_id",
+            "order": "created_at.desc",
+            "limit": str(max(1, min(limit, 200))),
+            "offset": str(max(0, offset)),
+        }
+        if status:
+            params["status"] = f"eq.{status}"
+        return self._get("beta_feedback", params)
+
+    def update_beta_feedback_status(self, feedback_id: int, status: str) -> dict[str, Any] | None:
+        rows = self._patch(
+            "beta_feedback",
+            {"id": f"eq.{feedback_id}"},
+            {"status": status},
+            prefer="return=representation",
+        )
+        return rows[0] if rows else None

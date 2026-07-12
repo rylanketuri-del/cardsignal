@@ -215,8 +215,30 @@
       </div>
     </div>
 
+    <footer class="app-version-footer" id="app-version-footer" aria-label="Application version">
+      <button type="button" class="app-version-label" id="app-version-label" aria-haspopup="dialog" aria-controls="changelog-modal">
+        CardSignal Beta · v0.14.1 · Build e94a5c1
+      </button>
+    </footer>
+
+    <div class="changelog-modal hidden" id="changelog-modal" role="dialog" aria-modal="true" aria-labelledby="changelog-title" aria-hidden="true">
+      <div class="changelog-backdrop" data-changelog-close tabindex="-1"></div>
+      <div class="changelog-panel" role="document">
+        <header class="changelog-header">
+          <h2 id="changelog-title">What's New</h2>
+          <button type="button" class="changelog-close" id="changelog-close" aria-label="Close changelog">×</button>
+        </header>
+        <div class="changelog-body" id="changelog-body"></div>
+      </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="./version.js"></script>
+    <script src="./changelog.js"></script>
+    <script src="./routing.js"></script>
+    <script src="./not-found.js"></script>
+    <script src="./beta-feedback.js"></script>
     <script src="./scouting-report-metrics.js"></script>
     <script src="./weekly-movement.js"></script>
     <script src="./app.js"></script>

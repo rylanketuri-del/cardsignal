@@ -1,4 +1,5 @@
 const API_BASE_URL = (window.APP_CONFIG && window.APP_CONFIG.API_BASE_URL) || "https://cardsignal-api.onrender.com";
+const APP_VERSION_INFO = window.CARDSIGNAL_VERSION || { appVersion: "0.14.1", buildId: "e94a5c1", productLabel: "CardSignal Beta" };
 
 const SOURCE_URL = `${API_BASE_URL}/api/leaderboard/latest`;
 
@@ -18,8 +19,33 @@ let piModalIntel = null;
 let piModalWeeklySnap = null;
 let piModalCards = [];
 let piModalKeydownHandler = null;
+let piModalActiveCardId = null;
 let weeklyIntelligence = null;
+let currentSportFilter = "all";
 const SCOUTING_REPORT_ALGO = "WEEKLY_INTELLIGENCE_V1";
+
+window.CardSignalAppContext = { entity_type: null, entity_id: null, sport: "MLB" };
+
+function formatSafeError(error, fallback = "Something went wrong. Please try again.") {
+  if (!error) return fallback;
+  const raw = typeof error === "string" ? error : (error.message || "");
+  if (!raw || raw.length > 280) return fallback;
+  if (/stack|traceback|exception|sql|supabase|postgres|internal server/i.test(raw)) return fallback;
+  if (raw.trim().startsWith("{") || raw.trim().startsWith("<")) return fallback;
+  return raw;
+}
+
+function syncAppContext(entityType = null, entityId = null) {
+  window.CardSignalAppContext = {
+    entity_type: entityType,
+    entity_id: entityId,
+    sport: currentSportFilter === "nfl" ? "NFL" : currentSportFilter === "nba" ? "NBA" : "MLB",
+  };
+}
+
+function syncAuthTokenGlobal() {
+  window.CardSignalAuthToken = authToken || null;
+}
 
 function tagClass(tag) {
   if (tag === 'BUY LOW') return 'tag buylow';
@@ -52,14 +78,14 @@ async function apiFetch(path, options = {}) {
   const headers = { ...(options.headers || {}) };
   if (authToken) headers.Authorization = `Bearer ${authToken}`;
   const response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
-  if (!response.ok) throw new Error(await response.text() || `Request failed for ${path}`);
+  if (!response.ok) throw new Error(formatSafeError(await response.text() || `Request failed for ${path}`));
   return response.json();
 }
 async function adminFetch(path, options = {}) {
   const headers = { ...(options.headers || {}) };
   if (adminToken) headers.Authorization = `Bearer ${adminToken}`;
   const response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
-  if (!response.ok) throw new Error(await response.text() || `Admin request failed for ${path}`);
+  if (!response.ok) throw new Error(formatSafeError(await response.text() || `Admin request failed for ${path}`));
   return response.json();
 }
 async function fetchPlayer(playerId) { return apiFetch(`/api/players/${playerId}`); }
@@ -500,38 +526,6 @@ function buildWhySignalMatters(entry, intel) {
   return `${name}'s current CardSignal profile suggests caution — the score reflects weaker alignment across performance, market, and momentum inputs.`;
 }
 
-function buildMarketPlaceholders(entry, intel) {
-  const key = String(entry?.player_id ?? entry?.player_name ?? "unknown");
-  const seed = csIntelHashToUint32(`${key}_market`);
-  const rng = csIntelMulberry32(seed);
-
-  const avgSale = 18 + rng() * 185 + (intel.market / 100) * 45;
-  const salesVolume = Math.round(4 + rng() * 38 + (intel.momentum / 100) * 12);
-  const activeListings = Math.round(12 + rng() * 95 + (intel.collector / 100) * 20);
-  const priceMove = ((intel.momentum - 50) / 2.5) + (rng() - 0.5) * 4;
-
-  let liquidity = "Moderate";
-  if (intel.market >= 70 && salesVolume >= 20) liquidity = "High";
-  else if (intel.market < 45 || salesVolume < 10) liquidity = "Low";
-
-  const name = entry.player_name || "This player";
-  let summary = `${name}'s card market shows steady activity with pricing that has not fully reacted to recent signal movement.`;
-  if (liquidity === "High") {
-    summary = `${name}'s card market is active with supportive liquidity, suggesting buyers and sellers are both engaged at current levels.`;
-  } else if (liquidity === "Low") {
-    summary = `${name}'s card market appears thin, which may amplify price swings on individual sales.`;
-  }
-
-  return {
-    avgSale,
-    salesVolume,
-    activeListings,
-    priceMove,
-    liquidity,
-    summary,
-  };
-}
-
 function getRiskLevel(intel) {
   const conviction = String(intel.convictionTier || "").toUpperCase();
   const score = intel.score || 0;
@@ -677,7 +671,7 @@ function renderCardIntelPendingBox({ title, modifier, description }) {
 }
 
 function getCardSectionEntry(entries = []) {
-  return getSignalOfWeekTopEntry(entries) || entries[0] || getSignalOfWeekPlaceholderEntry();
+  return getSignalOfWeekTopEntry(entries) || entries[0] || null;
 }
 
 function renderCardSection(entries = [], cardIntel = null) {
@@ -739,184 +733,6 @@ function showChartPlaceholder(canvasId, placeholderId, show) {
   if (canvas) canvas.classList.toggle("hidden", show);
   if (placeholder) placeholder.classList.toggle("hidden", !show);
 }
-function csIntelGetPlaceholders(entry) {
-  const key = String(entry?.player_id ?? entry?.player_name ?? "unknown");
-  if (csIntelCache.has(key)) return csIntelCache.get(key);
-
-  const storageKey = `cs_intel_placeholders_v1_${key}`;
-  try {
-    const raw = sessionStorage.getItem(storageKey);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed && (parsed.convictionTier || parsed.confidenceTier)) {
-        if (!parsed.convictionTier && parsed.confidenceTier) {
-          parsed.convictionTier = parsed.confidenceTier;
-        }
-        csIntelCache.set(key, parsed);
-        return parsed;
-      }
-    }
-  } catch (_) {
-    // ignore
-  }
-
-  const seed = csIntelHashToUint32(key);
-  const rng = csIntelMulberry32(seed);
-
-  const convictionTier = csIntelPickConvictionTier(rng());
-
-  // 0-100 "premium" placeholder scales (used when backend fields are missing).
-  const performance = csIntelClamp(22 + rng() * 78, 0, 100);
-  const market = csIntelClamp(18 + rng() * 82, 0, 100);
-  const collector = csIntelClamp(market * 0.62 + performance * 0.38 + (rng() - 0.5) * 12, 0, 100);
-  const momentum = csIntelClamp(((performance + market) / 2) * 0.92 + (rng() - 0.5) * 18, 0, 100);
-
-  const score = csIntelClamp(performance * 0.5 + market * 0.4 + momentum * 0.1 + (rng() - 0.5) * 10, 0, 100);
-
-  const trendingNamePool = [
-    "Auric Spark",
-    "Copper Drift",
-    "Midnight Prospect",
-    "Golden Curve",
-    "Sable Surge",
-    "Emerald Lift",
-    "Nova Demand",
-    "Ivory Velocity",
-    "Crimson Shelf",
-    "Sterling Swing",
-  ];
-
-  const moverNamePool = [
-    "1st Bowman Auto",
-    "Rookie Patch Parallel",
-    "Bowman Chrome Mojo",
-    "Vintage Select /25",
-    "Topps Chrome Sapphire",
-    "Heritage Black Gold",
-    "Bowman Draft Gold",
-    "Stadium Club Red Ink",
-    "Prizm Draft Stars",
-    "Museum Collection Gem",
-  ];
-
-  const buyLowNamePool = [
-    "Low-Ask Bowman Chrome",
-    "Undervalued Rookie Parallel",
-    "Quiet Liquidity Lot",
-    "Discounted Card Slice",
-    "Value Pocket Prospect",
-    "Supportive Supply Window",
-    "Stable Demand, Soft Prices",
-    "Inked Rookie Deal",
-    "Surprisingly Priced Parallel",
-    "Buyer-Ready Bargain",
-  ];
-
-  const chasedNamePool = [
-    "Hot Case Break",
-    "Chase-Grade Parallel",
-    "Bid-War Magnet",
-    "Collector Pressure Lot",
-    "Velocity Surge Card",
-    "Momentum Mirror",
-    "Rising Demand Select",
-    "Premium Parallels Feed",
-    "Frictionless Chase Copy",
-    "Scarcity-Driven Target",
-  ];
-
-  function pickThree(pool, { bias = 0, priceMin = 8, priceMax = 230, moveMin = 4, moveMax = 30 } = {}) {
-    const used = new Set();
-    const out = [];
-    while (out.length < 3 && used.size < pool.length) {
-      const idx = Math.floor(rng() * pool.length);
-      if (used.has(idx)) continue;
-      used.add(idx);
-      const price = priceMin + rng() * (priceMax - priceMin);
-      const magnitude = moveMin + rng() * (moveMax - moveMin);
-      // bias shifts expectation, but we still allow direction changes.
-      const direction = rng() > 0.5 ? 1 : -1;
-      const move = (direction * magnitude) + bias + (rng() - 0.5) * 5;
-      out.push({
-        name: pool[idx],
-        price,
-        movement: csIntelFormatPercent(move),
-        score: Math.round(40 + rng() * 55),
-        upside: csIntelFormatPercent((rng() - 0.35) * 28),
-      });
-    }
-    return out;
-  }
-
-  const trendingCards = pickThree(trendingNamePool, {
-    bias: (market - 50) / 8 + (momentum - 50) / 10,
-    priceMin: 12,
-    priceMax: 260,
-    moveMin: 8,
-    moveMax: 28,
-  });
-
-  const biggestMovers = pickThree(moverNamePool, {
-    bias: (performance - 50) / 10,
-    priceMin: 15,
-    priceMax: 310,
-    moveMin: 10,
-    moveMax: 38,
-  });
-
-  const buyLowOpportunities = pickThree(buyLowNamePool, {
-    bias: -6 + (market < 50 ? 3 : -2),
-    priceMin: 9,
-    priceMax: 170,
-    moveMin: 4,
-    moveMax: 22,
-  });
-
-  const mostChased = pickThree(chasedNamePool, {
-    bias: 5 + (momentum - 50) / 10,
-    priceMin: 18,
-    priceMax: 360,
-    moveMin: 8,
-    moveMax: 36,
-  });
-
-  const aiReasonPool = [
-    "Collector demand is increasing faster than current market pricing.",
-    "Performance momentum suggests a continued lift in buyer interest over the next 7 days.",
-    "Market liquidity remains supportive while supply tightens on recent listings.",
-    "Trading velocity is rising faster than average price, creating a favorable buy window.",
-    "Recent chase pressure indicates higher willingness to pay for comparable lots soon.",
-  ];
-
-  const aiReason = aiReasonPool[Math.floor(rng() * aiReasonPool.length)] || aiReasonPool[0];
-
-  const placeholders = {
-    convictionTier,
-    performance: csIntelClamp(performance, 0, 100),
-    market: csIntelClamp(market, 0, 100),
-    collector: csIntelClamp(collector, 0, 100),
-    momentum: csIntelClamp(momentum, 0, 100),
-    score: csIntelClamp(score, 0, 100),
-    trendingCards,
-    biggestMovers,
-    buyLowOpportunities,
-    mostChased,
-    aiRecommendation: {
-      action: csIntelRecommendationFromTier(convictionTier),
-      conviction: convictionTier,
-      reason: aiReason,
-    },
-  };
-
-  csIntelCache.set(key, placeholders);
-  try {
-    sessionStorage.setItem(storageKey, JSON.stringify(placeholders));
-  } catch (_) {
-    // ignore
-  }
-  return placeholders;
-}
-
 function formatEvidenceTier(tier = "") {
   const key = String(tier || "").toUpperCase();
   if (key === "HIGH") return "HIGH";
@@ -1644,7 +1460,75 @@ function setupPlayerIntelligenceModal() {
   bindPiModalKeydown();
 }
 
-function closePlayerIntelligenceModal() {
+function clearReportModalState(options = {}) {
+  if (!options.keepPlayerContext) {
+    piModalEntry = null;
+    piModalIntel = null;
+    piModalWeeklySnap = null;
+    piModalCards = [];
+    selectedPlayer = null;
+  }
+  piModalActiveCardId = null;
+}
+
+function wireNotFoundActions(options = {}) {
+  const body = document.getElementById("pi-modal-body");
+  if (!body) return;
+
+  body.querySelectorAll("[data-not-found-action]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const action = btn.dataset.notFoundAction;
+      if (action === "home") {
+        closePlayerIntelligenceModal();
+        return;
+      }
+      if (action === "search") {
+        closePlayerIntelligenceModal();
+        const searchInput = document.getElementById("player-search-input");
+        if (searchInput) {
+          searchInput.focus();
+          searchInput.scrollIntoView({ block: "center", behavior: "smooth" });
+        }
+        return;
+      }
+      if (action === "back-scouting" && options.parentPlayerId && window.CardSignalRouting) {
+        window.CardSignalRouting.navigateTo({ type: "player", playerId: options.parentPlayerId });
+      }
+    });
+  });
+
+  requestAnimationFrame(() => {
+    body.querySelector(".report-not-found-title")?.focus();
+  });
+}
+
+function showReportNotFoundState({ entityType, parentPlayerId = null, entityId = null }) {
+  const modal = document.getElementById("player-intelligence-modal");
+  const header = document.getElementById("pi-modal-header");
+  const body = document.getElementById("pi-modal-body");
+  if (!modal || !header || !body || !window.CardSignalNotFound) return;
+
+  if (entityType === "player") {
+    clearReportModalState();
+  } else {
+    clearReportModalState({ keepPlayerContext: true });
+    piModalActiveCardId = entityId || null;
+  }
+
+  const config = window.CardSignalNotFound.NOT_FOUND_CONFIG[entityType] || window.CardSignalNotFound.NOT_FOUND_CONFIG.player;
+  header.innerHTML = `<div class="pi-modal-header-fallback"><h2 id="pi-modal-title">${config.eyebrow}</h2></div>`;
+  body.innerHTML = window.CardSignalNotFound.renderReportNotFound(entityType, {
+    hasParentPlayer: Boolean(parentPlayerId),
+  });
+  wireNotFoundActions({ parentPlayerId });
+
+  modal.classList.remove("hidden");
+  modal.setAttribute("aria-hidden", "false");
+  lockBodyScrollForModal();
+  syncAppContext(entityType, entityId || parentPlayerId || null);
+}
+
+function closePlayerIntelligenceModal(options = {}) {
   const modal = document.getElementById("player-intelligence-modal");
   if (!modal) return;
 
@@ -1655,18 +1539,156 @@ function closePlayerIntelligenceModal() {
   piModalIntel = null;
   piModalWeeklySnap = null;
   piModalCards = [];
+  piModalActiveCardId = null;
+  syncAppContext(null, null);
+
+  if (!options.skipRouteUpdate && window.CardSignalRouting) {
+    window.CardSignalRouting.setSuppressNextPopstate(true);
+    window.CardSignalRouting.navigateTo({ type: "home" }, { replace: true });
+  }
 }
 
-async function openPlayerIntelligenceModal(entry) {
+function renderCardReportView(card, player) {
+  const identityHtml = formatCardIdentityHtml(card);
+  const rec = resolveStoredCardRecommendation(card);
+  const recClass = csIntelRecommendationClass(rec.toLowerCase());
+  const metrics = SRMetrics.srBuildCardMetrics(card, srMetricFormatters());
+  const evidence = card.evidence || {};
+
+  const metricRow = (metric) => `
+    <div class="sr-card-metric">
+      <span class="sr-card-metric-label">${metric.label}</span>
+      <span class="sr-card-metric-value${metric.pending ? " sr-pending--inline" : ""}">${metric.display}</span>
+    </div>`;
+
+  return `
+    <div class="card-report-view">
+      <button type="button" class="card-report-back ghost" id="card-report-back" aria-label="Back to Scouting Report">
+        ← Back to Scouting Report
+      </button>
+      <section class="sr-section card-report-section">
+        <p class="eyebrow">Card Report</p>
+        <h3 class="sr-section-title">${card.card_name || card.query_name || "Player Card"}</h3>
+        <p class="sr-section-lead">${player.player_name || "Player"} · ${formatTeamPositionLabel(player)}</p>
+        <div class="sr-card-identity card-report-identity">
+          ${identityHtml || `<p class="sr-pending">Card registry data is still being linked.</p>`}
+        </div>
+        <div class="sr-card-metrics card-report-metrics">
+          ${metricRow(metrics.medianActivePrice)}
+          ${metricRow(metrics.averageActivePrice)}
+          ${metricRow(metrics.priceMovement7d)}
+          ${!metrics.momentumScore.pending ? metricRow(metrics.momentumScore) : ""}
+          ${metricRow(metrics.activeListings)}
+          <div class="sr-card-metric">
+            <span class="sr-card-metric-label">CardSignal Score</span>
+            <span class="sr-card-metric-value">${card.card_signal_score != null ? formatScore(card.card_signal_score) : card.score != null ? formatScore(card.score) : "Pending"}</span>
+          </div>
+          <div class="sr-card-metric">
+            <span class="sr-card-metric-label">Recommendation</span>
+            <span class="cs-recommendation-badge ${recClass} sr-card-rec">${rec}</span>
+          </div>
+        </div>
+        <p class="sr-card-evidence">
+          <span class="sr-evidence-label">Evidence</span>
+          ${evidence.listings_count
+    ? `Based on ${evidence.listings_count} active listing${evidence.listings_count === 1 ? "" : "s"} in stored market snapshots.`
+    : "Market history still building."}
+        </p>
+        ${card.cs_card_id ? `<p class="sr-meta-line muted">Card ID available for support reference.</p>` : ""}
+      </section>
+    </div>`;
+}
+
+function showScoutingReportBody() {
+  const body = document.getElementById("pi-modal-body");
+  if (!body || !piModalEntry || !piModalIntel) return;
+  piModalActiveCardId = null;
+  body.innerHTML = renderScoutingReport(piModalEntry, piModalIntel, piModalCards, piModalWeeklySnap);
+  wirePlayerActions();
+  wireCardReportNavigation();
+  syncAppContext("player", piModalEntry.player_id || null);
+}
+
+function openCardReport(cardId, options = {}) {
+  const body = document.getElementById("pi-modal-body");
+  if (!body) return { status: "NOT_FOUND" };
+
+  const card = piModalCards.find((item) => String(item.cs_card_id) === String(cardId));
+  if (!card || !piModalEntry) {
+    showReportNotFoundState({
+      entityType: "card",
+      parentPlayerId: piModalEntry?.player_id || null,
+      entityId: cardId,
+    });
+    return { status: "NOT_FOUND" };
+  }
+
+  piModalActiveCardId = card.cs_card_id;
+  body.innerHTML = renderCardReportView(card, piModalEntry);
+  document.getElementById("card-report-back")?.addEventListener("click", () => {
+    if (window.CardSignalRouting && piModalEntry?.player_id) {
+      window.CardSignalRouting.navigateTo({ type: "player", playerId: piModalEntry.player_id });
+    } else {
+      showScoutingReportBody();
+    }
+  });
+  syncAppContext("card", card.cs_card_id);
+
+  if (!options.skipRouteUpdate && window.CardSignalRouting && piModalEntry.player_id) {
+    window.CardSignalRouting.navigateTo({
+      type: "card",
+      playerId: piModalEntry.player_id,
+      cardId: card.cs_card_id,
+    });
+  }
+
+  return { status: "OK" };
+}
+
+function wireCardReportNavigation() {
+  const body = document.getElementById("pi-modal-body");
+  if (!body) return;
+  body.querySelectorAll(".sr-card-panel[data-cs-card-id]").forEach((panel) => {
+    const cardId = panel.dataset.csCardId;
+    if (!cardId) return;
+    panel.setAttribute("role", "button");
+    panel.setAttribute("tabindex", "0");
+    panel.setAttribute("aria-label", "Open card report");
+    const open = () => openCardReport(cardId);
+    panel.addEventListener("click", open);
+    panel.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        open();
+      }
+    });
+  });
+}
+
+async function openPlayerIntelligenceModal(entry, options = {}) {
   const modal = document.getElementById("player-intelligence-modal");
   const header = document.getElementById("pi-modal-header");
   const body = document.getElementById("pi-modal-body");
   if (!modal || !header || !body) return;
 
   selectedPlayer = entry;
+  piModalActiveCardId = null;
 
   try {
-    const player = entry.player_id ? await fetchPlayer(entry.player_id) : entry;
+    let player = entry;
+    if (entry.player_id) {
+      try {
+        player = await fetchPlayer(entry.player_id);
+      } catch (fetchError) {
+        const hasRealIdentity = Boolean(entry.player_name) && entry.player_name !== "Player";
+        const hasLeaderboardData = Boolean(entry.hotness);
+        if (hasRealIdentity || hasLeaderboardData) {
+          player = entry;
+        } else {
+          throw fetchError;
+        }
+      }
+    }
     selectedPlayer = player;
 
     let weeklySnap = null;
@@ -1692,19 +1714,31 @@ async function openPlayerIntelligenceModal(entry) {
     body.innerHTML = renderScoutingReport(player, intel, cards, weeklySnap);
 
     wirePlayerActions();
+    wireCardReportNavigation();
 
     modal.classList.remove("hidden");
     modal.setAttribute("aria-hidden", "false");
     lockBodyScrollForModal();
+    syncAppContext("player", player.player_id || null);
+
+    if (options.cardId) {
+      const cardResult = openCardReport(options.cardId, { skipRouteUpdate: true });
+      if (cardResult?.status === "NOT_FOUND") return;
+    } else if (!options.skipRouteUpdate && window.CardSignalRouting && player.player_id) {
+      window.CardSignalRouting.navigateTo({ type: "player", playerId: player.player_id });
+    }
 
     requestAnimationFrame(() => {
       modal.querySelector(".pi-modal-close")?.focus();
     });
   } catch (error) {
-    body.innerHTML = `<div class="pi-tab-placeholder"><p class="pi-tab-placeholder-copy">${error.message}</p></div>`;
+    header.innerHTML = `<div class="pi-modal-header-fallback"><h2 id="pi-modal-title">Scouting Report</h2></div>`;
+    clearReportModalState();
+    body.innerHTML = `<div class="pi-tab-placeholder"><p class="pi-tab-placeholder-copy">${formatSafeError(error, "We couldn't load this scouting report.")}</p></div>`;
     modal.classList.remove("hidden");
     modal.setAttribute("aria-hidden", "false");
     lockBodyScrollForModal();
+    syncAppContext("player", entry?.player_id || null);
   }
 }
 
@@ -2029,13 +2063,25 @@ async function selectPlayer(entry) {
 }
 
 async function bootstrapSupabase() {
-  const { data, error } = await fetch(`${API_BASE_URL}/api/config`).then(res => res.json()).then(json => ({ data: json }));
-  if (error || !data?.supabase_url || !data?.supabase_anon_key || !window.supabase) return;
-  supabaseClient = window.supabase.createClient(data.supabase_url, data.supabase_anon_key);
-  const sessionData = await supabaseClient.auth.getSession();
-  authToken = sessionData.data.session?.access_token || null;
-  currentUser = sessionData.data.session?.user || null;
-  if (currentUser) setAuthStatus(`Signed in as ${currentUser.email || currentUser.id}`);
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/config`);
+    if (!res.ok) return;
+    const data = await res.json();
+    if (!data?.supabase_url || !data?.supabase_anon_key || !window.supabase) return;
+    supabaseClient = window.supabase.createClient(data.supabase_url, data.supabase_anon_key);
+    const sessionData = await supabaseClient.auth.getSession();
+    authToken = sessionData.data.session?.access_token || null;
+    currentUser = sessionData.data.session?.user || null;
+    syncAuthTokenGlobal();
+    if (currentUser) setAuthStatus(`Signed in as ${currentUser.email || currentUser.id}`);
+    supabaseClient.auth.onAuthStateChange((_event, session) => {
+      authToken = session?.access_token || null;
+      currentUser = session?.user || null;
+      syncAuthTokenGlobal();
+    });
+  } catch (_) {
+    /* auth remains unavailable without blocking Signal Center */
+  }
 }
 
 function bindAuthActions() {
@@ -2054,6 +2100,7 @@ function bindAuthActions() {
     if (error) return setAuthStatus(error.message, true);
     authToken = data.session?.access_token || null;
     currentUser = data.user || null;
+    syncAuthTokenGlobal();
     setAuthStatus(`Signed in as ${currentUser?.email || currentUser?.id}`);
     await Promise.all([loadRules(), loadWatchlist(), loadAlerts(), loadNotifications()]);
   });
@@ -2061,6 +2108,7 @@ function bindAuthActions() {
     if (!supabaseClient) return;
     await supabaseClient.auth.signOut();
     authToken = null; currentUser = null; watchlistItems = []; playerAlertRules = [];
+    syncAuthTokenGlobal();
     setAuthStatus('Signed out.');
     await Promise.all([loadWatchlist(), loadRules(), loadNotifications()]);
   });
@@ -2275,27 +2323,6 @@ function renderMarketPulse(entries) {
       `).join("")}
     </div>
   `;
-}
-
-function getSignalOfWeekPlaceholderEntry() {
-  return {
-    player_id: null,
-    player_name: "Signal of the Week",
-    position: "—",
-    team: "MLB",
-    mlb_team: "MLB",
-    team_abbrev: "MLB",
-    headshot_url: null,
-    action_photo_url: null,
-    hotness: {
-      total_score: 92.3,
-      market_score: 78,
-      performance_score: 70,
-      collector_score: 80,
-      momentum_score: 68,
-      tag: "HOTNESS JUMP",
-    },
-  };
 }
 
 function getSignalOfWeekTopEntry(entries = []) {
@@ -2839,6 +2866,109 @@ function setupPlayerSearch() {
   });
 }
 
+function setupVersionFooter() {
+  const label = document.getElementById("app-version-label");
+  const changelogModal = document.getElementById("changelog-modal");
+  const changelogBody = document.getElementById("changelog-body");
+  const changelogClose = document.getElementById("changelog-close");
+  if (!label) return;
+
+  const version = APP_VERSION_INFO.appVersion || "0.14.1";
+  const build = APP_VERSION_INFO.buildId || "unknown";
+  const product = APP_VERSION_INFO.productLabel || "CardSignal Beta";
+  label.textContent = `${product} · v${version} · Build ${build}`;
+
+  if (changelogBody && window.CARDSIGNAL_CHANGELOG) {
+    changelogBody.innerHTML = window.CARDSIGNAL_CHANGELOG.map((entry) => `
+      <article class="changelog-entry">
+        <h3 class="changelog-entry-title">v${entry.version} — ${entry.title}</h3>
+        <ul class="changelog-list">${(entry.highlights || []).map((item) => `<li>${item}</li>`).join("")}</ul>
+      </article>`).join("");
+  }
+
+  const closeChangelog = () => {
+    if (!changelogModal) return;
+    changelogModal.classList.add("hidden");
+    changelogModal.setAttribute("aria-hidden", "true");
+    label.focus();
+  };
+
+  label.addEventListener("click", () => {
+    if (!changelogModal) return;
+    changelogModal.classList.remove("hidden");
+    changelogModal.setAttribute("aria-hidden", "false");
+    changelogClose?.focus();
+  });
+
+  changelogClose?.addEventListener("click", closeChangelog);
+  changelogModal?.addEventListener("click", (event) => {
+    if (event.target.closest("[data-changelog-close]")) closeChangelog();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && changelogModal && !changelogModal.classList.contains("hidden")) {
+      closeChangelog();
+    }
+  });
+}
+
+async function resolvePlayerEntry(playerId) {
+  const normalizedId = String(playerId || "").trim();
+  if (!normalizedId) return null;
+
+  const fromLeaderboard = latestEntries.find((item) => String(item.player_id) === normalizedId);
+  if (fromLeaderboard) return fromLeaderboard;
+
+  try {
+    const fetched = await fetchPlayer(normalizedId);
+    if (!fetched || !fetched.player_id) return null;
+    return fetched;
+  } catch (_) {
+    return null;
+  }
+}
+
+async function handleRouteChange(route) {
+  if (!route || route.type === "home") {
+    if (isPlayerIntelligenceModalOpen()) closePlayerIntelligenceModal({ skipRouteUpdate: true });
+    syncAppContext(null, null);
+    return;
+  }
+
+  if (route.type === "invalid") {
+    showReportNotFoundState({ entityType: "player" });
+    return;
+  }
+
+  if (route.type === "player" || route.type === "card") {
+    const entry = await resolvePlayerEntry(route.playerId);
+    if (!entry) {
+      showReportNotFoundState({ entityType: "player", entityId: route.playerId });
+      return;
+    }
+
+    if (isPlayerIntelligenceModalOpen() && piModalEntry && String(piModalEntry.player_id) === String(route.playerId)) {
+      if (route.type === "card" && route.cardId) {
+        openCardReport(route.cardId, { skipRouteUpdate: true });
+      } else {
+        showScoutingReportBody();
+      }
+      return;
+    }
+
+    await openPlayerIntelligenceModal(entry, {
+      skipRouteUpdate: true,
+      cardId: route.type === "card" ? route.cardId : null,
+    });
+  }
+}
+
+function setupRouting() {
+  if (!window.CardSignalRouting) return;
+  window.CardSignalRouting.onRouteChange((route) => {
+    handleRouteChange(route);
+  });
+}
+
 function setupSportTabs() {
   const tabs = [...document.querySelectorAll(".sport-tab[data-sport-filter]")];
   const mlbContent = document.getElementById("sport-content-mlb");
@@ -2848,6 +2978,8 @@ function setupSportTabs() {
 
   const applySportFilter = (filter) => {
     const normalized = String(filter || "all").toLowerCase();
+    currentSportFilter = normalized;
+    syncAppContext(window.CardSignalAppContext?.entity_type || null, window.CardSignalAppContext?.entity_id || null);
     const showMlb = normalized === "all" || normalized === "mlb";
     const showNba = normalized === "nba";
     const showNfl = normalized === "nfl";
@@ -2916,6 +3048,8 @@ async function init() {
     setupPlayerSearch();
     setupPlayerIntelligenceModal();
     setupSportTabs();
+    setupRouting();
+    setupVersionFooter();
 
     status.textContent = 'Rendering Signal Center...';
     renderWeeklyRefreshNote();
@@ -2946,10 +3080,15 @@ async function init() {
 
     if (adminToken) await loadAdmin();
 
+    const initialRoute = window.CardSignalRouting ? window.CardSignalRouting.getCurrentRoute() : { type: "home" };
+    if (initialRoute.type !== "home") {
+      await handleRouteChange(initialRoute);
+    }
+
   } catch (error) {
     console.error("CardSignal load error:", error);
 
-    status.textContent = `Load failed: ${error.message}`;
+    status.textContent = `Load failed: ${formatSafeError(error, "Could not load Signal Center.")}`;
     status.style.color = '#9A6656';
 
     // Graceful fallback: still show Signal of the Week and card section.
@@ -2961,7 +3100,7 @@ async function init() {
     const leaderboardRoot = document.getElementById('leaderboard-table');
     if (leaderboardRoot) {
       leaderboardRoot.innerHTML =
-        `<div class="detail-empty">Load failed: ${error.message}</div>`;
+        `<div class="detail-empty">${formatSafeError(error, "Could not load leaderboard.")}</div>`;
     }
   }
 }

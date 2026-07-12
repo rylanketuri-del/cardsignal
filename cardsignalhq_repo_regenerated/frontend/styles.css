@@ -1905,11 +1905,11 @@ button,
 
     transform:none;
 
-}/* ===========================
+}
+/* ===========================
    Sprint 4.1 — Hide Admin
 =========================== */
 
-}
 .admin-hidden {
   display: none !important;
 }
@@ -5945,4 +5945,333 @@ body.pi-modal-open {
 
 .hidden {
   display: none !important;
+}
+
+/* ===========================
+   Sprint 10.1 — Beta Feedback, Version Footer, Card Report
+=========================== */
+
+.beta-feedback-launcher {
+  position: fixed;
+  right: max(16px, env(safe-area-inset-right));
+  bottom: max(72px, calc(16px + env(safe-area-inset-bottom)));
+  z-index: 1200;
+  border: 1px solid var(--stone);
+  background: var(--panel);
+  color: var(--charcoal);
+  border-radius: var(--radius-pill);
+  padding: 10px 16px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  box-shadow: var(--shadow-soft);
+  cursor: pointer;
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.beta-feedback-launcher:hover,
+.beta-feedback-launcher:focus-visible {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-hover);
+  outline: 2px solid var(--copper);
+  outline-offset: 2px;
+}
+
+.beta-feedback-modal[hidden] {
+  display: none !important;
+}
+
+.beta-feedback-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1300;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+}
+
+.beta-feedback-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 15, 16, 0.55);
+  backdrop-filter: blur(3px);
+}
+
+.beta-feedback-panel {
+  position: relative;
+  width: min(100%, 440px);
+  max-height: min(90vh, 640px);
+  overflow: auto;
+  background: var(--panel);
+  border: 1px solid var(--stone);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: 20px;
+}
+
+.beta-feedback-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.beta-feedback-header h2 {
+  margin: 0;
+  font-size: 24px;
+}
+
+.beta-feedback-close {
+  border: none;
+  background: transparent;
+  font-size: 28px;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--muted);
+}
+
+.beta-feedback-prompt {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.beta-feedback-types {
+  border: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.beta-feedback-type {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--stone);
+  border-radius: var(--radius-pill);
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.beta-feedback-type input {
+  accent-color: var(--copper);
+}
+
+.beta-feedback-message-label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--bronze);
+}
+
+.beta-feedback-form textarea {
+  width: 100%;
+  min-height: 110px;
+  resize: vertical;
+  border: 1px solid var(--stone);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  font: inherit;
+  background: #fff;
+}
+
+.beta-feedback-hint {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.beta-feedback-status {
+  margin: 10px 0 0;
+  font-size: 13px;
+}
+
+.beta-feedback-status[data-kind="error"] {
+  color: var(--signal-red);
+}
+
+.beta-feedback-status[data-kind="success"] {
+  color: var(--signal-green);
+}
+
+.beta-feedback-status[data-kind="loading"] {
+  color: var(--bronze);
+}
+
+.beta-feedback-actions {
+  margin-top: 14px;
+}
+
+body.beta-feedback-open {
+  overflow: hidden;
+}
+
+.app-version-footer {
+  margin: 32px auto 88px;
+  max-width: 1400px;
+  padding: 0 20px;
+  text-align: center;
+}
+
+.app-version-label {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.app-version-label:hover,
+.app-version-label:focus-visible {
+  color: var(--bronze);
+  outline: none;
+}
+
+.changelog-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1250;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+}
+
+.changelog-modal.hidden {
+  display: none !important;
+}
+
+.changelog-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 15, 16, 0.5);
+}
+
+.changelog-panel {
+  position: relative;
+  width: min(100%, 520px);
+  max-height: min(85vh, 560px);
+  overflow: auto;
+  background: var(--panel);
+  border: 1px solid var(--stone);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: 20px;
+}
+
+.changelog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.changelog-entry-title {
+  margin: 0 0 8px;
+  font-size: 20px;
+}
+
+.changelog-list {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.changelog-close {
+  border: none;
+  background: transparent;
+  font-size: 28px;
+  cursor: pointer;
+  color: var(--muted);
+}
+
+.card-report-view {
+  display: grid;
+  gap: 12px;
+}
+
+.card-report-back {
+  justify-self: start;
+}
+
+.sr-card-panel[role="button"] {
+  cursor: pointer;
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.sr-card-panel[role="button"]:hover,
+.sr-card-panel[role="button"]:focus-visible {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-soft);
+  outline: 2px solid var(--copper);
+  outline-offset: 2px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 640px) {
+  .beta-feedback-launcher {
+    bottom: max(64px, calc(12px + env(safe-area-inset-bottom)));
+    right: max(12px, env(safe-area-inset-right));
+    padding: 9px 12px;
+    font-size: 11px;
+  }
+
+  .app-version-footer {
+    margin-bottom: 96px;
+  }
+}
+
+.report-not-found {
+  display: grid;
+  gap: 14px;
+  padding: 8px 4px 16px;
+  max-width: 520px;
+}
+
+.report-not-found-title {
+  margin: 0;
+  font-size: 28px;
+  line-height: 1.2;
+}
+
+.report-not-found-body {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.report-not-found-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.report-not-found-title:focus {
+  outline: 2px solid var(--copper);
+  outline-offset: 3px;
 }
