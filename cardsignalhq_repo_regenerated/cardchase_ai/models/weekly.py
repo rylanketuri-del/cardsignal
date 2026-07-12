@@ -81,6 +81,8 @@ class PlayerWeeklySignalSnapshot(BaseModel):
     evidence: dict[str, Any] = Field(default_factory=dict)
     missing_inputs: list[str] = Field(default_factory=list)
     algorithm_version: str = WEEKLY_INTELLIGENCE_V1
+    weekly_algorithm_version: str = WEEKLY_INTELLIGENCE_V1
+    scoring_algorithm_version: str | None = None
     captured_at: datetime | None = None
     player_name: str | None = None
     team: str | None = None
@@ -111,6 +113,8 @@ class CardWeeklyIntelligenceSnapshot(BaseModel):
     evidence: dict[str, Any] = Field(default_factory=dict)
     missing_inputs: list[str] = Field(default_factory=list)
     algorithm_version: str = WEEKLY_INTELLIGENCE_V1
+    weekly_algorithm_version: str = WEEKLY_INTELLIGENCE_V1
+    scoring_algorithm_version: str | None = None
     captured_at: datetime | None = None
     card_label: str | None = None
     player_name: str | None = None
@@ -129,6 +133,8 @@ class SignalOfTheWeek(BaseModel):
     reason: str
     evidence: dict[str, Any] = Field(default_factory=dict)
     algorithm_version: str = WEEKLY_INTELLIGENCE_V1
+    weekly_algorithm_version: str = WEEKLY_INTELLIGENCE_V1
+    scoring_algorithm_version: str | None = None
     selected_at: datetime | None = None
     headshot_url: str | None = None
     team: str | None = None

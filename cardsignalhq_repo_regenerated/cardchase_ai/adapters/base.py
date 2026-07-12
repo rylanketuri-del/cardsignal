@@ -28,6 +28,7 @@ class SeasonAdapter(Protocol):
         anchor: datetime | None = None,
         timezone_name: str,
         season: int | None = None,
+        settings: Any | None = None,
     ) -> ReportingPeriod: ...
 
 

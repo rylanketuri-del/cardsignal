@@ -78,10 +78,26 @@ async function fetchCardWeeklyIntelligence(csCardId) {
   return apiFetch(`/api/cards/${encodeURIComponent(csCardId)}/intelligence/weekly?limit=2`);
 }
 async function fetchPlayerSearch(query) {
-  const response = await fetch(`${API_BASE_URL}/api/players/search?q=${encodeURIComponent(query)}`);
+  const params = new URLSearchParams({ q: query });
+  const response = await fetch(`${API_BASE_URL}/api/players/search?${params.toString()}`);
   if (!response.ok) return [];
   const data = await response.json();
   return Array.isArray(data) ? data : (data.items || []);
+}
+
+async function fetchRegisteredLeagues() {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/leagues`);
+    if (!response.ok) throw new Error('leagues unavailable');
+    const data = await response.json();
+    return Array.isArray(data.leagues) ? data.leagues : [];
+  } catch (_) {
+    return [{ league: 'MLB', display_name: 'Major League Baseball', search_enabled: true, live_status: 'live' }];
+  }
+}
+
+function getLiveSearchLeagues(leagues = registeredLeagues) {
+  return leagues.filter((item) => item.search_enabled && item.live_status === 'live');
 }
 
 function setAuthStatus(message, isError = false) {
@@ -949,7 +965,9 @@ function formatStatCount(value, pending = "—") {
 function normalizeCsPlayerId(entry = {}) {
   const pid = entry.player_id || entry.cs_player_id || entry.source_player_id;
   if (!pid) return null;
-  return String(pid).includes(":") ? String(pid) : `mlb:${pid}`;
+  if (String(pid).includes(':')) return String(pid);
+  const league = String(entry.league || 'MLB').toLowerCase();
+  return `${league}:${pid}`;
 }
 
 function resolveWeeklySnapshot(entry = {}, weeklyHistory = []) {
@@ -2510,6 +2528,7 @@ function renderDashboardV2(entries) {
    Sprint 4.6 — Universal Player Search Polish
    ========================================================== */
 
+let registeredLeagues = [];
 let searchDebounceTimer = null;
 let searchRequestId = 0;
 let cachedBackendSearchResults = [];
@@ -2580,8 +2599,14 @@ function renderSearchResultHeadshot(entry = {}) {
 
 function renderSearchResultBadge(entry) {
   const isTop20 = isLeaderboardPlayer(entry);
-  const label = isTop20 ? "Top 20" : "MLB Search";
-  const modifier = isTop20 ? "top20" : "mlb";
+  if (isTop20) {
+    return `<span class="player-search-result-badge player-search-result-badge--top20">Top 20</span>`;
+  }
+  const league = String(entry.league || 'MLB').toUpperCase();
+  const liveLeagues = getLiveSearchLeagues();
+  const leagueMeta = liveLeagues.find((item) => item.league === league);
+  const label = leagueMeta?.display_name ? `${leagueMeta.display_name} Search` : `${league} Search`;
+  const modifier = league.toLowerCase();
   return `<span class="player-search-result-badge player-search-result-badge--${modifier}">${label}</span>`;
 }
 
@@ -2635,6 +2660,7 @@ function renderSearchResults(matches, query, { loading = false } = {}) {
     const score = entry.hotness?.total_score || 0;
     const team = getTeamAbbrev(entry);
     const position = entry.position || "—";
+    const league = String(entry.league || "MLB").toUpperCase();
     const scoreMarkup = scored
       ? `<strong>${formatScore(score)}</strong><small>CardSignal</small>`
       : `<strong class="search-score-unscored">Not scored yet</strong><small>CardSignal</small>`;
@@ -2647,13 +2673,14 @@ function renderSearchResults(matches, query, { loading = false } = {}) {
         role="option"
         aria-selected="${index === searchHighlightIndex ? "true" : "false"}"
         data-player-id="${entry.player_id || ""}"
+        data-league="${league}"
         data-is-leaderboard="${scored ? "1" : "0"}"
       >
         ${renderSearchResultHeadshot(entry)}
         <span class="player-search-result-copy">
           <strong>${entry.player_name}</strong>
           <span class="player-search-result-meta">
-            <span>${team} · ${position}</span>
+            <span>${team} · ${position} · ${league}</span>
             ${renderSearchResultBadge(entry)}
           </span>
         </span>
@@ -2895,6 +2922,9 @@ async function init() {
     status.textContent = 'Binding controls...';
     bindAuthActions();
     bindAdminActions();
+
+    status.textContent = 'Loading registered leagues...';
+    registeredLeagues = await fetchRegisteredLeagues();
 
     status.textContent = 'Loading leaderboard...';
     const [payload, weeklyPayload] = await Promise.all([

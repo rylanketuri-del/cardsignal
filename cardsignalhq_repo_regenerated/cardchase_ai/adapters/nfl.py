@@ -5,24 +5,34 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from cardchase_ai.adapters.metadata import LeagueMetadata, RecentWindow, SeasonPhaseRules, SportMetadata
-from cardchase_ai.config import Settings
-from cardchase_ai.models.schemas import MarketSnapshot
-from cardchase_ai.models.weekly import NFL_PLAYER_SIGNAL_V1
-from cardchase_ai.signals.drivers import NFL_NARRATIVE_DRIVERS
-from cardchase_ai.utils.reporting_period import ReportingPeriod, _build_reporting_period_direct
-
 from cardchase_ai.adapters.league_constants import (
     NFL_CARD_QUERY_LABELS,
     NFL_SEARCH_TEMPLATES,
     NFL_SUPPORTED_METRICS,
     NFL_SUPPORTED_POSITIONS,
 )
+from cardchase_ai.adapters.metadata import LeagueMetadata, RecentWindow, SeasonPhaseRules, SportMetadata
+from cardchase_ai.adapters.period_rules import build_reporting_period_from_metadata
+from cardchase_ai.config import Settings
+from cardchase_ai.models.schemas import MarketSnapshot
+from cardchase_ai.models.weekly import NFL_PLAYER_SIGNAL_V1
+from cardchase_ai.signals.drivers import NFL_NARRATIVE_DRIVERS
+from cardchase_ai.utils.reporting_period import ReportingPeriod
 
 
 class NflSeasonAdapter:
-    def resolve_season(self, settings: Settings, period_start: datetime) -> int:
-        return period_start.year
+    def __init__(self, league: NflLeagueAdapter) -> None:
+        self._league = league
+
+    def resolve_season(self, settings: Settings, period_start: datetime, explicit_season: int | None = None) -> int:
+        from cardchase_ai.adapters.period_rules import resolve_season_from_metadata
+
+        return resolve_season_from_metadata(
+            self._league.metadata,
+            period_start,
+            settings,
+            explicit_season,
+        )
 
     def build_reporting_period(
         self,
@@ -30,18 +40,22 @@ class NflSeasonAdapter:
         anchor: datetime | None = None,
         timezone_name: str,
         season: int | None = None,
+        settings: Settings | None = None,
     ) -> ReportingPeriod:
-        return _build_reporting_period_direct(
-            league="NFL",
-            sport="NFL",
+        return build_reporting_period_from_metadata(
+            self._league.metadata,
             anchor=anchor,
             timezone_name=timezone_name,
             season=season,
+            settings=settings,
         )
 
 
 class NflPerformanceAdapter:
     """Stub — NFL performance formulas arrive in Sprint 11.1+."""
+
+    def __init__(self, league: NflLeagueAdapter) -> None:
+        self._league = league
 
     def fetch_performance_windows(self, player_id: int, season: int, settings: Settings):
         raise NotImplementedError("NFL performance adapter is not yet implemented")
@@ -99,8 +113,8 @@ class NflNarrativeDriverAdapter:
 
 class NflLeagueAdapter:
     def __init__(self) -> None:
-        self._season = NflSeasonAdapter()
-        self._performance = NflPerformanceAdapter()
+        self._season = NflSeasonAdapter(self)
+        self._performance = NflPerformanceAdapter(self)
         self._card_signal = NflCardSignalAdapter()
         self._player_snapshot = NflPlayerSnapshotAdapter()
         self._card_report = NflCardReportAdapter()
@@ -114,16 +128,21 @@ class NflLeagueAdapter:
         return LeagueMetadata(
             sport="FOOTBALL",
             league="NFL",
+            display_name="National Football League",
             timezone="America/New_York",
             recent_window=RecentWindow(kind="games", value=3),
+            baseline_window_days=30,
             season_phases=SeasonPhaseRules(preseason=True, regular_season=True, postseason=True, offseason=True),
             supported_positions=NFL_SUPPORTED_POSITIONS,
             supported_metrics=NFL_SUPPORTED_METRICS,
             card_support=True,
-            search_support=False,
-            player_signal_algorithm_version=NFL_PLAYER_SIGNAL_V1,
+            search_enabled=True,
+            live_status="coming_soon",
+            scoring_algorithm_version=NFL_PLAYER_SIGNAL_V1,
             period_start_weekday=3,
             period_end_weekday=0,
+            refresh_day=1,
+            refresh_hour=6,
             card_search_templates=NFL_SEARCH_TEMPLATES,
             card_query_labels=NFL_CARD_QUERY_LABELS,
         )

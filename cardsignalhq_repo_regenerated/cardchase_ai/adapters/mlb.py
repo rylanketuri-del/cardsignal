@@ -5,7 +5,14 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
+from cardchase_ai.adapters.league_constants import (
+    MLB_CARD_QUERY_LABELS,
+    MLB_SEARCH_TEMPLATES,
+    MLB_SUPPORTED_METRICS,
+    MLB_SUPPORTED_POSITIONS,
+)
 from cardchase_ai.adapters.metadata import LeagueMetadata, RecentWindow, SeasonPhaseRules, SportMetadata
+from cardchase_ai.adapters.period_rules import build_reporting_period_from_metadata
 from cardchase_ai.clients.mlb import MLBClient
 from cardchase_ai.config import Settings
 from cardchase_ai.models.schemas import MarketSnapshot
@@ -17,25 +24,27 @@ from cardchase_ai.signals.drivers import (
     run_signal_drivers,
 )
 from cardchase_ai.utils.normalize import summarize_market
-from cardchase_ai.utils.reporting_period import ReportingPeriod, _build_reporting_period_direct
-from cardchase_ai.utils.rolling import filter_last_n_days, summarize_hitter_window
+from cardchase_ai.utils.reporting_period import ReportingPeriod
+from cardchase_ai.utils.rolling import filter_last_n_days, filter_last_n_games, summarize_hitter_window
 from cardchase_ai.weekly_scoring import derive_momentum_score
-
-from cardchase_ai.adapters.league_constants import (
-    MLB_CARD_QUERY_LABELS,
-    MLB_SEARCH_TEMPLATES,
-    MLB_SUPPORTED_METRICS,
-    MLB_SUPPORTED_POSITIONS,
-)
-
 
 DYNAMIC_CANDIDATE_LIMIT = 80
 MARKET_SCAN_LIMIT = 45
 
 
 class MlbSeasonAdapter:
-    def resolve_season(self, settings: Settings, period_start: datetime) -> int:
-        return settings.mlb_season
+    def __init__(self, league: MlbLeagueAdapter) -> None:
+        self._league = league
+
+    def resolve_season(self, settings: Settings, period_start: datetime, explicit_season: int | None = None) -> int:
+        from cardchase_ai.adapters.period_rules import resolve_season_from_metadata
+
+        return resolve_season_from_metadata(
+            self._league.metadata,
+            period_start,
+            settings,
+            explicit_season,
+        )
 
     def build_reporting_period(
         self,
@@ -43,17 +52,21 @@ class MlbSeasonAdapter:
         anchor: datetime | None = None,
         timezone_name: str,
         season: int | None = None,
+        settings: Settings | None = None,
     ) -> ReportingPeriod:
-        return _build_reporting_period_direct(
-            league="MLB",
-            sport="MLB",
+        return build_reporting_period_from_metadata(
+            self._league.metadata,
             anchor=anchor,
             timezone_name=timezone_name,
             season=season,
+            settings=settings,
         )
 
 
 class MlbPerformanceAdapter:
+    def __init__(self, league: MlbLeagueAdapter) -> None:
+        self._league = league
+
     def fetch_performance_windows(
         self,
         player_id: int,
@@ -62,9 +75,13 @@ class MlbPerformanceAdapter:
     ) -> tuple[Any, Any]:
         client = MLBClient()
         gamelog = client.get_hitter_gamelog(player_id, season)
-        recent_days = 7
-        stats_recent = summarize_hitter_window(filter_last_n_days(gamelog, recent_days))
-        stats_baseline = summarize_hitter_window(filter_last_n_days(gamelog, 30))
+        meta = self._league.metadata
+        recent = meta.recent_window
+        if recent.kind == "days":
+            stats_recent = summarize_hitter_window(filter_last_n_days(gamelog, recent.value))
+        else:
+            stats_recent = summarize_hitter_window(filter_last_n_games(gamelog, recent.value))
+        stats_baseline = summarize_hitter_window(filter_last_n_days(gamelog, meta.baseline_window_days))
         return stats_recent, stats_baseline
 
     def build_hotness_breakdown(
@@ -133,8 +150,8 @@ class MlbNarrativeDriverAdapter:
 
 class MlbLeagueAdapter:
     def __init__(self) -> None:
-        self._season = MlbSeasonAdapter()
-        self._performance = MlbPerformanceAdapter()
+        self._season = MlbSeasonAdapter(self)
+        self._performance = MlbPerformanceAdapter(self)
         self._card_signal = MlbCardSignalAdapter()
         self._player_snapshot = MlbPlayerSnapshotAdapter()
         self._card_report = MlbCardReportAdapter()
@@ -149,16 +166,22 @@ class MlbLeagueAdapter:
         return LeagueMetadata(
             sport="BASEBALL",
             league="MLB",
+            display_name="Major League Baseball",
             timezone="America/New_York",
             recent_window=RecentWindow(kind="days", value=7),
+            baseline_window_days=30,
             season_phases=SeasonPhaseRules(preseason=True, regular_season=True, postseason=True, offseason=True),
             supported_positions=MLB_SUPPORTED_POSITIONS,
             supported_metrics=MLB_SUPPORTED_METRICS,
             card_support=True,
-            search_support=True,
-            player_signal_algorithm_version=MLB_PLAYER_SIGNAL_V1,
+            search_enabled=True,
+            live_status="live",
+            scoring_algorithm_version=MLB_PLAYER_SIGNAL_V1,
             period_start_weekday=0,
             period_end_weekday=6,
+            refresh_day=1,
+            refresh_hour=6,
+            season_settings_key="mlb_season",
             card_search_templates=MLB_SEARCH_TEMPLATES,
             card_query_labels=MLB_CARD_QUERY_LABELS,
         )
@@ -269,7 +292,7 @@ class MlbLeagueAdapter:
         try:
             stats_7d, stats_30d = self._performance.fetch_performance_windows(
                 player_id,
-                settings.mlb_season,
+                self._season.resolve_season(settings, datetime.now()),
                 settings,
             )
 
@@ -310,7 +333,7 @@ class MlbLeagueAdapter:
                 position=candidate.get("position"),
                 headshot_url=candidate.get("headshot_url"),
                 team_logo_url=candidate.get("team_logo_url"),
-                sport="MLB",
+                sport=self.metadata.sport,
                 candidate_source=candidate.get("candidate_source", "dynamic"),
             )
             return output, list(market_snapshots.values()), None

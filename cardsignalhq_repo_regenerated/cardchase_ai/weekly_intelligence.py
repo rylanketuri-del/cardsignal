@@ -206,7 +206,9 @@ def build_player_snapshot(
         rank=rank,
         evidence=evidence,
         missing_inputs=missing_inputs,
-        algorithm_version=adapter.metadata.player_signal_algorithm_version,
+        algorithm_version=WEEKLY_INTELLIGENCE_V1,
+        weekly_algorithm_version=WEEKLY_INTELLIGENCE_V1,
+        scoring_algorithm_version=adapter.metadata.scoring_algorithm_version,
         captured_at=_utcnow(),
         player_name=output.player_name,
         team=output.team,
@@ -255,6 +257,8 @@ def build_card_snapshots(
                 evidence=intel["evidence"],
                 missing_inputs=intel["missing_inputs"],
                 algorithm_version=WEEKLY_INTELLIGENCE_V1,
+                weekly_algorithm_version=WEEKLY_INTELLIGENCE_V1,
+                scoring_algorithm_version=adapter.metadata.scoring_algorithm_version,
                 captured_at=_utcnow(),
                 card_label=query_labels.get(query_name, query_name),
                 player_name=output.player_name,
@@ -657,7 +661,7 @@ def run_weekly_intelligence(
     league_adapter = get_league_adapter(league)
     period = league_adapter.season.build_reporting_period(
         timezone_name=settings.weekly_timezone,
-        season=settings.mlb_season if league.upper() == "MLB" else None,
+        settings=settings,
     )
     _record_stage(stages, outcomes, "determine_period", "COMPLETED", f"week {period.week_number}")
 

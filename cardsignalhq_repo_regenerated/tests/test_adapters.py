@@ -39,7 +39,7 @@ class LeagueRegistryTests(unittest.TestCase):
         with self.assertRaises(KeyError):
             get_league_adapter("SOCCER")
 
-    def test_searchable_leagues_includes_mlb_only(self):
+    def test_searchable_leagues_includes_mlb_only_when_live(self):
         searchable = list_searchable_leagues()
         self.assertIn("MLB", searchable)
         self.assertNotIn("NFL", searchable)
@@ -96,7 +96,7 @@ class AlgorithmVersionTests(unittest.TestCase):
 
     def test_adapter_exposes_algorithm_version(self):
         mlb = get_league_adapter("MLB")
-        self.assertEqual(mlb.metadata.player_signal_algorithm_version, MLB_PLAYER_SIGNAL_V1)
+        self.assertEqual(mlb.metadata.scoring_algorithm_version, MLB_PLAYER_SIGNAL_V1)
 
 
 class SignalDriverTests(unittest.TestCase):

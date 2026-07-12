@@ -84,9 +84,9 @@
 
 ### Release v0.15.0 — Sport Adapter Framework
 
-Sprint 11.0 complete. Verification pass required before merge.
+Sprint 11.0 in progress — verification pass required before merge.
 
-Generalizes CardSignal architecture so every supported sport plugs into one shared framework. MLB production behavior preserved; NFL metadata and period rules registered with pipeline stub for Sprint 11.1.
+Generalizes CardSignal architecture so every supported sport plugs into one shared framework. MLB production behavior preserved; NFL metadata and period rules registered with pipeline stub for Sprint 11.1. NBA is not implemented.
 
 ## Up Next
 
