@@ -165,6 +165,15 @@ def run_beta_readiness_audit(
         result.blockers.append(
             BetaReadinessBlocker("UX", "Beta feedback module not loaded in index.html", "blocker")
         )
+    else:
+        result.checks_passed.append("Beta feedback module referenced")
+
+    if "not-found.js" not in index_html:
+        result.blockers.append(
+            BetaReadinessBlocker("UX", "Not-found route module not loaded in index.html", "blocker")
+        )
+    else:
+        result.checks_passed.append("Not-found route module referenced")
 
     if "routing.js" not in index_html:
         result.blockers.append(

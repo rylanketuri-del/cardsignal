@@ -1460,6 +1460,74 @@ function setupPlayerIntelligenceModal() {
   bindPiModalKeydown();
 }
 
+function clearReportModalState(options = {}) {
+  if (!options.keepPlayerContext) {
+    piModalEntry = null;
+    piModalIntel = null;
+    piModalWeeklySnap = null;
+    piModalCards = [];
+    selectedPlayer = null;
+  }
+  piModalActiveCardId = null;
+}
+
+function wireNotFoundActions(options = {}) {
+  const body = document.getElementById("pi-modal-body");
+  if (!body) return;
+
+  body.querySelectorAll("[data-not-found-action]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const action = btn.dataset.notFoundAction;
+      if (action === "home") {
+        closePlayerIntelligenceModal();
+        return;
+      }
+      if (action === "search") {
+        closePlayerIntelligenceModal();
+        const searchInput = document.getElementById("player-search-input");
+        if (searchInput) {
+          searchInput.focus();
+          searchInput.scrollIntoView({ block: "center", behavior: "smooth" });
+        }
+        return;
+      }
+      if (action === "back-scouting" && options.parentPlayerId && window.CardSignalRouting) {
+        window.CardSignalRouting.navigateTo({ type: "player", playerId: options.parentPlayerId });
+      }
+    });
+  });
+
+  requestAnimationFrame(() => {
+    body.querySelector(".report-not-found-title")?.focus();
+  });
+}
+
+function showReportNotFoundState({ entityType, parentPlayerId = null, entityId = null }) {
+  const modal = document.getElementById("player-intelligence-modal");
+  const header = document.getElementById("pi-modal-header");
+  const body = document.getElementById("pi-modal-body");
+  if (!modal || !header || !body || !window.CardSignalNotFound) return;
+
+  if (entityType === "player") {
+    clearReportModalState();
+  } else {
+    clearReportModalState({ keepPlayerContext: true });
+    piModalActiveCardId = entityId || null;
+  }
+
+  const config = window.CardSignalNotFound.NOT_FOUND_CONFIG[entityType] || window.CardSignalNotFound.NOT_FOUND_CONFIG.player;
+  header.innerHTML = `<div class="pi-modal-header-fallback"><h2 id="pi-modal-title">${config.eyebrow}</h2></div>`;
+  body.innerHTML = window.CardSignalNotFound.renderReportNotFound(entityType, {
+    hasParentPlayer: Boolean(parentPlayerId),
+  });
+  wireNotFoundActions({ parentPlayerId });
+
+  modal.classList.remove("hidden");
+  modal.setAttribute("aria-hidden", "false");
+  lockBodyScrollForModal();
+  syncAppContext(entityType, entityId || parentPlayerId || null);
+}
+
 function closePlayerIntelligenceModal(options = {}) {
   const modal = document.getElementById("player-intelligence-modal");
   if (!modal) return;
@@ -1542,9 +1610,18 @@ function showScoutingReportBody() {
 }
 
 function openCardReport(cardId, options = {}) {
-  const card = piModalCards.find((item) => String(item.cs_card_id) === String(cardId));
   const body = document.getElementById("pi-modal-body");
-  if (!card || !body || !piModalEntry) return;
+  if (!body) return { status: "NOT_FOUND" };
+
+  const card = piModalCards.find((item) => String(item.cs_card_id) === String(cardId));
+  if (!card || !piModalEntry) {
+    showReportNotFoundState({
+      entityType: "card",
+      parentPlayerId: piModalEntry?.player_id || null,
+      entityId: cardId,
+    });
+    return { status: "NOT_FOUND" };
+  }
 
   piModalActiveCardId = card.cs_card_id;
   body.innerHTML = renderCardReportView(card, piModalEntry);
@@ -1564,6 +1641,8 @@ function openCardReport(cardId, options = {}) {
       cardId: card.cs_card_id,
     });
   }
+
+  return { status: "OK" };
 }
 
 function wireCardReportNavigation() {
@@ -1601,8 +1680,13 @@ async function openPlayerIntelligenceModal(entry, options = {}) {
       try {
         player = await fetchPlayer(entry.player_id);
       } catch (fetchError) {
-        if (!entry.player_name) throw fetchError;
-        player = entry;
+        const hasRealIdentity = Boolean(entry.player_name) && entry.player_name !== "Player";
+        const hasLeaderboardData = Boolean(entry.hotness);
+        if (hasRealIdentity || hasLeaderboardData) {
+          player = entry;
+        } else {
+          throw fetchError;
+        }
       }
     }
     selectedPlayer = player;
@@ -1638,7 +1722,8 @@ async function openPlayerIntelligenceModal(entry, options = {}) {
     syncAppContext("player", player.player_id || null);
 
     if (options.cardId) {
-      openCardReport(options.cardId, { skipRouteUpdate: true });
+      const cardResult = openCardReport(options.cardId, { skipRouteUpdate: true });
+      if (cardResult?.status === "NOT_FOUND") return;
     } else if (!options.skipRouteUpdate && window.CardSignalRouting && player.player_id) {
       window.CardSignalRouting.navigateTo({ type: "player", playerId: player.player_id });
     }
@@ -1648,6 +1733,7 @@ async function openPlayerIntelligenceModal(entry, options = {}) {
     });
   } catch (error) {
     header.innerHTML = `<div class="pi-modal-header-fallback"><h2 id="pi-modal-title">Scouting Report</h2></div>`;
+    clearReportModalState();
     body.innerHTML = `<div class="pi-tab-placeholder"><p class="pi-tab-placeholder-copy">${formatSafeError(error, "We couldn't load this scouting report.")}</p></div>`;
     modal.classList.remove("hidden");
     modal.setAttribute("aria-hidden", "false");
@@ -2826,12 +2912,18 @@ function setupVersionFooter() {
 }
 
 async function resolvePlayerEntry(playerId) {
-  const fromLeaderboard = latestEntries.find((item) => String(item.player_id) === String(playerId));
+  const normalizedId = String(playerId || "").trim();
+  if (!normalizedId) return null;
+
+  const fromLeaderboard = latestEntries.find((item) => String(item.player_id) === normalizedId);
   if (fromLeaderboard) return fromLeaderboard;
+
   try {
-    return await fetchPlayer(playerId);
+    const fetched = await fetchPlayer(normalizedId);
+    if (!fetched || !fetched.player_id) return null;
+    return fetched;
   } catch (_) {
-    return { player_id: playerId, player_name: "Player" };
+    return null;
   }
 }
 
@@ -2843,21 +2935,17 @@ async function handleRouteChange(route) {
   }
 
   if (route.type === "invalid") {
-    const modal = document.getElementById("player-intelligence-modal");
-    const header = document.getElementById("pi-modal-header");
-    const body = document.getElementById("pi-modal-body");
-    if (modal && header && body) {
-      header.innerHTML = `<div class="pi-modal-header-fallback"><h2 id="pi-modal-title">Scouting Report</h2></div>`;
-      body.innerHTML = `<div class="pi-tab-placeholder"><p class="pi-tab-placeholder-copy">This link is not valid. Try searching for a player from the Signal Center.</p></div>`;
-      modal.classList.remove("hidden");
-      modal.setAttribute("aria-hidden", "false");
-      lockBodyScrollForModal();
-    }
+    showReportNotFoundState({ entityType: "player" });
     return;
   }
 
   if (route.type === "player" || route.type === "card") {
     const entry = await resolvePlayerEntry(route.playerId);
+    if (!entry) {
+      showReportNotFoundState({ entityType: "player", entityId: route.playerId });
+      return;
+    }
+
     if (isPlayerIntelligenceModalOpen() && piModalEntry && String(piModalEntry.player_id) === String(route.playerId)) {
       if (route.type === "card" && route.cardId) {
         openCardReport(route.cardId, { skipRouteUpdate: true });
@@ -2866,6 +2954,7 @@ async function handleRouteChange(route) {
       }
       return;
     }
+
     await openPlayerIntelligenceModal(entry, {
       skipRouteUpdate: true,
       cardId: route.type === "card" ? route.cardId : null,

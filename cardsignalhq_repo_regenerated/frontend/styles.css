@@ -6244,3 +6244,34 @@ body.beta-feedback-open {
     margin-bottom: 96px;
   }
 }
+
+.report-not-found {
+  display: grid;
+  gap: 14px;
+  padding: 8px 4px 16px;
+  max-width: 520px;
+}
+
+.report-not-found-title {
+  margin: 0;
+  font-size: 28px;
+  line-height: 1.2;
+}
+
+.report-not-found-body {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.report-not-found-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.report-not-found-title:focus {
+  outline: 2px solid var(--copper);
+  outline-offset: 3px;
+}
