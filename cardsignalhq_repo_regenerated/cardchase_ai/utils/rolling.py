@@ -24,6 +24,16 @@ def filter_last_n_days(rows: Iterable[HitterGameLogRow], days: int) -> List[Hitt
 
 
 
+def filter_last_n_games(rows: Iterable[HitterGameLogRow], games: int) -> List[HitterGameLogRow]:
+    rows = list(rows)
+    if not rows or games <= 0:
+        return []
+    dated = [row for row in rows if row.date]
+    dated.sort(key=lambda row: row.date, reverse=True)
+    return dated[:games]
+
+
+
 def summarize_hitter_window(rows: Iterable[HitterGameLogRow]) -> RollingHitterStats:
     rows = list(rows)
     if not rows:

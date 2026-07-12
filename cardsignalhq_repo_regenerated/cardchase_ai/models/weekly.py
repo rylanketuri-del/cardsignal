@@ -8,6 +8,20 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 WEEKLY_INTELLIGENCE_V1 = "WEEKLY_INTELLIGENCE_V1"
+MLB_PLAYER_SIGNAL_V1 = "MLB_PLAYER_SIGNAL_V1"
+NFL_PLAYER_SIGNAL_V1 = "NFL_PLAYER_SIGNAL_V1"
+NBA_PLAYER_SIGNAL_V1 = "NBA_PLAYER_SIGNAL_V1"
+
+LEAGUE_PLAYER_SIGNAL_VERSIONS: dict[str, str] = {
+    "MLB": MLB_PLAYER_SIGNAL_V1,
+    "NFL": NFL_PLAYER_SIGNAL_V1,
+    "NBA": NBA_PLAYER_SIGNAL_V1,
+}
+
+
+def player_signal_algorithm_version(league: str) -> str:
+    """Resolve the player-signal algorithm version for a league."""
+    return LEAGUE_PLAYER_SIGNAL_VERSIONS.get(league.upper(), WEEKLY_INTELLIGENCE_V1)
 
 WeeklyRunStatus = Literal["PENDING", "RUNNING", "COMPLETED", "PARTIAL", "FAILED", "SKIPPED"]
 WeeklyTriggeredBy = Literal["scheduler", "manual", "admin", "test"]
@@ -67,6 +81,8 @@ class PlayerWeeklySignalSnapshot(BaseModel):
     evidence: dict[str, Any] = Field(default_factory=dict)
     missing_inputs: list[str] = Field(default_factory=list)
     algorithm_version: str = WEEKLY_INTELLIGENCE_V1
+    weekly_algorithm_version: str = WEEKLY_INTELLIGENCE_V1
+    scoring_algorithm_version: str | None = None
     captured_at: datetime | None = None
     player_name: str | None = None
     team: str | None = None
@@ -97,6 +113,8 @@ class CardWeeklyIntelligenceSnapshot(BaseModel):
     evidence: dict[str, Any] = Field(default_factory=dict)
     missing_inputs: list[str] = Field(default_factory=list)
     algorithm_version: str = WEEKLY_INTELLIGENCE_V1
+    weekly_algorithm_version: str = WEEKLY_INTELLIGENCE_V1
+    scoring_algorithm_version: str | None = None
     captured_at: datetime | None = None
     card_label: str | None = None
     player_name: str | None = None
@@ -115,6 +133,8 @@ class SignalOfTheWeek(BaseModel):
     reason: str
     evidence: dict[str, Any] = Field(default_factory=dict)
     algorithm_version: str = WEEKLY_INTELLIGENCE_V1
+    weekly_algorithm_version: str = WEEKLY_INTELLIGENCE_V1
+    scoring_algorithm_version: str | None = None
     selected_at: datetime | None = None
     headshot_url: str | None = None
     team: str | None = None

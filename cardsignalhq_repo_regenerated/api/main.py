@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from cardchase_ai.clients.mlb import MLBClient
+from cardchase_ai.adapters import get_league_adapter, league_api_payload, list_registered_leagues, list_searchable_leagues, search_players as adapter_search_players
 from cardchase_ai.config import get_settings
 from cardchase_ai.pipeline import run_pipeline
 from cardchase_ai.storage import SupabaseError, SupabaseStorage
@@ -248,16 +248,29 @@ def get_latest_run() -> JSONResponse:
 
 
 @app.get("/api/players/search")
-def search_players(q: str = "") -> JSONResponse:
+def search_players(q: str = "", league: str | None = None) -> JSONResponse:
     query = (q or "").strip()
     if len(query) < 2:
         return JSONResponse([])
 
     try:
-        results = MLBClient().search_players(query, limit=10)
+        if league:
+            results = adapter_search_players(query, league=league.upper(), limit=10)
+        else:
+            results = adapter_search_players(query, limit=10)
         return JSONResponse(results)
+    except KeyError:
+        return JSONResponse([])
     except Exception:
         return JSONResponse([])
+
+
+@app.get("/api/leagues")
+def get_registered_leagues() -> JSONResponse:
+    """Return registered leagues for universal search and sport tabs."""
+    leagues = [league_api_payload(get_league_adapter(code)) for code in list_registered_leagues()]
+    searchable = list_searchable_leagues()
+    return JSONResponse({"leagues": leagues, "searchable": searchable})
 
 
 @app.get("/api/players/{player_id}")

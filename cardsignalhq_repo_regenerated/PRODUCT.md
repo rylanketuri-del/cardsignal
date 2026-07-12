@@ -10,7 +10,7 @@ The homepage is the **Signal Center** — a market-wide overview dashboard.
 
 Primary sections:
 
-- **Universal Search** — find any MLB player; leaderboard players show scores, others show search results from the backend player pool
+- **Universal Search** — find players across registered live leagues via `GET /api/leagues` and generalized `GET /api/players/search`
 - **Featured Signal (Signal of the Week)** — editorial hero highlighting the top signal with score, weekly movement, recommendation pill, and View Report CTA
 - **Card Intelligence** — market-wide card sections: Trending Cards, Biggest Movers, Buy Low Watch, Most Chased
 - **Today's Leaders** — ranked table of tracked players with signal, performance, market, trend, and View Report action
@@ -86,7 +86,7 @@ CardSignal refreshes market-wide intelligence **weekly on Tuesdays at 6:00 AM Am
 - **Latest completed run:** remains available if a new run fails or is skipped
 - **Signal of the Week:** selected only from players with sufficient real evidence — no random recommendations
 - **No fabricated weekly data:** null scores stay null; WATCH fallback is valid when evidence is insufficient
-- **Algorithm versioning:** `WEEKLY_INTELLIGENCE_V1` is stored on every run, snapshot, and Signal of the Week record
+- **Algorithm versioning:** `WEEKLY_INTELLIGENCE_V1` is stored on every weekly run, snapshot, and Signal of the Week record as the orchestration version; league-specific scoring-model versions (e.g. `MLB_PLAYER_SIGNAL_V1`) are stored separately on player and card snapshots as `scoring_algorithm_version`
 - **Beta scope:** Top 100 MLB players from dynamic candidate logic; universal search remains available for players outside the universe
 
 GET routes serve stored weekly intelligence only — they never trigger provider work.

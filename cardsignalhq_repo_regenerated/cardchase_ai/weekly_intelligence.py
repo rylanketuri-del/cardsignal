@@ -7,8 +7,8 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Callable
 
+from cardchase_ai.adapters import get_league_adapter
 from cardchase_ai.clients.ebay import EbayClient
-from cardchase_ai.clients.mlb import MLBClient
 from cardchase_ai.config import Settings, get_settings
 from cardchase_ai.models.schemas import MarketSnapshot
 from cardchase_ai.models.weekly import (
@@ -22,34 +22,26 @@ from cardchase_ai.models.weekly import (
     WeeklyTriggeredBy,
 )
 from cardchase_ai.pipeline import (
-    SEARCH_TEMPLATES,
     PlayerPipelineOutput,
-    _build_market_universe,
     _process_alerts,
     _write_outputs,
 )
 from cardchase_ai.market_movement import MarketSnapshotHistory
 from cardchase_ai.models.market_movement import CardMarketMovement
 from cardchase_ai.population import StageOutcome, get_population_provider, run_population_stage
-from cardchase_ai.score import build_hotness_breakdown
 from cardchase_ai.signal_of_week import select_signal_of_the_week
 from cardchase_ai.storage import SupabaseStorage
-from cardchase_ai.utils.normalize import summarize_market
 from cardchase_ai.utils.reporting_period import (
     ReportingPeriod,
-    build_reporting_period,
     next_scheduled_refresh,
 )
-from cardchase_ai.utils.rolling import filter_last_n_days, summarize_hitter_window
 from cardchase_ai.weekly_scoring import (
-    CARD_QUERY_LABELS,
     card_intelligence_from_snapshot,
     compute_weekly_change,
     cs_card_id,
     cs_player_id,
     derive_collector_score,
     derive_conviction,
-    derive_momentum_score,
     derive_recommendation,
     derive_scarcity_score,
     derive_status,
@@ -103,56 +95,29 @@ def build_weekly_storage(settings: Settings) -> WeeklyStorage:
     return WeeklyStorage(supabase, json_store)
 
 
+def _build_market_universe(mlb_client=None, settings=None, *, scan_limit: int | None = None, league: str = "MLB") -> list[dict[str, Any]]:
+    """Backward-compatible shim — delegates to the registered league adapter."""
+    settings = settings or get_settings()
+    return get_league_adapter(league).build_market_universe(settings, scan_limit=scan_limit)
+
+
 def process_player_for_weekly(
     candidate: dict[str, Any],
-    mlb_client: MLBClient,
+    mlb_client: Any,
     ebay_client: EbayClient | None,
     settings: Settings,
     *,
     market_enabled: bool,
+    league: str = "MLB",
 ) -> tuple[PlayerPipelineOutput | None, list[MarketSnapshot], str | None]:
-    player_name = candidate["player_name"]
-    player_id = int(candidate["player_id"])
-    try:
-        gamelog = mlb_client.get_hitter_gamelog(player_id, settings.mlb_season)
-        stats_7d = summarize_hitter_window(filter_last_n_days(gamelog, 7))
-        stats_30d = summarize_hitter_window(filter_last_n_days(gamelog, 30))
-
-        market_snapshots: dict[str, MarketSnapshot] = {}
-        if market_enabled and ebay_client:
-            for query_name, template in SEARCH_TEMPLATES.items():
-                payload = ebay_client.search_items(
-                    template.format(player=player_name),
-                    include_auctions=True,
-                )
-                listings = ebay_client.parse_listings(payload)
-                market_snapshots[query_name] = summarize_market(query_name, listings)
-
-        hotness = build_hotness_breakdown(
-            player_name=player_name,
-            stats_7d=stats_7d,
-            stats_30d=stats_30d,
-            market_snapshots=market_snapshots,
-        )
-
-        output = PlayerPipelineOutput(
-            player_name=player_name,
-            player_id=player_id,
-            stats_7d=stats_7d,
-            stats_30d=stats_30d,
-            market_snapshots=market_snapshots,
-            hotness=hotness,
-            team=candidate.get("team") or "MLB",
-            team_id=candidate.get("team_id"),
-            position=candidate.get("position"),
-            headshot_url=candidate.get("headshot_url"),
-            team_logo_url=candidate.get("team_logo_url"),
-            sport="MLB",
-            candidate_source=candidate.get("candidate_source", "dynamic"),
-        )
-        return output, list(market_snapshots.values()), None
-    except Exception as error:
-        return None, [], f"{player_name}: {error}"
+    """Process a player via the registered league adapter (mlb_client kept for test compatibility)."""
+    adapter = get_league_adapter(league)
+    return adapter.process_player(
+        candidate,
+        ebay_client,
+        settings,
+        market_enabled=market_enabled,
+    )
 
 
 def build_player_snapshot(
@@ -161,18 +126,33 @@ def build_player_snapshot(
     period: ReportingPeriod,
     rank: int,
     storage: WeeklyStorage,
+    league_adapter=None,
 ) -> PlayerWeeklySignalSnapshot:
     pid = str(output.player_id)
     csp_id = cs_player_id(pid, run.league)
     hotness = output.hotness
+    adapter = league_adapter or get_league_adapter(run.league)
 
     collector, collector_evidence, collector_missing = derive_collector_score(output.market_snapshots)
-    momentum, momentum_evidence, momentum_missing = derive_momentum_score(output.stats_7d, output.stats_30d)
+    momentum, momentum_evidence, momentum_missing = adapter.performance.derive_momentum(
+        output.stats_7d,
+        output.stats_30d,
+    )
     scarcity, scarcity_evidence, scarcity_missing = derive_scarcity_score(output.market_snapshots)
+
+    driver_context = {
+        "stats_7d": output.stats_7d,
+        "stats_30d": output.stats_30d,
+        "market_snapshots": output.market_snapshots,
+        "candidate": {"player_name": output.player_name, "candidate_source": output.candidate_source},
+    }
+    narrative_signals: list[str] = []
+    for narrative_driver in adapter.signal_drivers:
+        narrative_signals.extend(narrative_driver.generate(driver_context))
 
     missing_inputs = list(dict.fromkeys(collector_missing + momentum_missing + scarcity_missing))
     if output.stats_7d.games == 0:
-        missing_inputs.append("stats_7d")
+        missing_inputs.append(adapter.performance.recent_games_missing_key())
     if not output.market_snapshots and run.market_snapshots_created == 0:
         missing_inputs.append("market_snapshots")
 
@@ -197,6 +177,8 @@ def build_player_snapshot(
         "confidence_multiplier": hotness.confidence_multiplier,
         "tag": hotness.tag,
     }
+    if narrative_signals:
+        evidence["narrative_signals"] = narrative_signals
 
     return PlayerWeeklySignalSnapshot(
         snapshot_id=str(uuid.uuid4()),
@@ -225,6 +207,8 @@ def build_player_snapshot(
         evidence=evidence,
         missing_inputs=missing_inputs,
         algorithm_version=WEEKLY_INTELLIGENCE_V1,
+        weekly_algorithm_version=WEEKLY_INTELLIGENCE_V1,
+        scoring_algorithm_version=adapter.metadata.scoring_algorithm_version,
         captured_at=_utcnow(),
         player_name=output.player_name,
         team=output.team,
@@ -240,10 +224,13 @@ def build_card_snapshots(
     period: ReportingPeriod,
     *,
     card_limit: int,
+    league_adapter=None,
 ) -> list[CardWeeklyIntelligenceSnapshot]:
     snapshots: list[CardWeeklyIntelligenceSnapshot] = []
     pid = str(output.player_id)
     csp_id = cs_player_id(pid, run.league)
+    adapter = league_adapter or get_league_adapter(run.league)
+    query_labels = adapter.card_signal.query_labels()
 
     for query_name, snapshot in list(output.market_snapshots.items())[:card_limit]:
         intel = card_intelligence_from_snapshot(query_name, snapshot, output.player_name)
@@ -270,8 +257,10 @@ def build_card_snapshots(
                 evidence=intel["evidence"],
                 missing_inputs=intel["missing_inputs"],
                 algorithm_version=WEEKLY_INTELLIGENCE_V1,
+                weekly_algorithm_version=WEEKLY_INTELLIGENCE_V1,
+                scoring_algorithm_version=adapter.metadata.scoring_algorithm_version,
                 captured_at=_utcnow(),
-                card_label=CARD_QUERY_LABELS.get(query_name, query_name),
+                card_label=query_labels.get(query_name, query_name),
                 player_name=output.player_name,
             )
         )
@@ -428,7 +417,10 @@ def _execute_weekly_pipeline(
     stages: list[dict[str, Any]],
     outcomes: list[dict[str, Any]],
 ) -> WeeklyRunSummary:
-    mlb_client = MLBClient()
+    league_adapter = get_league_adapter(league)
+    if not league_adapter.pipeline_enabled:
+        raise NotImplementedError(f"Weekly pipeline is not enabled for league {league}")
+
     ebay_client = None
     if market_enabled and settings.ebay_token:
         ebay_client = EbayClient(
@@ -442,7 +434,7 @@ def _execute_weekly_pipeline(
         market_enabled = False
 
     _record_stage(stages, outcomes, "player_universe", "COMPLETED", "building candidate universe")
-    candidates = _build_market_universe(mlb_client, settings, scan_limit=player_limit)[:player_limit]
+    candidates = _build_market_universe(settings=settings, scan_limit=player_limit, league=league)[:player_limit]
     outcomes[-1]["detail"] = f"{len(candidates)} candidates"
     stages[-1]["detail"] = f"{len(candidates)} candidates"
 
@@ -453,7 +445,7 @@ def _execute_weekly_pipeline(
     for candidate in candidates:
         output, _, err = processor(
             candidate,
-            mlb_client,
+            None,
             ebay_client,
             settings,
             market_enabled=market_enabled,
@@ -540,7 +532,7 @@ def _execute_weekly_pipeline(
     _record_stage(stages, outcomes, "card_intelligence", "COMPLETED", "building snapshots")
     for rank, output in enumerate(outputs, start=1):
         try:
-            snap = build_player_snapshot(output, run, period, rank, storage)
+            snap = build_player_snapshot(output, run, period, rank, storage, league_adapter=league_adapter)
             player_snapshots.append(snap)
         except Exception as error:
             player_errors.append(f"{output.player_name}: {error}")
@@ -551,6 +543,7 @@ def _execute_weekly_pipeline(
                 run,
                 period,
                 card_limit=settings.weekly_card_limit_per_player,
+                league_adapter=league_adapter,
             )
             card_snapshots.extend(cards)
         except Exception as error:
@@ -665,10 +658,10 @@ def run_weekly_intelligence(
     market_enabled = settings.weekly_market_enabled if market_enabled is None else market_enabled
     population_enabled = settings.weekly_population_enabled if population_enabled is None else population_enabled
 
-    period = build_reporting_period(
-        league=league,
+    league_adapter = get_league_adapter(league)
+    period = league_adapter.season.build_reporting_period(
         timezone_name=settings.weekly_timezone,
-        season=settings.mlb_season,
+        settings=settings,
     )
     _record_stage(stages, outcomes, "determine_period", "COMPLETED", f"week {period.week_number}")
 
@@ -716,7 +709,17 @@ def run_weekly_intelligence(
     run = storage.create_run(run)
     _record_stage(stages, outcomes, "create_run", "COMPLETED", run.run_id)
 
-    processor = player_processor or process_player_for_weekly
+    processor = player_processor
+    if player_processor is None:
+        def processor(candidate, _mlb, ebay, settings, *, market_enabled):  # type: ignore[no-redef]
+            return process_player_for_weekly(
+                candidate,
+                _mlb,
+                ebay,
+                settings,
+                market_enabled=market_enabled,
+                league=league,
+            )
 
     try:
         return _execute_weekly_pipeline(

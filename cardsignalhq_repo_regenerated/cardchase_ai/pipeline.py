@@ -9,21 +9,14 @@ from pydantic import BaseModel
 
 from cardchase_ai.alerts import AlertEvent, build_daily_digest, detect_player_events, event_passes_player_rule
 from cardchase_ai.clients.ebay import EbayClient
-from cardchase_ai.clients.mlb import MLBClient
+from cardchase_ai.adapters import get_league_adapter
+from cardchase_ai.adapters.league_constants import MLB_SEARCH_TEMPLATES
 from cardchase_ai.config import get_settings
 from cardchase_ai.delivery import AlertDeliveryClient, DeliverySettings, build_notification_email
 from cardchase_ai.models.schemas import HitterHotnessBreakdown, MarketSnapshot, RollingHitterStats
-from cardchase_ai.score import build_hotness_breakdown
 from cardchase_ai.storage import SupabaseStorage
-from cardchase_ai.utils.normalize import summarize_market
-from cardchase_ai.utils.rolling import filter_last_n_days, summarize_hitter_window
 
-SEARCH_TEMPLATES = {
-    "broad": "{player} baseball card",
-    "bowman_chrome": "{player} Bowman Chrome rookie",
-    "auto": "{player} auto baseball card",
-    "psa10": "{player} PSA 10 baseball card",
-}
+SEARCH_TEMPLATES = MLB_SEARCH_TEMPLATES
 
 DYNAMIC_CANDIDATE_LIMIT = 80
 MARKET_SCAN_LIMIT = 45
@@ -53,69 +46,16 @@ class PipelineResult(BaseModel):
     deliveries_attempted: int = 0
 
 
-def _build_market_universe(mlb_client: MLBClient, settings, *, scan_limit: int | None = None) -> list[dict]:
-    candidate_limit = scan_limit or getattr(settings, "weekly_player_limit", None) or DYNAMIC_CANDIDATE_LIMIT
-    market_limit = scan_limit or getattr(settings, "weekly_player_limit", None) or MARKET_SCAN_LIMIT
-    universe: dict[int, dict] = {}
-
-    try:
-        dynamic_candidates = mlb_client.get_dynamic_hitter_candidates(
-            season=settings.mlb_season,
-            days=7,
-            limit=max(candidate_limit, DYNAMIC_CANDIDATE_LIMIT),
-        )
-
-        for candidate in dynamic_candidates:
-            universe[int(candidate["player_id"])] = {
-                "player_id": int(candidate["player_id"]),
-                "player_name": candidate["player_name"],
-                "team": candidate.get("team") or "MLB",
-                "team_id": candidate.get("team_id"),
-                "position": candidate.get("position"),
-                "headshot_url": candidate.get("headshot_url"),
-                "team_logo_url": candidate.get("team_logo_url"),
-                "candidate_source": "dynamic",
-                "breakout_score": candidate.get("breakout_score", 0),
-            }
-
-    except Exception as error:
-        print(f"Dynamic MLB candidate scan failed: {error}")
-
-    for player_name in settings.tracked_players:
-        try:
-            player = mlb_client.search_player(player_name)
-            existing = universe.get(int(player.player_id), {})
-
-            universe[int(player.player_id)] = {
-                "player_id": int(player.player_id),
-                "player_name": player.full_name,
-                "team": existing.get("team") or "MLB",
-                "team_id": existing.get("team_id"),
-                "position": existing.get("position"),
-                "headshot_url": existing.get("headshot_url"),
-                "team_logo_url": existing.get("team_logo_url"),
-                "candidate_source": "manual",
-                "breakout_score": existing.get("breakout_score", 0),
-            }
-
-        except Exception as error:
-            print(f"Manual tracked player lookup failed for {player_name}: {error}")
-
-    candidates = list(universe.values())
-    candidates.sort(
-        key=lambda item: (
-            item.get("breakout_score", 0),
-            1 if item.get("candidate_source") == "manual" else 0,
-        ),
-        reverse=True,
-    )
-
-    return candidates[:market_limit]
+def _build_market_universe(mlb_client=None, settings=None, *, scan_limit: int | None = None, league: str = "MLB") -> list[dict]:
+    """Build candidate universe via the registered league adapter."""
+    settings = settings or get_settings()
+    adapter = get_league_adapter(league)
+    return adapter.build_market_universe(settings, scan_limit=scan_limit)
 
 
-def _build_outputs() -> list[PlayerPipelineOutput]:
+def _build_outputs(league: str = "MLB") -> list[PlayerPipelineOutput]:
     settings = get_settings()
-    mlb_client = MLBClient()
+    adapter = get_league_adapter(league)
 
     ebay_client = EbayClient(
         token=settings.ebay_token,
@@ -124,56 +64,20 @@ def _build_outputs() -> list[PlayerPipelineOutput]:
         client_secret=settings.ebay_client_secret,
     )
 
-    candidates = _build_market_universe(mlb_client, settings)
+    candidates = adapter.build_market_universe(settings)
     outputs: list[PlayerPipelineOutput] = []
 
     for candidate in candidates:
-        player_name = candidate["player_name"]
-        player_id = int(candidate["player_id"])
-
-        try:
-            gamelog = mlb_client.get_hitter_gamelog(player_id, settings.mlb_season)
-
-            stats_7d = summarize_hitter_window(filter_last_n_days(gamelog, 7))
-            stats_30d = summarize_hitter_window(filter_last_n_days(gamelog, 30))
-
-            market_snapshots: Dict[str, MarketSnapshot] = {}
-
-            for query_name, template in SEARCH_TEMPLATES.items():
-                payload = ebay_client.search_items(
-                    template.format(player=player_name),
-                    include_auctions=True,
-                )
-                listings = ebay_client.parse_listings(payload)
-                market_snapshots[query_name] = summarize_market(query_name, listings)
-
-            hotness = build_hotness_breakdown(
-                player_name=player_name,
-                stats_7d=stats_7d,
-                stats_30d=stats_30d,
-                market_snapshots=market_snapshots,
-            )
-
-            outputs.append(
-                PlayerPipelineOutput(
-                    player_name=player_name,
-                    player_id=player_id,
-                    stats_7d=stats_7d,
-                    stats_30d=stats_30d,
-                    market_snapshots=market_snapshots,
-                    hotness=hotness,
-                    team=candidate.get("team") or "MLB",
-                    team_id=candidate.get("team_id"),
-                    position=candidate.get("position"),
-                    headshot_url=candidate.get("headshot_url"),
-                    team_logo_url=candidate.get("team_logo_url"),
-                    sport="MLB",
-                    candidate_source=candidate.get("candidate_source", "dynamic"),
-                )
-            )
-
-        except Exception as error:
-            print(f"Pipeline failed for {player_name}: {error}")
+        output, _, err = adapter.process_player(
+            candidate,
+            ebay_client,
+            settings,
+            market_enabled=True,
+        )
+        if output:
+            outputs.append(output)
+        elif err:
+            print(f"Pipeline failed for {candidate.get('player_name')}: {err}")
 
     outputs.sort(key=lambda item: item.hotness.total_score, reverse=True)
 

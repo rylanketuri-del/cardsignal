@@ -74,6 +74,8 @@ def select_signal_of_the_week(
             "evidence_keys": list(winner.evidence.keys()),
         },
         algorithm_version=WEEKLY_INTELLIGENCE_V1,
+        weekly_algorithm_version=WEEKLY_INTELLIGENCE_V1,
+        scoring_algorithm_version=winner.scoring_algorithm_version,
         headshot_url=winner.headshot_url,
         team=winner.team,
         position=winner.position,
