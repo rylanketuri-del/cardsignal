@@ -28,80 +28,69 @@
 ### Player Intelligence Modal (Sprint 7.x)
 
 - **Sprint 7.1** — Player Intelligence modal complete (backdrop, header, tab shell, open/close UX, mobile drawer)
-- **Release v0.8.0** — Player Intelligence Report complete (placeholder beta):
-  - [x] **Overview** — score, recommendation, conviction, movement, status, breakdown, why-it-matters
-  - [x] **Cards** — player-specific trending, movers, buy-low, most-chased sections
-  - [x] **Market** — placeholder sale volume, listings, liquidity, summary
-  - [x] **Signals** — performance, market, collector demand, momentum explanations
-  - [x] **Forecast** — recommendation, conviction, horizon, risk, summary, bullet reasons
+- **Release v0.8.0** — Player Intelligence Report complete (placeholder beta)
 
 ### Scouting Report 2.0 (Sprint 9.x)
 
-- **Release v0.10.2 — Scouting Report 2.0**
-  - [x] Single-page editorial report replacing tabbed modal
-  - [x] Player Snapshot (Last 7 Days + Season Snapshot from stored stats)
-  - [x] Why This Signal contributors from real evidence
-  - [x] Cards section with stored card intelligence or pending states
-  - [x] Market research panel from stored snapshots
-  - [x] Signal Analysis (Performance, Market, Momentum, Scarcity, Collector Demand)
-  - [x] CardSignal Outlook with Evidence (replaces Conviction/Confidence)
-  - [x] No fabricated report data — pending states when intelligence unavailable
+- **Release v0.10.2 — Scouting Report 2.0** — single-page editorial report, evidence tier, real stored intelligence only
 
 ### Real Card Intelligence (Sprint 8.x)
 
-- **Sprint 8.7 — partial in this branch**
-  - [x] eBay market snapshots in manual pipeline
-  - [x] Card intelligence synthesis from stored eBay query templates
-  - [ ] Card registry (not present in this branch)
-  - [ ] PSA population provider/integration (not present; optional stage interface only)
-  - [x] Historical market movement foundation (stored snapshot comparison; no live provider reads on GET)
+- **Sprint 8.8 — Weekly Intelligence Pipeline** — Tuesday refresh, append-only snapshots, Signal of the Week, Today's Leaders
 
-- **Sprint 8.8 — Weekly Intelligence Pipeline** *(in progress — verification pass pending)*
-  - Weekly orchestration layer for Tuesday refresh
-  - Top 100 MLB beta universe
-  - Append-only player/card weekly snapshots
-  - Signal of the Week selection with evidence requirements
-  - Today's Leaders from latest completed official run
-  - Explicit stage outcomes with FAILED / PARTIAL / SKIPPED / UNAVAILABLE handling
-  - `GET /api/weekly/latest`, weekly history endpoints
-  - Admin `POST /api/weekly/run` with duplicate guard and force option
-  - Local JSON fallback when Supabase is unavailable
+### Multi-Sport Adapters (Sprint 9.x–11.x)
+
+- **Sprint 9.4 — NFL Performance Adapter** *(complete)*
+  - [x] Provider-neutral `NFLPerformanceProvider` interface
+  - [x] Approved import path (`output/nfl/import/nfl_data.json`)
+  - [x] Deterministic NFL identity (`CS-NFL-P-{SOURCE_PLAYER_ID}`)
+  - [x] Position-aware scoring with `NFL_PERFORMANCE_V1`
+  - [x] NFL Signal Drivers, weekly pipeline, API routes, Scouting Report integration
+
+- **Release v0.16.0 — Sprint 11.1 NBA Performance Adapter** *(complete — verification pass pending)*
+  - [x] Sport Adapter Framework contracts (`SportAdapter`, `LeagueAdapter`, `PerformanceAdapter`, `SeasonAdapter`, `SignalDriverAdapter`)
+  - [x] Provider-neutral `NBAPerformanceProvider` interface
+  - [x] Approved import path (`output/nba/import/nba_data.json`)
+  - [x] Deterministic NBA identity (`CS-NBA-P-{STABLE_SOURCE_PLAYER_ID}`)
+  - [x] Supported positions PG/SG/SF/PF/C; unknown → `INSUFFICIENT`
+  - [x] Recent window metadata (`COMPLETED_GAMES`, value 5)
+  - [x] `NBA_PERFORMANCE_V1` scoring from stored basketball stats only
+  - [x] `NBA_PLAYER_SIGNAL_V1` CardSignal player signal (market + collector + scarcity + drivers)
+  - [x] NBA Signal Drivers from stored evidence only
+  - [x] NBA weekly pipeline stage (Mon–Sun period)
+  - [x] NBA API routes (`/api/nba/players/search`, leaderboard, player, performance, signal-drivers, status)
+  - [x] Universal Search NBA registration when data exists
+  - [x] NBA Scouting Report (Recent 5 Games: PPG, RPG, APG, SPG, BPG, FG%, 3PT%, FT%, MPG)
+  - [x] Homepage NBA activation only when genuine weekly data exists
+
+NBA remains **Coming Soon** in the UI until verified import data is seeded.
 
 ## Current Milestone
 
-### Release v0.10.2 — Scouting Report 2.0
+### Release v0.16.0 — Sprint 11.1 NBA Performance Adapter
 
-In progress. Do not merge or deploy until verification pass.
-
-**Scouting Report** transforms the player modal into a premium single-page research experience:
-
-- Scrollable editorial report (no tabs): Header → Player Snapshot → Why This Signal → Cards → Market → Signal Analysis → Outlook
-- Real stored intelligence only — honest pending states when data is unavailable
-- Evidence replaces Conviction/Confidence throughout the report
-- Player performance from `stats_7d` / `stats_30d`; market from stored snapshots
-- Signal Analysis covers Performance, Market, Momentum, Scarcity, and Collector Demand
-- Homepage (Signal Center) unchanged
-
-### Release v0.9.0 — Weekly Intelligence Pipeline
-
-Shipped in prior release. Verification pass complete for weekly pipeline foundation.
-
-**Beta schedule (documented, idempotent guard):** Tuesday 6:00 AM America/New_York via external scheduler calling `POST /api/weekly/run` with admin token.
+Verification pass pending. Do not merge or deploy until tests pass.
 
 ## Up Next
+
+### Sprint 11.2 — Cross-Sport Signal Center
+
+- Unified cross-sport leaderboards and filters in Signal Center
+- Cross-sport Signal of the Week selection rules
+- Sport-aware homepage sections when multiple leagues are active
+- Cross-sport universal search ranking polish
 
 ### v0.9.1 — Production QA and Data Seeding
 
 - End-to-end weekly run verification in staging
 - Seed historical weekly snapshots for chart coverage
-- Supabase migration apply + rollback test
-- PSA population provider implementation (when credentials/source available)
+- Seed verified NFL and NBA import data for beta universe activation
 
 ### v1.0.0 — Multi-Sport Expansion
 
-- Enable NBA, NFL, NHL sport tabs
+- Enable NHL sport tab with live data
 - Sport-specific leaderboards and scoring adjustments
-- Cross-sport Signal Center filters
+- Cross-sport Signal Center filters (builds on Sprint 11.2)
 
 ### v1.1.0 — Collection & Alerts UX
 
@@ -116,8 +105,7 @@ Shipped in prior release. Verification pass complete for weekly pipeline foundat
 - **Tuesday email report** — weekly digest from stored homepage intelligence
 - **Signal Vault** — searchable archive of weekly signals and card intelligence
 - **Weekly push notifications** — Signal of the Week and mover alerts
-- **NFL weekly period support** — Thursday–Monday reporting windows
-- **NBA weekly period support** — league-specific period rules
+- **NFL defensive-player intelligence** — separate scoring model for defensive players
 - **Signal Accuracy tracking** — compare weekly forecasts to outcomes
 - Sold-comps integration beyond active eBay listings
 - Portfolio tracking and cost-basis views

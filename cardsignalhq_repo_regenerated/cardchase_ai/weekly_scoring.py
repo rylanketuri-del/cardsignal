@@ -4,16 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from cardchase_ai.identity import cs_card_id, cs_player_id
 from cardchase_ai.models.schemas import HitterHotnessBreakdown, MarketSnapshot, RollingHitterStats
 from cardchase_ai.score import clamp_score
-
-
-def cs_player_id(source_player_id: str | int, league: str = "MLB") -> str:
-    return f"{league.lower()}:{source_player_id}"
-
-
-def cs_card_id(source_player_id: str | int, query_name: str, league: str = "MLB") -> str:
-    return f"{league.lower()}:{source_player_id}:card:{query_name}"
 
 
 def derive_collector_score(market_snapshots: dict[str, MarketSnapshot]) -> tuple[float | None, list[str], list[str]]:

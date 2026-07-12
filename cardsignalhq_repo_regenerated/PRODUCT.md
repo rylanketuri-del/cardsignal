@@ -10,7 +10,7 @@ The homepage is the **Signal Center** — a market-wide overview dashboard.
 
 Primary sections:
 
-- **Universal Search** — find any MLB player; leaderboard players show scores, others show search results from the backend player pool
+- **Universal Search** — find MLB, NFL, and NBA players when league data is available; leaderboard players show scores, others show search results from the backend player pool
 - **Featured Signal (Signal of the Week)** — editorial hero highlighting the top signal with score, weekly movement, recommendation pill, and View Report CTA
 - **Card Intelligence** — market-wide card sections: Trending Cards, Biggest Movers, Buy Low Watch, Most Chased
 - **Today's Leaders** — ranked table of tracked players with signal, performance, market, trend, and View Report action
@@ -33,7 +33,7 @@ Report sections (scrollable, editorial layout):
 | Section | Purpose |
 |---------|---------|
 | **Header** | Player, team, position, CardSignal Score, recommendation, status, updated timestamp, algorithm version |
-| **Player Snapshot** | Last 7 Days and Season Snapshot from stored MLB stats |
+| **Player Snapshot** | Recent window and Season Snapshot from stored league stats (MLB: Last 7 Days; NBA: Recent 5 Games; NFL: Recent 3 Games) |
 | **Why This Signal** | Signal contributors explaining score changes from real evidence |
 | **Cards** | Player-linked card intelligence with pricing, movement, listings, PSA population when available |
 | **Market** | Research-style market summary from stored eBay snapshots |
@@ -69,8 +69,10 @@ Forecast language uses tentative phrasing (“suggests,” “may,” “could�
 
 Current production scope:
 
-- **MLB hitters only** (NBA, NFL, NHL tabs shown as coming soon)
-- MLB Stats API for performance
+- **MLB hitters** — MLB Stats API for performance
+- **NFL (beta adapter):** approved import path; unavailable until verified data is seeded — no fabricated intelligence
+- **NBA (beta adapter):** approved import path; unavailable until verified data is seeded — no fabricated intelligence
+- **NHL** — shown as coming soon
 - eBay Browse API for active listings
 - Supabase for leaderboard persistence, auth, watchlists, alerts, and notifications
 
@@ -81,7 +83,7 @@ Placeholder intelligence (card rows, market metrics, forecast reasons) uses stab
 CardSignal refreshes market-wide intelligence **weekly on Tuesdays at 6:00 AM America/New_York** (beta schedule).
 
 - **Reporting period (MLB/NBA beta):** Monday 12:00 AM through Sunday 11:59 PM in the league timezone
-- **NFL (future):** Thursday through Monday — period rules are configurable per league
+- **NFL:** Thursday through Monday — period rules are configurable per league; refresh target remains Tuesday morning
 - **Append-only snapshots:** player weekly signals and card weekly intelligence are never overwritten
 - **Latest completed run:** remains available if a new run fails or is skipped
 - **Signal of the Week:** selected only from players with sufficient real evidence — no random recommendations
@@ -90,6 +92,36 @@ CardSignal refreshes market-wide intelligence **weekly on Tuesdays at 6:00 AM Am
 - **Beta scope:** Top 100 MLB players from dynamic candidate logic; universal search remains available for players outside the universe
 
 GET routes serve stored weekly intelligence only — they never trigger provider work.
+
+## NFL Intelligence Principles
+
+NFL support follows the same evidence-first architecture as MLB, with football-specific rules:
+
+- **Position-aware performance:** QB, RB, WR, and TE use separate scoring models — defensive players are not forced into offensive formulas
+- **Recent 3-game window:** during the active season, recent form uses the last 3 completed games (not calendar days)
+- **Bye weeks:** bye weeks are excluded from performance windows and do not count as zero-stat games
+- **Season phases:** REGULAR/POSTSEASON show Recent 3 Games + Season Snapshot; PRESEASON shows verified preseason + previous season; OFFSEASON shows previous season only
+- **No projections or rumors:** Signal Drivers require stored, verified evidence — fantasy projections and rumors are excluded
+- **Data quality:** HIGH / MEDIUM / LOW / INSUFFICIENT based on completed games, metric completeness, and sample size
+- **Player score vs card score:** NFL performance (`NFL_PERFORMANCE_V1`) feeds player-level signals; CardSignal Card Score remains a separate market-aware layer (`NFL_PLAYER_SIGNAL_V1`)
+- **Provider policy:** NFL uses a provider-neutral interface; approved imports are labeled `APPROVED_IMPORT`; NFL stays unavailable until real data is loaded
+- **Identity:** deterministic IDs use `CS-NFL-P-{SOURCE_PLAYER_ID}` and never change on team trades
+
+## NBA Intelligence Principles
+
+NBA support follows the same evidence-first Sport Adapter architecture as MLB and NFL, with basketball-specific rules:
+
+- **Supported positions:** PG, SG, SF, PF, C — unknown positions receive `performance_score = null` and `data_quality = INSUFFICIENT`
+- **Recent window:** `recent_window_type = COMPLETED_GAMES`, `recent_window_value = 5` (from league metadata, not hardcoded in UI)
+- **Recent performance fields:** points, rebounds, assists, steals, blocks, turnovers, FG%, 3PT%, FT%, minutes, games played
+- **Season snapshot:** season totals where available — no fabricated advanced analytics
+- **Performance scoring:** `NBA_PERFORMANCE_V1` from stored basketball stats only (no market or fantasy inputs)
+- **CardSignal player signal:** `NBA_PLAYER_SIGNAL_V1` integrates market, collector demand, scarcity, and Signal Drivers without altering MLB/NFL algorithms
+- **Signal Drivers:** verified basketball drivers only (HOT_STREAK, ROLE_EXPANSION, STARTER_CHANGE, MINUTES_SURGE, TRADE, CONTRACT, INJURY, INJURY_RETURN, ALL_STAR_SELECTION, PLAYOFF_PERFORMANCE)
+- **Scouting Report:** Recent 5 Games shows PPG, RPG, APG, SPG, BPG, FG%, 3PT%, FT%, MPG — never MLB/NFL labels
+- **Provider policy:** provider-neutral `NBAPerformanceProvider`; approved imports labeled `APPROVED_IMPORT`; NBA stays unavailable until real data is loaded
+- **Identity:** deterministic IDs use `CS-NBA-P-{STABLE_SOURCE_PLAYER_ID}` — never derived from rankings or array order
+- **Homepage:** NBA tab activates only when genuine weekly intelligence exists; otherwise Coming Soon
 
 ## User Layers
 

@@ -47,6 +47,14 @@ class ReportingPeriodTests(unittest.TestCase):
         previous = previous_reporting_period("MLB", "America/New_York")
         self.assertNotEqual(current.week_number, previous.week_number)
 
+    def test_nfl_period_is_thursday_to_monday(self):
+        tz = ZoneInfo("America/New_York")
+        anchor = datetime(2026, 10, 10, 12, 0, tzinfo=tz)
+        period = build_reporting_period("NFL", anchor=anchor)
+        self.assertEqual(period.period_start.weekday(), 3)
+        self.assertEqual(period.period_end.weekday(), 0)
+        self.assertEqual(period.league, "NFL")
+
     def test_next_refresh_is_tuesday_morning(self):
         refresh = next_scheduled_refresh("MLB", "America/New_York", refresh_day=1, refresh_hour=6)
         self.assertEqual(refresh.weekday(), 1)
@@ -213,6 +221,12 @@ class WeeklyRunIntegrationTests(unittest.TestCase):
                 weekly_timezone="America/New_York",
                 weekly_refresh_day=1,
                 weekly_refresh_hour=6,
+                nfl_season=2025,
+                nfl_player_limit=100,
+                nfl_enabled=False,
+                nba_season=2025,
+                nba_player_limit=100,
+                nba_enabled=False,
             )
             storage = WeeklyStorage(None, WeeklyJsonStorage(Path(tmp)))
 
@@ -314,6 +328,12 @@ class PlayerLimitTests(unittest.TestCase):
                 weekly_timezone="America/New_York",
                 weekly_refresh_day=1,
                 weekly_refresh_hour=6,
+                nfl_season=2025,
+                nfl_player_limit=100,
+                nfl_enabled=False,
+                nba_season=2025,
+                nba_player_limit=100,
+                nba_enabled=False,
             )
             storage = WeeklyStorage(None, WeeklyJsonStorage(Path(tmp)))
             processed_ids: list[int] = []
@@ -391,6 +411,12 @@ class CatastrophicFailureTests(unittest.TestCase):
             weekly_timezone="America/New_York",
             weekly_refresh_day=1,
             weekly_refresh_hour=6,
+            nfl_season=2025,
+            nfl_player_limit=100,
+            nfl_enabled=False,
+            nba_season=2025,
+            nba_player_limit=100,
+            nba_enabled=False,
         )
 
     def test_catastrophic_exception_marks_failed_not_running(self):
@@ -449,6 +475,12 @@ class PartialStatusTests(unittest.TestCase):
                 weekly_timezone="America/New_York",
                 weekly_refresh_day=1,
                 weekly_refresh_hour=6,
+                nfl_season=2025,
+                nfl_player_limit=100,
+                nfl_enabled=False,
+                nba_season=2025,
+                nba_player_limit=100,
+                nba_enabled=False,
             )
             storage = WeeklyStorage(None, WeeklyJsonStorage(Path(tmp)))
 
@@ -573,6 +605,12 @@ class GetEndpointReadOnlyTests(unittest.TestCase):
                 weekly_timezone="America/New_York",
                 weekly_refresh_day=1,
                 weekly_refresh_hour=6,
+                nfl_season=2025,
+                nfl_player_limit=100,
+                nfl_enabled=False,
+                nba_season=2025,
+                nba_player_limit=100,
+                nba_enabled=False,
             )
             storage = WeeklyStorage(None, WeeklyJsonStorage(Path(tmp)))
             with patch("cardchase_ai.clients.mlb.MLBClient") as mock_mlb:
