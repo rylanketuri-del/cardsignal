@@ -5,6 +5,15 @@
 - [ ] NFL uses real data
 - [ ] NBA uses real data before collector invites
 - [ ] No fabricated intelligence
+- [ ] MLB normalized payload verified
+- [ ] NFL normalized payload verified
+- [ ] Cross-league data parity verified
+- [ ] No silent field dropping in serialization
+- [ ] Genuine NFL production seed required before NFL tab goes live
+- [ ] MLB evidence gate preserved
+- [ ] Normalized homepage contract verified
+- [ ] Normalized Scouting Report contract verified
+- [ ] Explicit capability rendering verified
 - [ ] Stable Player Registry
 - [ ] Stable Card Registry
 - [ ] Stable IDs

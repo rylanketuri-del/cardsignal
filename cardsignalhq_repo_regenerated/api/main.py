@@ -31,6 +31,7 @@ from cardchase_ai.nba_api import (
 from cardchase_ai.pipeline import run_pipeline
 from cardchase_ai.storage import SupabaseError, SupabaseStorage
 from cardchase_ai.weekly_intelligence import build_latest_weekly_api_payload, build_weekly_storage, run_weekly_intelligence
+from cardchase_ai.intelligence_api import fetch_player_intelligence_payload
 
 
 class ApiStatus(BaseModel):
@@ -453,6 +454,25 @@ def get_weekly_latest(league: str = "MLB") -> JSONResponse:
     settings = _settings()
     storage = build_weekly_storage(settings)
     payload = build_latest_weekly_api_payload(league.upper(), storage, settings)
+    return JSONResponse(payload)
+
+
+@app.get("/api/players/{league}/{player_id}/intelligence")
+def get_player_intelligence(league: str, player_id: str) -> JSONResponse:
+    """Normalized player intelligence — read-only, stored weekly snapshots only."""
+    from cardchase_ai.repositories.factory import build_repository_bundle
+
+    settings = _settings()
+    league_upper = league.upper()
+    if league_upper not in {"MLB", "NFL"}:
+        raise HTTPException(status_code=404, detail=f"League {league} intelligence not available.")
+    repos = build_repository_bundle(settings)
+    payload = fetch_player_intelligence_payload(league_upper, player_id, repos=repos)
+    if not payload:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No stored intelligence found for {league_upper} player {player_id}.",
+        )
     return JSONResponse(payload)
 
 

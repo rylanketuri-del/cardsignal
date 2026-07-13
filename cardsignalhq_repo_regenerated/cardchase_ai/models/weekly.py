@@ -73,6 +73,29 @@ class PlayerWeeklySignalSnapshot(BaseModel):
     position: str | None = None
     headshot_url: str | None = None
     team_logo_url: str | None = None
+    # Normalized league intelligence fields (Sprint 11.2)
+    season_phase: str | None = None
+    period_type: str | None = None
+    recent_window_label: str | None = None
+    signal_drivers: list[dict[str, Any]] = Field(default_factory=list)
+    recent_performance: list[dict[str, Any]] = Field(default_factory=list)
+    season_performance: list[dict[str, Any]] = Field(default_factory=list)
+    previous_season_performance: list[dict[str, Any]] = Field(default_factory=list)
+    performance_data_quality: str | None = None
+    performance_missing_inputs: list[str] = Field(default_factory=list)
+    market_data_quality: str | None = None
+    market_missing_inputs: list[str] = Field(default_factory=list)
+    driver_data_quality: str | None = None
+    capabilities: dict[str, str] = Field(default_factory=dict)
+    weekly_algorithm_version: str | None = None
+    scoring_algorithm_version: str | None = None
+    performance_algorithm_version: str | None = None
+    card_algorithm_version: str | None = None
+    prior_score: float | None = None
+    official_weekly_snapshot: bool = True
+    data_confidence: str | None = None
+    evidence_summary: str | None = None
+    freshness_summary: str | None = None
 
 
 class CardWeeklyIntelligenceSnapshot(BaseModel):

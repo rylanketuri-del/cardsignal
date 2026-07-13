@@ -104,17 +104,71 @@ def derive_status(hotness: HitterHotnessBreakdown, momentum: float | None) -> st
     return "COOLING" if hotness.total_score < 40 else "RISING"
 
 
+from cardchase_ai.league_evidence import (
+    critical_evidence_requirements,
+    has_sufficient_evidence as league_has_sufficient_evidence,
+    insufficient_recommendation_fallback,
+)
+
+
 def has_sufficient_evidence(
     performance: float | None,
     market: float | None,
     missing_inputs: list[str],
+    *,
+    league: str = "MLB",
 ) -> bool:
-    if performance is None or market is None:
-        return False
-    critical = {"stats_7d", "market_snapshots", "listing_volume"}
-    if critical.intersection(set(missing_inputs)):
-        return False
-    return True
+    """Normalized evidence gate — league parameter required for correct behavior."""
+    return league_has_sufficient_evidence(league, performance, market, missing_inputs)
+
+
+def conviction_to_evidence(conviction: str | None) -> str:
+    if not conviction:
+        return "INSUFFICIENT"
+    normalized = conviction.strip().lower()
+    if normalized == "high":
+        return "HIGH"
+    if normalized == "medium":
+        return "MEDIUM"
+    if normalized == "low":
+        return "LOW"
+    return "INSUFFICIENT"
+
+
+def derive_nfl_status(
+    *,
+    performance_score: float | None,
+    weekly_change: float | None,
+    card_signal_score: float | None,
+    recommendation: str | None,
+) -> str:
+    """League-neutral NFL status from stored intelligence only."""
+    if performance_score is not None and performance_score >= 75:
+        return "HOT"
+    if weekly_change is not None and weekly_change >= 5:
+        return "RISING"
+    if weekly_change is not None and weekly_change <= -5:
+        return "COOLING"
+    if recommendation == "WATCH" or card_signal_score is None:
+        return "WATCH"
+    if performance_score is not None and 55 <= performance_score < 70:
+        return "STABLE"
+    if card_signal_score is not None and card_signal_score >= 65:
+        return "RISING"
+    if card_signal_score is not None and card_signal_score < 45:
+        return "COOLING"
+    return "STABLE"
+
+
+def derive_momentum_from_prior_snapshots(
+    current_performance: float | None,
+    prior_performance: float | None,
+) -> float | None:
+    """NFL momentum only when prior official weekly snapshots exist — never from current form alone."""
+    if current_performance is None or prior_performance is None:
+        return None
+    delta = current_performance - prior_performance
+    return clamp_score(50 + (delta * 2.5))
 
 
 def compute_weekly_change(current: float | None, prior: float | None) -> float | None:
@@ -187,4 +241,5 @@ CARD_QUERY_LABELS = {
     "bowman_chrome": "Bowman Chrome",
     "auto": "Autographs",
     "psa10": "PSA 10",
+    "rookie": "Rookie Cards",
 }

@@ -47,7 +47,7 @@
   - [x] Position-aware scoring with `NFL_PERFORMANCE_V1`
   - [x] NFL Signal Drivers, weekly pipeline, API routes, Scouting Report integration
 
-- **Release v0.16.0 — Sprint 11.1 NBA Performance Adapter** *(complete — verification pass pending)*
+- **Release v0.16.0 — Sprint 11.1 NBA Performance Adapter** *(complete)*
   - [x] Sport Adapter Framework contracts (`SportAdapter`, `LeagueAdapter`, `PerformanceAdapter`, `SeasonAdapter`, `SignalDriverAdapter`)
   - [x] Provider-neutral `NBAPerformanceProvider` interface
   - [x] Approved import path (`output/nba/import/nba_data.json`)
@@ -63,22 +63,38 @@
   - [x] NBA Scouting Report (Recent 5 Games: PPG, RPG, APG, SPG, BPG, FG%, 3PT%, FT%, MPG)
   - [x] Homepage NBA activation only when genuine weekly data exists
 
+- **Release v0.16.1 — Sprint 11.2 League Intelligence Convergence** *(verification pass pending)*
+  - [x] Normalized `PlayerIntelligencePayload` contract
+  - [x] Explicit capability declarations per league
+  - [x] Structured performance evidence in weekly snapshots
+  - [x] MLB Signal Drivers from stored evidence
+  - [x] NFL momentum/status/market convergence without baseball assumptions
+  - [x] Shared intelligence serializer + `GET /api/players/{league}/{player_id}/intelligence`
+
 NBA remains **Coming Soon** in the UI until verified import data is seeded.
 
 ## Current Milestone
 
-### Release v0.16.0 — Sprint 11.1 NBA Performance Adapter
+### Release v0.16.1 — Sprint 11.2 League Intelligence Convergence
 
-Verification pass pending. Do not merge or deploy until tests pass.
+- [x] Normalized `PlayerIntelligencePayload` contract for MLB and NFL
+- [x] Explicit league capability declarations (`SUPPORTED` / `UNAVAILABLE` / `PENDING` / `DISABLED`)
+- [x] Structured performance evidence persisted in weekly snapshots
+- [x] MLB Signal Drivers from stored performance evidence
+- [x] NFL momentum from prior official snapshots only; league-neutral status labels
+- [x] Shared intelligence serializer for homepage, Scouting Report, and API
+- [x] `GET /api/players/{league}/{player_id}/intelligence` read-only endpoint
+- [ ] Verification pass pending — do not merge or deploy until tests pass
 
 ## Up Next
 
-### Sprint 11.2 — Cross-Sport Signal Center
+### Sprint 11.3 — Cross-Sport Signal Center
 
 - Unified cross-sport leaderboards and filters in Signal Center
 - Cross-sport Signal of the Week selection rules
 - Sport-aware homepage sections when multiple leagues are active
 - Cross-sport universal search ranking polish
+- Builds on normalized league intelligence from Sprint 11.2
 
 ### v0.9.1 — Production QA and Data Seeding
 
