@@ -126,6 +126,8 @@ class PlayerIntelligencePayload(BaseModel):
     recent_performance: list[NormalizedPerformanceEvidence] = Field(default_factory=list)
     season_performance: list[NormalizedPerformanceEvidence] = Field(default_factory=list)
     previous_season_performance: list[NormalizedPerformanceEvidence] = Field(default_factory=list)
+    previous_season_label: str | None = None
+    previous_season_data_quality: EvidenceQuality = "INSUFFICIENT"
     performance_data_quality: EvidenceQuality = "INSUFFICIENT"
     performance_missing_inputs: list[str] = Field(default_factory=list)
 

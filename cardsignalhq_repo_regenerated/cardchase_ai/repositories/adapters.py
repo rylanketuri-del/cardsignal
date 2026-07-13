@@ -8,6 +8,8 @@ from cardchase_ai.identity import normalize_api_player_id, parse_cs_player_id
 from cardchase_ai.models.nfl import NFLPerformanceSnapshot, NFLPlayerIdentity, NFLSignalDriver
 from cardchase_ai.models.weekly import CardWeeklyIntelligenceSnapshot, PlayerWeeklySignalSnapshot
 from cardchase_ai.nfl_storage import NFLStorage
+from cardchase_ai.nba_storage import NBAStorage
+from cardchase_ai.performance_storage import PerformanceStorage
 from cardchase_ai.weekly_storage import WeeklyStorage
 
 
@@ -49,22 +51,39 @@ class WeeklySnapshotRepositoryAdapter:
 
 
 class PerformanceSnapshotRepositoryAdapter:
-    def __init__(self, nfl_storage: NFLStorage | None = None) -> None:
+    def __init__(
+        self,
+        nfl_storage: NFLStorage | None = None,
+        nba_storage: NBAStorage | None = None,
+        performance_storage: PerformanceStorage | None = None,
+    ) -> None:
         self._nfl = nfl_storage
+        self._nba = nba_storage
+        self._perf = performance_storage
 
     def get_latest_performance(self, league: str, player_id: str) -> NFLPerformanceSnapshot | dict[str, Any] | None:
         league_upper = league.upper()
-        if league_upper != "NFL" or not self._nfl:
+        cs_id = _resolve_cs_id(league, player_id)
+        if league_upper == "NFL" and self._nfl:
+            return self._nfl.fetch_latest_snapshot_by_period(cs_id, "RECENT_3_GAMES")
+        if league_upper == "NBA" and self._nba:
+            return self._nba.fetch_latest_snapshot_by_period(cs_id, "RECENT_5_GAMES")
+        return None
+
+    def get_previous_season(self, league: str, player_id: str, season: int | None = None) -> Any:
+        if not self._perf:
             return None
         cs_id = _resolve_cs_id(league, player_id)
-        return self._nfl.fetch_latest_snapshot_by_period(cs_id, "RECENT_3_GAMES")
+        return self._perf.get_previous_season(league, cs_id, season)
 
     def get_performance_history(self, league: str, player_id: str, limit: int = 12) -> list[Any]:
         league_upper = league.upper()
-        if league_upper != "NFL" or not self._nfl:
-            return []
         cs_id = _resolve_cs_id(league, player_id)
-        return self._nfl.fetch_latest_snapshots(cs_id)[-limit:]
+        if league_upper == "NFL" and self._nfl:
+            return self._nfl.fetch_latest_snapshots(cs_id)[-limit:]
+        if league_upper == "NBA" and self._nba:
+            return self._nba.fetch_latest_snapshots(cs_id)[-limit:]
+        return []
 
 
 class SignalDriverRepositoryAdapter:

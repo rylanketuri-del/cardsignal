@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 
+def is_offseason_phase(season_phase: str | None) -> bool:
+    return str(season_phase or "").upper() == "OFFSEASON"
+
+
 def critical_evidence_requirements(league: str) -> frozenset[str]:
     """Return league-owned missing-input keys that block sufficient evidence."""
     league_upper = league.upper()
@@ -20,11 +24,20 @@ def has_sufficient_evidence(
     performance: float | None,
     market: float | None,
     missing_inputs: list[str],
+    *,
+    season_phase: str | None = None,
+    has_previous_season: bool = False,
 ) -> bool:
     """Normalized evidence gate with league-specific critical requirements."""
     if performance is None or market is None:
         return False
-    critical = critical_evidence_requirements(league)
+
+    if is_offseason_phase(season_phase) and has_previous_season:
+        from cardchase_ai.offseason_scoring import offseason_critical_evidence_requirements
+        critical = offseason_critical_evidence_requirements(league)
+    else:
+        critical = critical_evidence_requirements(league)
+
     if critical.intersection(set(missing_inputs)):
         return False
     return True

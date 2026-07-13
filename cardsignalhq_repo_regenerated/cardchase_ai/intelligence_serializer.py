@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from cardchase_ai.capabilities import declare_mlb_capabilities, declare_nfl_capabilities
+from cardchase_ai.capabilities import declare_mlb_capabilities, declare_nfl_capabilities, declare_nba_capabilities
 from cardchase_ai.models.intelligence import (
     CardIntelligenceSummary,
     EvidenceQuality,
@@ -16,7 +16,7 @@ from cardchase_ai.models.intelligence import (
 )
 from cardchase_ai.models.nfl import NFLSignalDriver
 from cardchase_ai.models.weekly import CardWeeklyIntelligenceSnapshot, PlayerWeeklySignalSnapshot
-from cardchase_ai.performance_evidence import build_nfl_performance_evidence
+from cardchase_ai.offseason_scoring import previous_season_label
 from cardchase_ai.weekly_scoring import CARD_QUERY_LABELS, conviction_to_evidence
 
 
@@ -137,11 +137,21 @@ def serialize_player_intelligence(
             has_market_history=has_market_history,
             has_weekly_history=True,
         )
+    elif league == "NBA":
+        capabilities = declare_nba_capabilities(
+            has_prior_weekly_snapshot=has_prior_weekly,
+            has_market_history=has_market_history,
+            has_import_data=bool(recent_perf or season_perf or prev_perf or drivers),
+            has_previous_season=bool(prev_perf),
+            season_phase=snapshot.season_phase or evidence.get("season_phase"),
+        )
     else:
         capabilities = declare_nfl_capabilities(
             has_prior_weekly_snapshot=has_prior_weekly,
             has_market_history=has_market_history,
-            has_import_data=bool(recent_perf or season_perf or drivers),
+            has_import_data=bool(recent_perf or season_perf or prev_perf or drivers),
+            has_previous_season=bool(prev_perf),
+            season_phase=snapshot.season_phase or evidence.get("nfl_season_phase") or evidence.get("season_phase"),
         )
 
     market_snapshots: list[MarketSnapshotPayload] = []
@@ -188,6 +198,14 @@ def serialize_player_intelligence(
     evidence_tier = conviction_to_evidence(snapshot.conviction)
     data_confidence = snapshot.data_confidence or _derive_data_confidence(snapshot.missing_inputs, snapshot.conviction)
 
+    prev_label = evidence.get("previous_season_label") or (
+        previous_season_label(league, snapshot.season - 1 if snapshot.season else None)
+        if prev_perf else None
+    )
+    prev_quality = evidence.get("previous_season_data_quality") or (
+        prev_perf[0].quality if prev_perf else "INSUFFICIENT"
+    )
+
     return PlayerIntelligencePayload(
         player_id=snapshot.source_player_id,
         source_player_id=snapshot.source_player_id,
@@ -221,6 +239,8 @@ def serialize_player_intelligence(
         recent_performance=recent_perf,
         season_performance=season_perf,
         previous_season_performance=prev_perf,
+        previous_season_label=prev_label,
+        previous_season_data_quality=prev_quality,
         performance_data_quality=perf_quality,
         performance_missing_inputs=snapshot.performance_missing_inputs or [],
         signal_drivers=drivers,

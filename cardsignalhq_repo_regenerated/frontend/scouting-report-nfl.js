@@ -80,14 +80,22 @@ function srNflRecentWindowLabel(phase) {
 }
 
 function srNflSeasonWindowLabel(phase, season) {
-  if (phase === "OFFSEASON") return season ? `Previous Season Snapshot (${season})` : "Previous Season Snapshot";
+  if (phase === "OFFSEASON") return season ? `${season} Season Snapshot` : "Previous Season Snapshot";
   if (phase === "PRESEASON") return season ? `Prior Season Snapshot (${season})` : "Prior Season Snapshot";
   if (phase === "POSTSEASON") return season ? `Season Snapshot (${season}, Postseason)` : "Season Snapshot";
   return season ? `Season Snapshot (${season})` : "Season Snapshot";
 }
 
+function srNflOffseasonDriverLabel() {
+  return "Offseason Signal Drivers";
+}
+
 function srNflShouldShowRecentPanel(phase) {
   return phase === "REGULAR_SEASON" || phase === "POSTSEASON" || phase === "PRESEASON";
+}
+
+function srNflShouldShowOffseasonDrivers(phase) {
+  return phase === "OFFSEASON" || phase === "PRESEASON";
 }
 
 function srNflMapSignalDriver(driver = {}) {
@@ -137,7 +145,11 @@ function srNflMapScoutingReport(entry = {}, weeklySnap = null) {
     seasonDataQuality: seasonWindow?.data_quality || "INSUFFICIENT",
     recentStats: evidence.nfl_recent_stats || entry.nfl_recent_stats || null,
     seasonStats: evidence.nfl_season_stats || entry.nfl_season_stats || null,
-    signalDrivers: srNflMapSignalDrivers(evidence.nfl_signal_drivers || entry.nfl_signal_drivers || []),
+    previousSeasonStats: evidence.previous_season_performance || entry.previous_season_performance || null,
+    previousSeasonLabel: evidence.previous_season_label || (season ? `${season} Season Snapshot` : "Previous Season Snapshot"),
+    offseasonDriverLabel: srNflOffseasonDriverLabel(),
+    showOffseasonDrivers: srNflShouldShowOffseasonDrivers(phase),
+    signalDrivers: srNflMapSignalDrivers(evidence.nfl_signal_drivers || evidence.signal_drivers || entry.nfl_signal_drivers || []),
     performancePeriodNote: "Performance period",
     updatedNote: "Updated",
   };

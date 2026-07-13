@@ -75,6 +75,7 @@ from cardchase_ai.nba_weekly import (
 from cardchase_ai.nba_storage import build_nba_storage
 from cardchase_ai.clients.nba_import import get_nba_provider
 from cardchase_ai.sports.registry import is_league_available, season_for_league
+from cardchase_ai.performance_storage import build_performance_storage
 
 
 def _utcnow() -> datetime:
@@ -769,6 +770,7 @@ def _execute_nfl_weekly_pipeline(
 ) -> WeeklyRunSummary:
     provider = get_nfl_provider(settings)
     nfl_storage = build_nfl_storage(settings)
+    perf_storage = build_performance_storage(settings)
     ebay_client = None
     if market_enabled and settings.ebay_token:
         ebay_client = EbayClient(
@@ -782,7 +784,11 @@ def _execute_nfl_weekly_pipeline(
         market_enabled = False
 
     _record_stage(stages, outcomes, "player_universe", "COMPLETED", "building NFL candidate universe")
-    candidates = build_nfl_market_universe(provider, player_limit)[:player_limit]
+    candidates = build_nfl_market_universe(
+        provider,
+        player_limit,
+        performance_storage=build_performance_storage(settings),
+    )[:player_limit]
     outcomes[-1]["detail"] = f"{len(candidates)} candidates"
 
     outputs: list[PlayerPipelineOutput] = []
@@ -835,7 +841,9 @@ def _execute_nfl_weekly_pipeline(
     _record_stage(stages, outcomes, "card_intelligence", "COMPLETED", "building NFL snapshots")
     for rank, output in enumerate(outputs, start=1):
         try:
-            snap = build_nfl_player_snapshot(output, run, period, rank, storage, nfl_storage)
+            snap = build_nfl_player_snapshot(
+                output, run, period, rank, storage, nfl_storage, performance_storage=perf_storage,
+            )
             player_snapshots.append(snap)
         except Exception as error:
             player_errors.append(f"{output.player_name}: {error}")
@@ -930,6 +938,7 @@ def _execute_nba_weekly_pipeline(
 ) -> WeeklyRunSummary:
     provider = get_nba_provider(settings)
     nba_storage = build_nba_storage(settings)
+    perf_storage = build_performance_storage(settings)
     ebay_client = None
     if market_enabled and settings.ebay_token:
         ebay_client = EbayClient(
@@ -943,7 +952,11 @@ def _execute_nba_weekly_pipeline(
         market_enabled = False
 
     _record_stage(stages, outcomes, "player_universe", "COMPLETED", "building NBA candidate universe")
-    candidates = build_nba_market_universe(provider, player_limit)[:player_limit]
+    candidates = build_nba_market_universe(
+        provider,
+        player_limit,
+        performance_storage=perf_storage,
+    )[:player_limit]
     outcomes[-1]["detail"] = f"{len(candidates)} candidates"
 
     outputs: list[PlayerPipelineOutput] = []
@@ -996,7 +1009,9 @@ def _execute_nba_weekly_pipeline(
     _record_stage(stages, outcomes, "card_intelligence", "COMPLETED", "building NBA snapshots")
     for rank, output in enumerate(outputs, start=1):
         try:
-            snap = build_nba_player_snapshot(output, run, period, rank, storage, nba_storage)
+            snap = build_nba_player_snapshot(
+                output, run, period, rank, storage, nba_storage, performance_storage=perf_storage,
+            )
             player_snapshots.append(snap)
         except Exception as error:
             player_errors.append(f"{output.player_name}: {error}")

@@ -87,7 +87,16 @@ class WeeklyRunRequest(BaseModel):
     market_enabled: bool | None = None
     population_enabled: bool | None = None
 
-app = FastAPI(title="CardChase AI API", version="0.6.0")
+
+class PerformanceImportRequest(BaseModel):
+    league: str
+    season: int
+    period_type: str = "PREVIOUS_SEASON"
+    source_method: str = "APPROVED_IMPORT"
+    records: list[dict[str, Any]]
+
+
+app = FastAPI(title="CardChase AI API", version="0.16.2")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -512,6 +521,37 @@ def trigger_weekly_run(
         settings=settings,
     )
     return JSONResponse(summary.model_dump(mode="json"))
+
+
+@app.post("/api/admin/performance/import")
+def admin_import_performance(
+    payload: PerformanceImportRequest,
+    admin=Depends(_require_admin),
+) -> JSONResponse:
+    """Admin-only verified previous-season performance import."""
+    from cardchase_ai.performance_import import import_performance_records
+    from cardchase_ai.performance_storage import build_performance_storage
+
+    if payload.period_type != "PREVIOUS_SEASON":
+        raise HTTPException(status_code=400, detail="Only PREVIOUS_SEASON imports are supported.")
+    settings = _settings()
+    storage = build_performance_storage(settings)
+    summary = import_performance_records(
+        storage,
+        league=payload.league.upper(),
+        season=payload.season,
+        records=payload.records,
+        source_method=payload.source_method,
+    )
+    return JSONResponse(summary.model_dump(mode="json"))
+
+
+@app.get("/api/admin/storage/diagnostics")
+def admin_storage_diagnostics(admin=Depends(_require_admin)) -> JSONResponse:
+    """Admin-only storage backend diagnostics — no secrets."""
+    from cardchase_ai.storage_diagnostics import build_storage_diagnostics
+
+    return JSONResponse(build_storage_diagnostics(_settings()))
 
 
 @app.get("/api/notifications")

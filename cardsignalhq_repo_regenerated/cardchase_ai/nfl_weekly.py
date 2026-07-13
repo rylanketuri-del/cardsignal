@@ -35,7 +35,18 @@ from cardchase_ai.weekly_scoring import (
 )
 from cardchase_ai.weekly_storage import WeeklyStorage
 from cardchase_ai.capabilities import declare_nfl_capabilities
-from cardchase_ai.performance_evidence import build_nfl_performance_evidence
+from cardchase_ai.offseason_scoring import (
+    derive_offseason_recommendation,
+    has_offseason_sufficient_evidence,
+    is_offseason_phase,
+    previous_season_label,
+)
+from cardchase_ai.performance_evidence import (
+    build_nfl_performance_evidence,
+    build_nfl_previous_season_evidence,
+)
+from cardchase_ai.performance_storage import PerformanceStorage, build_performance_storage
+from cardchase_ai.nfl_season import recent_window_label as nfl_recent_label, should_show_recent_window
 
 NFL_SEARCH_TEMPLATES = {
     "broad": '{player} football card',
@@ -62,10 +73,14 @@ def _rolling_from_nfl(stats: dict[str, Any]) -> RollingHitterStats:
 def build_nfl_market_universe(
     provider: NFLPerformanceProvider,
     limit: int,
+    *,
+    performance_storage: PerformanceStorage | None = None,
 ) -> list[dict[str, Any]]:
     identities = provider.fetch_player_universe(limit=limit)
     candidates = []
+    seen: set[str] = set()
     for identity in identities:
+        seen.add(identity.source_player_id)
         candidates.append({
             "player_id": identity.source_player_id,
             "cs_player_id": identity.cs_player_id,
@@ -78,6 +93,25 @@ def build_nfl_market_universe(
             "team_logo_url": identity.team_logo_url,
             "candidate_source": "nfl_universe",
         })
+    if performance_storage and len(candidates) < limit:
+        for snap in performance_storage.list_league_snapshots("NFL")[:limit]:
+            if snap.source_player_id in seen:
+                continue
+            seen.add(snap.source_player_id)
+            candidates.append({
+                "player_id": snap.source_player_id,
+                "cs_player_id": snap.cs_player_id,
+                "player_name": snap.player_name or f"NFL Player {snap.source_player_id}",
+                "team": snap.team or "NFL",
+                "team_id": None,
+                "position": snap.position,
+                "position_group": map_nfl_position(snap.position),
+                "headshot_url": snap.headshot_url,
+                "team_logo_url": snap.team_logo_url,
+                "candidate_source": "previous_season_import",
+            })
+            if len(candidates) >= limit:
+                break
     return candidates
 
 
@@ -88,18 +122,23 @@ def build_nfl_player_snapshot(
     rank: int,
     storage: WeeklyStorage,
     nfl_storage: NFLStorage,
+    *,
+    performance_storage: PerformanceStorage | None = None,
 ) -> PlayerWeeklySignalSnapshot:
     source_id = output.source_player_id or str(output.player_id)
     csp_id = cs_nfl_player_id(source_id)
     hotness = output.hotness
+    perf_store = performance_storage or build_performance_storage()
 
     collector, collector_evidence, collector_missing = derive_collector_score(output.market_snapshots)
     scarcity, scarcity_evidence, scarcity_missing = derive_scarcity_score(output.market_snapshots)
 
     recent_snap = nfl_storage.fetch_latest_snapshot_by_period(csp_id, "RECENT_3_GAMES")
     season_snap = nfl_storage.fetch_latest_snapshot_by_period(csp_id, "REGULAR_SEASON")
+    prev_season_snap = perf_store.get_previous_season("NFL", csp_id, period.season - 1)
     drivers = nfl_storage.fetch_signal_drivers(csp_id)
     stored_phase = output.nfl_season_phase or "UNKNOWN"
+    offseason = is_offseason_phase(stored_phase)
 
     missing_inputs = list(dict.fromkeys(collector_missing + scarcity_missing))
     if recent_snap and recent_snap.missing_inputs:
@@ -109,11 +148,24 @@ def build_nfl_player_snapshot(
     if not output.market_snapshots and run.market_snapshots_created == 0:
         missing_inputs.append("market_snapshots")
 
-    performance = recent_snap.performance_score if recent_snap else hotness.performance_score
+    has_prev = prev_season_snap is not None
+    if offseason and has_prev and "stats_recent" in missing_inputs:
+        missing_inputs = [m for m in missing_inputs if m != "stats_recent"]
+
+    performance = recent_snap.performance_score if recent_snap and not offseason else None
+    if performance is None and has_prev and offseason:
+        performance = hotness.performance_score
     market = hotness.market_score if output.market_snapshots else None
 
     card_signal = None
-    if performance is not None and has_sufficient_evidence(performance, market, missing_inputs, league=run.league):
+    if performance is not None and has_offseason_sufficient_evidence(
+        run.league,
+        performance,
+        market,
+        missing_inputs,
+        has_previous_season=has_prev,
+        season_phase=stored_phase,
+    ):
         card_signal = round(0.55 * performance + 0.45 * (market or 0), 2)
 
     prior = storage.fetch_prior_official_player_snapshot(csp_id, run.league, period.year, period.week_number)
@@ -121,14 +173,22 @@ def build_nfl_player_snapshot(
     weekly_change = compute_weekly_change(card_signal, prior_score)
 
     momentum = None
-    if prior is not None:
+    if prior is not None and not offseason:
         momentum = derive_momentum_from_prior_snapshots(
             performance,
             prior.performance_score,
         )
 
     conviction = derive_conviction(hotness.confidence_multiplier, len(missing_inputs))
-    recommendation = derive_recommendation(hotness, collector) if card_signal is not None else None
+    if offseason:
+        recommendation = derive_offseason_recommendation(
+            card_signal_score=card_signal,
+            has_recent_form=bool(recent_snap and recent_snap.games_played > 0),
+            has_market=bool(output.market_snapshots),
+            has_drivers=bool(drivers),
+        )
+    else:
+        recommendation = derive_recommendation(hotness, collector) if card_signal is not None else None
     status = derive_nfl_status(
         performance_score=performance,
         weekly_change=weekly_change,
@@ -136,24 +196,32 @@ def build_nfl_player_snapshot(
         recommendation=recommendation,
     )
 
-    recent_evidence = build_nfl_performance_evidence(recent_snap)
+    recent_evidence = [] if offseason else build_nfl_performance_evidence(recent_snap)
     season_evidence = build_nfl_performance_evidence(season_snap)
+    prev_evidence = build_nfl_previous_season_evidence(prev_season_snap)
     driver_payloads = [d.model_dump(mode="json") for d in drivers]
-    perf_quality = recent_snap.data_quality if recent_snap else "INSUFFICIENT"
+    perf_quality = prev_season_snap.data_quality if offseason and has_prev else (
+        recent_snap.data_quality if recent_snap else "INSUFFICIENT"
+    )
     driver_quality = "HIGH" if len(drivers) >= 2 else "MEDIUM" if drivers else "INSUFFICIENT"
     capabilities = declare_nfl_capabilities(
         has_prior_weekly_snapshot=prior is not None,
         has_market_history=False,
-        has_import_data=bool(recent_snap or season_snap),
+        has_import_data=bool(recent_snap or season_snap or has_prev),
+        has_previous_season=has_prev,
+        season_phase=stored_phase,
     )
 
     period_start_str = period.period_start.isoformat() if period.period_start else None
     period_end_str = period.period_end.isoformat() if period.period_end else None
+    window_label = nfl_recent_label(stored_phase) if isinstance(stored_phase, str) else "Recent 3 Games"
+    if offseason:
+        window_label = previous_season_label("NFL", prev_season_snap.season if prev_season_snap else period.season - 1)
 
     evidence = build_nfl_scouting_evidence(
         nfl_season_phase=stored_phase,
         season=period.season,
-        recent_snap=recent_snap,
+        recent_snap=recent_snap if should_show_recent_window(stored_phase) else None,
         season_snap=season_snap,
         drivers=drivers,
         performance_reasons=hotness.reasons,
@@ -165,12 +233,15 @@ def build_nfl_player_snapshot(
     evidence["nfl_algorithm_version"] = NFL_PLAYER_SIGNAL_V1
     evidence["recent_performance"] = [e.model_dump(mode="json") for e in recent_evidence]
     evidence["season_performance"] = [e.model_dump(mode="json") for e in season_evidence]
+    evidence["previous_season_performance"] = [e.model_dump(mode="json") for e in prev_evidence]
+    evidence["previous_season_label"] = previous_season_label("NFL", prev_season_snap.season if prev_season_snap else period.season - 1)
     evidence["signal_drivers"] = driver_payloads
     evidence["performance_data_quality"] = perf_quality
+    evidence["previous_season_data_quality"] = prev_season_snap.data_quality if prev_season_snap else "INSUFFICIENT"
     evidence["driver_data_quality"] = driver_quality
     evidence["season_phase"] = stored_phase
-    evidence["recent_window_label"] = "Recent 3 Games"
-    evidence["period_type"] = "RECENT_3_GAMES"
+    evidence["recent_window_label"] = window_label
+    evidence["period_type"] = "PREVIOUS_SEASON" if offseason else "RECENT_3_GAMES"
     evidence["performance_algorithm_version"] = NFL_PLAYER_SIGNAL_V1
     evidence["market_snapshots"] = {
         k: v.model_dump(mode="json") if hasattr(v, "model_dump") else v
@@ -214,11 +285,12 @@ def build_nfl_player_snapshot(
         headshot_url=output.headshot_url,
         team_logo_url=output.team_logo_url,
         season_phase=stored_phase,
-        period_type="RECENT_3_GAMES",
-        recent_window_label="Recent 3 Games",
+        period_type="PREVIOUS_SEASON" if offseason else "RECENT_3_GAMES",
+        recent_window_label=window_label,
         signal_drivers=driver_payloads,
         recent_performance=[e.model_dump(mode="json") for e in recent_evidence],
         season_performance=[e.model_dump(mode="json") for e in season_evidence],
+        previous_season_performance=[e.model_dump(mode="json") for e in prev_evidence],
         performance_data_quality=perf_quality,
         performance_missing_inputs=performance_missing,
         market_data_quality="MEDIUM" if output.market_snapshots else "INSUFFICIENT",
@@ -231,7 +303,7 @@ def build_nfl_player_snapshot(
         card_algorithm_version=NFL_PLAYER_SIGNAL_V1,
         prior_score=prior_score,
         official_weekly_snapshot=True,
-        data_confidence=perf_quality,
+        data_confidence="INSUFFICIENT" if offseason and not has_prev else perf_quality,
         evidence_summary=f"{len(drivers)} NFL signal drivers from stored evidence",
         freshness_summary=period_end_str,
     )

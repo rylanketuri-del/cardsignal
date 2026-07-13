@@ -40,6 +40,7 @@ function srIntelFromNormalized(payload = {}, entry = {}) {
 
   const recentStats = srStatsFromEvidence(payload.recent_performance || []);
   const seasonStats = srStatsFromEvidence(payload.season_performance || []);
+  const previousSeasonStats = srStatsFromEvidence(payload.previous_season_performance || []);
 
   return {
     normalizedPayload: payload,
@@ -61,6 +62,12 @@ function srIntelFromNormalized(payload = {}, entry = {}) {
     capturedAt: payload.captured_at || payload.updated_at,
     stats7d: nflReport?.recentStats || nbaReport?.recentStats || recentStats || entry.stats_7d || leagueEvidence.nfl_recent_stats || leagueEvidence.nba_recent_stats || null,
     stats30d: nflReport?.seasonStats || nbaReport?.seasonStats || seasonStats || entry.stats_30d || leagueEvidence.nfl_season_stats || leagueEvidence.nba_season_stats || null,
+    previousSeasonStats: previousSeasonStats.length ? previousSeasonStats : (nflReport?.previousSeasonStats || nbaReport?.previousSeasonStats || null),
+    previousSeasonLabel: payload.previous_season_label || nflReport?.previousSeasonLabel || nbaReport?.previousSeasonLabel || null,
+    previousSeasonDataQuality: payload.previous_season_data_quality || "INSUFFICIENT",
+    showRecentPanel: payload.season_phase === "REGULAR_SEASON" || payload.season_phase === "POSTSEASON" || payload.season_phase === "PRESEASON",
+    showOffseasonDrivers: payload.season_phase === "OFFSEASON" || payload.season_phase === "PRESEASON",
+    offseasonDriverLabel: payload.season_phase === "OFFSEASON" ? "Offseason Signal Drivers" : "Signal Drivers",
     marketSnapshots: leagueEvidence.market_snapshots || entry.market_snapshots || {},
     isNfl,
     isNba,

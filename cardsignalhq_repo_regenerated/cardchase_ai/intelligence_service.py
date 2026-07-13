@@ -47,11 +47,14 @@ def _apply_legacy_compatibility(snapshot: PlayerWeeklySignalSnapshot) -> PlayerW
 
 def _finalize_payload(payload: PlayerIntelligencePayload, league: str) -> PlayerIntelligencePayload:
     """Apply league evidence rules to recommendation/evidence without changing scores."""
+    has_prev = bool(payload.previous_season_performance)
     if has_sufficient_evidence(
         league,
         payload.performance_score,
         payload.market_score,
         payload.missing_inputs,
+        season_phase=payload.season_phase,
+        has_previous_season=has_prev,
     ):
         return payload
 

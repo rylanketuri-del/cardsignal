@@ -40,14 +40,20 @@ def declare_nfl_capabilities(
     has_prior_weekly_snapshot: bool = False,
     has_market_history: bool = False,
     has_import_data: bool = True,
+    has_previous_season: bool = False,
+    season_phase: str | None = None,
 ) -> dict[str, CapabilityStatus]:
     """NFL capability map — no MLB legacy paths, alerts disabled until implemented."""
+    from cardchase_ai.offseason_scoring import is_offseason_phase
+
     caps = _base_capabilities()
+    offseason = is_offseason_phase(season_phase)
     caps.update({
-        "imported_performance": "SUPPORTED" if has_import_data else "UNAVAILABLE",
-        "recent_form": "SUPPORTED" if has_import_data else "UNAVAILABLE",
-        "season_stats": "SUPPORTED" if has_import_data else "UNAVAILABLE",
-        "signal_drivers": "SUPPORTED" if has_import_data else "UNAVAILABLE",
+        "imported_performance": "SUPPORTED" if has_import_data or has_previous_season else "UNAVAILABLE",
+        "recent_form": "UNAVAILABLE" if offseason else ("SUPPORTED" if has_import_data else "UNAVAILABLE"),
+        "season_stats": "SUPPORTED" if has_import_data or has_previous_season else "UNAVAILABLE",
+        "previous_season_stats": "SUPPORTED" if has_previous_season else ("PENDING" if offseason else "UNAVAILABLE"),
+        "signal_drivers": "SUPPORTED" if has_import_data or has_previous_season else "UNAVAILABLE",
         "market_snapshots": "SUPPORTED",
         "card_intelligence": "SUPPORTED",
         "weekly_history": "SUPPORTED",
@@ -55,7 +61,38 @@ def declare_nfl_capabilities(
         "alerts": "DISABLED",
         "legacy_supabase": "UNAVAILABLE",
         "live_performance": "UNAVAILABLE",
-        "previous_season_stats": "PENDING",
+        "momentum": "SUPPORTED" if has_prior_weekly_snapshot else "PENDING",
+        "market_movement": "SUPPORTED" if has_market_history else "UNAVAILABLE",
+    })
+    return caps
+
+
+def declare_nba_capabilities(
+    *,
+    has_prior_weekly_snapshot: bool = False,
+    has_market_history: bool = False,
+    has_import_data: bool = True,
+    has_previous_season: bool = False,
+    season_phase: str | None = None,
+) -> dict[str, CapabilityStatus]:
+    """NBA capability map."""
+    from cardchase_ai.offseason_scoring import is_offseason_phase
+
+    caps = _base_capabilities()
+    offseason = is_offseason_phase(season_phase)
+    caps.update({
+        "imported_performance": "SUPPORTED" if has_import_data or has_previous_season else "UNAVAILABLE",
+        "recent_form": "UNAVAILABLE" if offseason else ("SUPPORTED" if has_import_data else "UNAVAILABLE"),
+        "season_stats": "SUPPORTED" if has_import_data or has_previous_season else "UNAVAILABLE",
+        "previous_season_stats": "SUPPORTED" if has_previous_season else ("PENDING" if offseason else "UNAVAILABLE"),
+        "signal_drivers": "SUPPORTED" if has_import_data or has_previous_season else "UNAVAILABLE",
+        "market_snapshots": "SUPPORTED",
+        "card_intelligence": "SUPPORTED",
+        "weekly_history": "SUPPORTED",
+        "population": "PENDING",
+        "alerts": "DISABLED",
+        "legacy_supabase": "UNAVAILABLE",
+        "live_performance": "UNAVAILABLE",
         "momentum": "SUPPORTED" if has_prior_weekly_snapshot else "PENDING",
         "market_movement": "SUPPORTED" if has_market_history else "UNAVAILABLE",
     })

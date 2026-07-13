@@ -1246,8 +1246,11 @@ function renderSnapshotStat(label, value, { title = "" } = {}) {
 function renderPlayerSnapshot(intel, entry = {}) {
   const stats7d = intel.stats7d;
   const stats30d = intel.stats30d;
+  const previousSeason = intel.previousSeasonStats;
+  const isOffseason = intel.seasonPhase === "OFFSEASON" || intel.nflSeasonPhase === "OFFSEASON" || intel.nba?.nbaSeasonPhase === "OFFSEASON";
   const has7d = hasPerformanceStats(stats7d) || (stats7d && Object.keys(stats7d).length > 1);
   const hasSeason = hasPerformanceStats(stats30d) || (stats30d && Object.keys(stats30d).length > 1);
+  const hasPreviousSeason = previousSeason && Object.keys(previousSeason).length > 0;
   const formatters = srMetricFormatters();
   const position = entry.position || piModalEntry?.position || '';
   const nflSpecs = intel.isNfl ? SRMetrics.srGetNflStatSpecs(position) : null;
@@ -1261,15 +1264,20 @@ function renderPlayerSnapshot(intel, entry = {}) {
   let seasonMeta = '';
   if (intel.isNfl && nfl) {
     recentTitle = nfl.recentWindowLabel;
-    seasonTitle = nfl.seasonWindowLabel;
+    seasonTitle = isOffseason ? (intel.previousSeasonLabel || nfl.previousSeasonLabel || nfl.seasonWindowLabel) : nfl.seasonWindowLabel;
     recentMeta = `<p class="sr-section-lead">${nfl.performancePeriodNote}: ${nfl.recentDateRange}${nfl.gamesInWindow != null ? ` · ${nfl.gamesInWindow} games` : ""}</p>`;
     seasonMeta = `<p class="sr-section-lead">${nfl.performancePeriodNote}: ${nfl.seasonDateRange}</p>`;
   } else if (intel.isNba && nba) {
     recentTitle = nba.recentWindowLabel;
-    seasonTitle = nba.seasonWindowLabel;
+    seasonTitle = isOffseason ? (intel.previousSeasonLabel || nba.previousSeasonLabel || nba.seasonWindowLabel) : nba.seasonWindowLabel;
     recentMeta = `<p class="sr-section-lead">${nba.performancePeriodNote}: ${nba.recentDateRange}${nba.gamesInWindow != null ? ` · ${nba.gamesInWindow} games` : ""}</p>`;
     seasonMeta = `<p class="sr-section-lead">${nba.performancePeriodNote}: ${nba.seasonDateRange}</p>`;
+  } else if (isOffseason && intel.previousSeasonLabel) {
+    seasonTitle = intel.previousSeasonLabel;
   }
+
+  const seasonStatsSource = isOffseason && hasPreviousSeason ? previousSeason : stats30d;
+  const hasSeasonPanel = isOffseason ? hasPreviousSeason : hasSeason;
 
   const last7Body = has7d
     ? `
@@ -1281,17 +1289,17 @@ function renderPlayerSnapshot(intel, entry = {}) {
       </div>`
     : `<p class="sr-pending">Performance data pending.</p>`;
 
-  const seasonBody = hasSeason
+  const seasonBody = hasSeasonPanel
     ? `
       <div class="sr-snapshot-grid">
         ${(nbaSpecs ? nbaSpecs.season : nflSpecs ? nflSpecs.season : SRMetrics.SR_PLAYER_STAT_SPECS.season).map((spec) => {
-    const stat = SRMetrics.srFormatPlayerStat(spec, stats30d, formatters);
+    const stat = SRMetrics.srFormatPlayerStat(spec, seasonStatsSource, formatters);
     return renderSnapshotStat(stat.label, stat.display, { title: stat.title });
   }).join("")}
       </div>`
     : `<p class="sr-pending">Performance data pending.</p>`;
 
-  const showRecent = (!intel.isNfl && !intel.isNba) || (nfl && nfl.showRecentPanel) || (nba && nba.showRecentPanel);
+  const showRecent = (!intel.isNfl && !intel.isNba && !isOffseason) || (nfl && nfl.showRecentPanel) || (nba && nba.showRecentPanel) || (intel.showRecentPanel && !isOffseason);
 
   return `
     <section class="sr-section sr-snapshot">
@@ -1341,7 +1349,15 @@ function renderMlbSignalDrivers(intel) {
 
 function renderNflSignalDrivers(intel) {
   if (!intel?.isNfl || !intel?.nfl) return "";
-  const drivers = intel.nfl.signalDrivers || [];
+  const driverTitle = (intel.showOffseasonDrivers || intel.nfl?.showOffseasonDrivers) ? (intel.offseasonDriverLabel || intel.nfl?.offseasonDriverLabel || "Offseason Signal Drivers") : "NFL Signal Drivers";
+  const drivers = intel.mappedDrivers?.length ? intel.mappedDrivers.map((d) => ({
+    title: d.title,
+    summary: d.summary,
+    sourceType: d.sourceType,
+    impact: d.impact,
+    evidenceQuality: d.evidenceQuality,
+    occurredAt: d.occurredAt,
+  })) : (intel.nfl.signalDrivers || []);
   const body = drivers.length
     ? `
       <div class="sr-nfl-drivers">
@@ -1363,7 +1379,7 @@ function renderNflSignalDrivers(intel) {
 
   return `
     <section class="sr-section sr-nfl-drivers-section">
-      <h3 class="sr-section-title">NFL Signal Drivers</h3>
+      <h3 class="sr-section-title">${driverTitle}</h3>
       <p class="sr-section-lead">Verified football developments from stored evidence only.</p>
       ${body}
     </section>`;
@@ -1371,7 +1387,15 @@ function renderNflSignalDrivers(intel) {
 
 function renderNbaSignalDrivers(intel) {
   if (!intel?.isNba || !intel?.nba) return "";
-  const drivers = intel.nba.signalDrivers || [];
+  const driverTitle = (intel.showOffseasonDrivers || intel.nba?.showOffseasonDrivers) ? (intel.offseasonDriverLabel || intel.nba?.offseasonDriverLabel || "Offseason Signal Drivers") : "NBA Signal Drivers";
+  const drivers = intel.mappedDrivers?.length ? intel.mappedDrivers.map((d) => ({
+    title: d.title,
+    summary: d.summary,
+    sourceType: d.sourceType,
+    impact: d.impact,
+    evidenceQuality: d.evidenceQuality,
+    occurredAt: d.occurredAt,
+  })) : (intel.nba.signalDrivers || []);
   const body = drivers.length
     ? `
       <div class="sr-nba-drivers">
@@ -1393,7 +1417,7 @@ function renderNbaSignalDrivers(intel) {
 
   return `
     <section class="sr-section sr-nba-drivers-section">
-      <h3 class="sr-section-title">NBA Signal Drivers</h3>
+      <h3 class="sr-section-title">${driverTitle}</h3>
       ${body}
     </section>`;
 }

@@ -48,6 +48,12 @@
 - [ ] PSA population
 - [ ] No duplicate scoring
 - [ ] No duplicate registry logic
+- [ ] Verified NFL previous-season data seeded
+- [ ] Verified NBA previous-season data seeded
+- [ ] Offseason Scouting Reports verified
+- [ ] Durable weekly storage confirmed
+- [ ] NFL production weekly snapshots confirmed
+- [ ] NBA production weekly snapshots confirmed
 
 ## Security
 - [ ] No secrets committed
