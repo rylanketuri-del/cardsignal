@@ -460,12 +460,14 @@ def get_weekly_latest(league: str = "MLB") -> JSONResponse:
 @app.get("/api/players/{league}/{player_id}/intelligence")
 def get_player_intelligence(league: str, player_id: str) -> JSONResponse:
     """Normalized player intelligence — read-only, stored weekly snapshots only."""
+    from cardchase_ai.repositories.factory import build_repository_bundle
+
     settings = _settings()
-    storage = build_weekly_storage(settings)
     league_upper = league.upper()
     if league_upper not in {"MLB", "NFL"}:
         raise HTTPException(status_code=404, detail=f"League {league} intelligence not available.")
-    payload = fetch_player_intelligence_payload(league_upper, player_id, storage)
+    repos = build_repository_bundle(settings)
+    payload = fetch_player_intelligence_payload(league_upper, player_id, repos=repos)
     if not payload:
         raise HTTPException(
             status_code=404,

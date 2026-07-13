@@ -146,4 +146,4 @@ MLB and NFL may use different source pipelines, but all shared surfaces consume 
 - **League-specific sources may differ:** MLB uses live API + legacy Supabase; NFL uses approved import + local JSON storage
 - **Unsupported is better than fabricated:** null scores stay null; pending states use intentional copy
 - **Momentum, weekly change, and market movement are distinct:** Momentum Score is a 0–100 intelligence score (not a percentage); Weekly Change is CardSignal Score delta between official weekly snapshots; Market Movement is historical change in stored market observations
-- **Frontend surfaces consume normalized intelligence:** Homepage, Scouting Report, and `GET /api/players/{league}/{player_id}/intelligence` share the same serializer
+- **Frontend surfaces consume normalized intelligence:** Homepage leader rows and Scouting Report load `PlayerIntelligencePayload` through the shared read service — capabilities define support state; `missing_inputs` only explains evidence gaps after support is confirmed

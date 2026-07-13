@@ -113,7 +113,7 @@ def build_nfl_player_snapshot(
     market = hotness.market_score if output.market_snapshots else None
 
     card_signal = None
-    if performance is not None and has_sufficient_evidence(performance, market, missing_inputs):
+    if performance is not None and has_sufficient_evidence(performance, market, missing_inputs, league=run.league):
         card_signal = round(0.55 * performance + 0.45 * (market or 0), 2)
 
     prior = storage.fetch_prior_official_player_snapshot(csp_id, run.league, period.year, period.week_number)

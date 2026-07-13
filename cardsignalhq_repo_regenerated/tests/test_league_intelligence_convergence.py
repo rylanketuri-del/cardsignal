@@ -15,11 +15,11 @@ from cardchase_ai.models.intelligence import NormalizedPerformanceEvidence, Play
 from cardchase_ai.models.schemas import RollingHitterStats
 from cardchase_ai.models.weekly import WEEKLY_INTELLIGENCE_V1, PlayerWeeklySignalSnapshot
 from cardchase_ai.performance_evidence import build_mlb_recent_evidence, build_mlb_season_evidence
+from cardchase_ai.league_evidence import has_sufficient_evidence
 from cardchase_ai.weekly_scoring import (
     compute_weekly_change,
     derive_momentum_from_prior_snapshots,
     derive_nfl_status,
-    has_sufficient_evidence,
 )
 
 
@@ -111,8 +111,9 @@ class MlbConvergenceTests(unittest.TestCase):
         self.assertGreater(payload.driver_count, 0)
 
     def test_normalized_evidence_gate_accepts_mlb_stats_7d(self):
-        self.assertTrue(has_sufficient_evidence(70.0, 60.0, []))
-        self.assertFalse(has_sufficient_evidence(70.0, 60.0, ["stats_7d", "stats_recent"]))
+        self.assertTrue(has_sufficient_evidence("MLB", 70.0, 60.0, []))
+        self.assertFalse(has_sufficient_evidence("MLB", 70.0, 60.0, ["stats_7d"]))
+        self.assertFalse(has_sufficient_evidence("MLB", 70.0, 60.0, ["stats_7d", "stats_recent"]))
 
 
 class NflConvergenceTests(unittest.TestCase):
@@ -186,6 +187,7 @@ class IntelligenceApiTests(unittest.TestCase):
     def test_fetch_not_found(self):
         from cardchase_ai.config import Settings
         from cardchase_ai.intelligence_api import fetch_player_intelligence_payload
+        from cardchase_ai.repositories.factory import build_repository_bundle
         from cardchase_ai.weekly_storage import WeeklyJsonStorage, WeeklyStorage
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -225,8 +227,8 @@ class IntelligenceApiTests(unittest.TestCase):
                 nba_player_limit=100,
                 nba_enabled=False,
             )
-            storage = WeeklyStorage(None, WeeklyJsonStorage(Path(tmp)))
-            result = fetch_player_intelligence_payload("MLB", "999", storage)
+            repos = build_repository_bundle(settings)
+            result = fetch_player_intelligence_payload("MLB", "999", repos=repos)
             self.assertIsNone(result)
 
 

@@ -197,7 +197,7 @@ def build_player_snapshot(
 
     performance = hotness.performance_score
     market = hotness.market_score if output.market_snapshots else None
-    card_signal = hotness.total_score if has_sufficient_evidence(performance, market, missing_inputs) else None
+    card_signal = hotness.total_score if has_sufficient_evidence(performance, market, missing_inputs, league=run.league) else None
 
     prior = storage.fetch_prior_official_player_snapshot(csp_id, run.league, period.year, period.week_number)
     prior_score = prior.card_signal_score if prior else None
@@ -397,11 +397,11 @@ def build_data_quality_summary(snapshots: list[PlayerWeeklySignalSnapshot]) -> d
 
     sufficient = sum(
         1 for s in snapshots
-        if has_sufficient_evidence(s.performance_score, s.market_score, s.missing_inputs)
+        if has_sufficient_evidence(s.performance_score, s.market_score, s.missing_inputs, league=s.league)
     )
     partial = sum(
         1 for s in snapshots
-        if s.card_signal_score is not None and not has_sufficient_evidence(s.performance_score, s.market_score, s.missing_inputs)
+        if s.card_signal_score is not None and not has_sufficient_evidence(s.performance_score, s.market_score, s.missing_inputs, league=s.league)
     )
     insufficient = total - sufficient - partial
     return {
@@ -413,34 +413,19 @@ def build_data_quality_summary(snapshots: list[PlayerWeeklySignalSnapshot]) -> d
     }
 
 
-def snapshots_to_leaderboard_entries(snapshots: list[PlayerWeeklySignalSnapshot]) -> list[TodaysLeaderEntry]:
-    ranked = sorted(
-        snapshots,
-        key=lambda s: (-(s.card_signal_score or -1), s.rank or 999, s.cs_player_id),
-    )
-    leaders: list[TodaysLeaderEntry] = []
-    for idx, snap in enumerate(ranked[:20], start=1):
-        leaders.append(
-            TodaysLeaderEntry(
-                rank=idx,
-                cs_player_id=snap.cs_player_id,
-                source_player_id=snap.source_player_id,
-                player_name=snap.player_name or snap.cs_player_id,
-                score=snap.card_signal_score,
-                performance=snap.performance_score,
-                market=snap.market_score,
-                collector=snap.collector_score,
-                momentum=snap.momentum_score,
-                recommendation=snap.recommendation,
-                weekly_change=snap.weekly_change,
-                status=snap.status,
-                team=snap.team,
-                position=snap.position,
-                headshot_url=snap.headshot_url,
-                team_logo_url=snap.team_logo_url,
-            )
-        )
-    return leaders
+def snapshots_to_leaderboard_entries(
+    snapshots: list[PlayerWeeklySignalSnapshot],
+    repos=None,
+) -> list[TodaysLeaderEntry]:
+    from cardchase_ai.intelligence_service import build_normalized_leader_rows
+    from cardchase_ai.repositories.factory import build_repository_bundle
+
+    if not snapshots:
+        return []
+    bundle = repos or build_repository_bundle()
+    rows = build_normalized_leader_rows(snapshots[0].league, snapshots, bundle)
+    leader_fields = set(TodaysLeaderEntry.model_fields.keys())
+    return [TodaysLeaderEntry.model_validate({k: v for k, v in row.items() if k in leader_fields}) for row in rows]
 
 
 def snapshots_to_legacy_leaderboard(snapshots: list[PlayerWeeklySignalSnapshot]) -> list[dict[str, Any]]:
@@ -1186,7 +1171,11 @@ def run_weekly_intelligence(
 
 def build_latest_weekly_api_payload(league: str, storage: WeeklyStorage, settings: Settings) -> dict[str, Any]:
     """Build GET /api/weekly/latest response from stored data only."""
+    from cardchase_ai.intelligence_service import build_normalized_leader_rows
+    from cardchase_ai.repositories.factory import build_repository_bundle
+
     payload = storage.fetch_latest_completed_payload(league)
+    repos = build_repository_bundle(settings)
     next_refresh = next_scheduled_refresh(
         league=league,
         timezone_name=settings.weekly_timezone,
@@ -1219,7 +1208,18 @@ def build_latest_weekly_api_payload(league: str, storage: WeeklyStorage, setting
         run_dict = None
 
     homepage = payload.get("homepage")
-    if isinstance(homepage, dict):
+    player_snaps = payload.get("player_snapshots", [])
+    parsed_snaps = [PlayerWeeklySignalSnapshot.model_validate(p) for p in player_snaps] if player_snaps else []
+
+    if parsed_snaps:
+        leaders = build_normalized_leader_rows(league, parsed_snaps, repos)
+        card_snaps = payload.get("card_snapshots", [])
+        sections = build_homepage_card_sections(
+            [CardWeeklyIntelligenceSnapshot.model_validate(c) for c in card_snaps]
+        ) if card_snaps else {"trending_cards": [], "biggest_movers": [], "buy_low_watch": [], "most_chased": []}
+        card_intel = sections
+        quality = build_data_quality_summary(parsed_snaps)
+    elif isinstance(homepage, dict):
         card_intel = {
             "trending_cards": homepage.get("trending_cards", []),
             "biggest_movers": homepage.get("biggest_movers", []),
@@ -1229,21 +1229,9 @@ def build_latest_weekly_api_payload(league: str, storage: WeeklyStorage, setting
         quality = homepage.get("data_quality_summary", {})
         leaders = homepage.get("todays_leaders", [])
     else:
-        player_snaps = payload.get("player_snapshots", [])
-        card_snaps = payload.get("card_snapshots", [])
-        sections = build_homepage_card_sections(
-            [CardWeeklyIntelligenceSnapshot.model_validate(c) for c in card_snaps]
-        ) if card_snaps else {"trending_cards": [], "biggest_movers": [], "buy_low_watch": [], "most_chased": []}
-        card_intel = sections
-        quality = build_data_quality_summary(
-            [PlayerWeeklySignalSnapshot.model_validate(p) for p in player_snaps]
-        ) if player_snaps else {}
-        leaders = [
-            TodaysLeaderEntry.model_validate(l).model_dump(mode="json")
-            for l in snapshots_to_leaderboard_entries(
-                [PlayerWeeklySignalSnapshot.model_validate(p) for p in player_snaps]
-            )
-        ] if player_snaps else []
+        card_intel = {"trending_cards": [], "biggest_movers": [], "buy_low_watch": [], "most_chased": []}
+        quality = {}
+        leaders = []
 
     return {
         "run": run_dict,

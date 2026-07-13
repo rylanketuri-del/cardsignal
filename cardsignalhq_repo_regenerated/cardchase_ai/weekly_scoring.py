@@ -104,20 +104,22 @@ def derive_status(hotness: HitterHotnessBreakdown, momentum: float | None) -> st
     return "COOLING" if hotness.total_score < 40 else "RISING"
 
 
+from cardchase_ai.league_evidence import (
+    critical_evidence_requirements,
+    has_sufficient_evidence as league_has_sufficient_evidence,
+    insufficient_recommendation_fallback,
+)
+
+
 def has_sufficient_evidence(
     performance: float | None,
     market: float | None,
     missing_inputs: list[str],
+    *,
+    league: str = "MLB",
 ) -> bool:
-    """Normalized evidence gate — league-specific performance keys, shared market requirements."""
-    if performance is None or market is None:
-        return False
-    if "market_snapshots" in missing_inputs or "listing_volume" in missing_inputs:
-        return False
-    performance_missing = {"stats_7d", "stats_recent"}
-    if performance_missing.issubset(set(missing_inputs)):
-        return False
-    return True
+    """Normalized evidence gate — league parameter required for correct behavior."""
+    return league_has_sufficient_evidence(league, performance, market, missing_inputs)
 
 
 def conviction_to_evidence(conviction: str | None) -> str:
