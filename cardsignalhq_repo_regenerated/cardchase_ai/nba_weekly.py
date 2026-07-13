@@ -366,7 +366,14 @@ def process_player_for_nba_weekly(
             season_phase=season_phase,
             source_method=provider.source_method,
         )
-        nba_storage.save_signal_drivers(cs_id, drivers)
+        if drivers:
+            nba_storage.save_signal_drivers(cs_id, drivers)
+        else:
+            stored_drivers = nba_storage.fetch_signal_drivers(cs_id)
+            if stored_drivers:
+                drivers = stored_drivers
+            else:
+                nba_storage.save_signal_drivers(cs_id, drivers)
 
         market_snapshots: dict[str, MarketSnapshot] = {}
         if market_enabled and ebay_client:

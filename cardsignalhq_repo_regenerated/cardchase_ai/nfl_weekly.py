@@ -404,7 +404,15 @@ def process_player_for_nfl_weekly(
             season_phase=season_phase,
             source_method=provider.source_method,
         )
-        nfl_storage.save_signal_drivers(cs_id, drivers)
+        if drivers:
+            nfl_storage.save_signal_drivers(cs_id, drivers)
+        else:
+            # Preserve verified stored offseason drivers when generation yields none
+            stored_drivers = nfl_storage.fetch_signal_drivers(cs_id)
+            if stored_drivers:
+                drivers = stored_drivers
+            else:
+                nfl_storage.save_signal_drivers(cs_id, drivers)
 
         market_snapshots: dict[str, MarketSnapshot] = {}
         if market_enabled and ebay_client:
