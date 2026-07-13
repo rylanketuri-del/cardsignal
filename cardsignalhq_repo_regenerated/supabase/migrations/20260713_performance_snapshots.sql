@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS performance_snapshots (
     league TEXT NOT NULL,
     sport TEXT NOT NULL,
     season INTEGER NOT NULL,
+    season_label TEXT,
     position TEXT,
     team TEXT,
     games_played INTEGER NOT NULL DEFAULT 0,

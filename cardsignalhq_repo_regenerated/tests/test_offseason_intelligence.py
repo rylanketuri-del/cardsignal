@@ -27,6 +27,11 @@ from cardchase_ai.offseason_scoring import (
     is_offseason_phase,
     previous_season_label,
 )
+from cardchase_ai.season_context import (
+    OFFSEASON_HELPER_TEXT,
+    format_season_performance_label,
+    resolve_offseason_season_context,
+)
 from cardchase_ai.performance_evidence import (
     build_mlb_recent_evidence,
     build_nba_previous_season_evidence,
@@ -75,13 +80,14 @@ def _nfl_qb_row(source_id: str = "12345", season: int = 2024) -> dict:
     }
 
 
-def _nba_row(source_id: str = "2544", season: int = 2025) -> dict:
+def _nba_row(source_id: str = "2544", season: int = 2025, season_label: str | None = "2025–26") -> dict:
     return {
         "source_player_id": source_id,
         "player_name": "Test Star",
         "position": "SF",
         "team": "LAL",
         "season": season,
+        "season_label": season_label,
         "games_played": 70,
         "starts": 70,
         "stats": {
@@ -292,12 +298,29 @@ class TestOffseasonScoring(unittest.TestCase):
         self.assertEqual(rec, "WATCH")
 
     def test_offseason_labels(self) -> None:
-        self.assertEqual(previous_season_label("NFL", 2025), "2025 Season Snapshot")
-        self.assertEqual(previous_season_label("NBA", 2025), "2025–26 Season Snapshot")
+        self.assertEqual(previous_season_label("NFL", 2025), "2025 Season Performance")
+        self.assertEqual(previous_season_label("NBA", 2025), "2025–26 Season Performance")
+        self.assertEqual(
+            format_season_performance_label("NBA", 2025, stored_label="2025–26"),
+            "2025–26 Season Performance",
+        )
+        self.assertEqual(previous_season_label("NFL", None), "Previous Season Performance")
+        self.assertEqual(OFFSEASON_HELPER_TEXT, "Most recently completed season")
 
     def test_is_offseason_phase(self) -> None:
         self.assertTrue(is_offseason_phase("OFFSEASON"))
         self.assertFalse(is_offseason_phase("REGULAR_SEASON"))
+
+    def test_resolve_season_context_from_store(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = _test_settings(tmp)
+            store = build_performance_storage(settings)
+            import_performance_records(store, league="NFL", season=2025, records=[_nfl_qb_row("12345", 2025)])
+            ctx = resolve_offseason_season_context("NFL", cs_nfl_player_id("12345"), store)
+            self.assertEqual(ctx.season, 2025)
+            self.assertEqual(ctx.display_label, "2025 Season Performance")
+            self.assertEqual(ctx.helper_text, OFFSEASON_HELPER_TEXT)
+            self.assertIsNotNone(ctx.source_snapshot_id)
 
 
 class TestOffseasonSerialization(unittest.TestCase):
@@ -315,7 +338,7 @@ class TestOffseasonSerialization(unittest.TestCase):
             period_start=datetime.now(timezone.utc),
             period_end=datetime.now(timezone.utc),
             season_phase="OFFSEASON",
-            recent_window_label="2025 Season Snapshot",
+            recent_window_label="2025 Season Performance",
             previous_season_performance=[
                 {
                     "metric": "passing_yards",
@@ -327,7 +350,9 @@ class TestOffseasonSerialization(unittest.TestCase):
             ],
             recent_performance=[],
             evidence={
-                "previous_season_label": "2025 Season Snapshot",
+                "previous_season_label": "2025 Season Performance",
+                "previous_season_helper_text": "Most recently completed season",
+                "season_label": "2025",
                 "season_phase": "OFFSEASON",
             },
         )
@@ -335,10 +360,12 @@ class TestOffseasonSerialization(unittest.TestCase):
         return PlayerWeeklySignalSnapshot(**base)
 
     def test_serializer_includes_previous_season_fields(self) -> None:
-        payload = serialize_player_intelligence(self._snap())
+        payload = serialize_player_intelligence(self._snap(season=2025))
         self.assertEqual(payload.season_phase, "OFFSEASON")
+        self.assertEqual(payload.season, 2025)
         self.assertEqual(len(payload.previous_season_performance), 1)
-        self.assertEqual(payload.previous_season_label, "2025 Season Snapshot")
+        self.assertEqual(payload.previous_season_label, "2025 Season Performance")
+        self.assertEqual(payload.previous_season_helper_text, "Most recently completed season")
         self.assertEqual(len(payload.recent_performance), 0)
         self.assertEqual(payload.capabilities.get("recent_form"), "UNAVAILABLE")
 
@@ -446,13 +473,18 @@ class TestOffseasonNflWeeklyRun(unittest.TestCase):
 
         snap = PlayerWeeklySignalSnapshot.model_validate(persisted["player_snapshots"][0])
         self.assertEqual(snap.season_phase, "OFFSEASON")
+        self.assertEqual(snap.season, 2025)
         self.assertEqual(len(snap.recent_performance), 0)
         self.assertGreater(len(snap.previous_season_performance), 0)
-        self.assertEqual(snap.evidence.get("previous_season_label"), "2025 Season Snapshot")
+        self.assertEqual(snap.evidence.get("previous_season_label"), "2025 Season Performance")
+        self.assertEqual(snap.evidence.get("previous_season_helper_text"), "Most recently completed season")
         self.assertNotEqual(snap.recent_window_label, "Recent 3 Games")
+        self.assertNotIn("Recent 3 Games", json.dumps(persisted))
         self.assertIsNone(snap.momentum_score)
         self.assertNotEqual(snap.recommendation, "BUY")
         self.assertIsNone(snap.card_signal_score)
+        self.assertTrue(any("market" in m or "stats" in m for m in snap.missing_inputs) or snap.data_confidence == "INSUFFICIENT")
+        self.assertEqual(len(snap.signal_drivers), 1)
 
         payload = build_latest_weekly_api_payload("NFL", self.storage, self.settings)
         self.assertIsNotNone(payload["run"])
@@ -460,7 +492,9 @@ class TestOffseasonNflWeeklyRun(unittest.TestCase):
         self.assertEqual(len(payload["todays_leaders"]), 1)
         intel = payload["todays_leaders"][0]["intelligence"]
         self.assertEqual(intel["season_phase"], "OFFSEASON")
-        self.assertEqual(intel["previous_season_label"], "2025 Season Snapshot")
+        self.assertEqual(intel["season"], 2025)
+        self.assertEqual(intel["previous_season_label"], "2025 Season Performance")
+        self.assertEqual(intel["previous_season_helper_text"], "Most recently completed season")
         self.assertEqual(len(intel["recent_performance"]), 0)
         self.assertGreater(len(intel["previous_season_performance"]), 0)
         self.assertNotEqual(intel.get("recommendation"), "BUY")
@@ -470,7 +504,10 @@ class TestOffseasonNflWeeklyRun(unittest.TestCase):
         normalized = get_player_intelligence("NFL", "12345", repos)
         assert normalized is not None
         self.assertEqual(normalized.season_phase, "OFFSEASON")
-        self.assertEqual(normalized.previous_season_label, "2025 Season Snapshot")
+        self.assertEqual(normalized.season, 2025)
+        self.assertEqual(normalized.previous_season_label, "2025 Season Performance")
+        self.assertEqual(normalized.previous_season_helper_text, "Most recently completed season")
+        self.assertIsNotNone(normalized.captured_at)
 
 
 class TestOffseasonNbaWeeklyRun(unittest.TestCase):
@@ -517,10 +554,14 @@ class TestOffseasonNbaWeeklyRun(unittest.TestCase):
 
         self.assertEqual(snap.league, "NBA")
         self.assertEqual(snap.season_phase, "OFFSEASON")
+        self.assertEqual(snap.season, 2025)
+        self.assertEqual(snap.evidence.get("season_label"), "2025–26")
         self.assertEqual(len(snap.recent_performance), 0)
         self.assertGreater(len(snap.previous_season_performance), 0)
-        self.assertEqual(snap.evidence.get("previous_season_label"), "2025–26 Season Snapshot")
+        self.assertEqual(snap.evidence.get("previous_season_label"), "2025–26 Season Performance")
+        self.assertEqual(snap.evidence.get("previous_season_helper_text"), "Most recently completed season")
         self.assertNotEqual(snap.recent_window_label, "Recent 5 Games")
+        self.assertNotIn("Recent 5 Games", json.dumps(persisted))
         self.assertIsNone(snap.momentum_score)
         self.assertNotEqual(snap.recommendation, "BUY")
         self.assertIsNone(snap.card_signal_score)
@@ -530,10 +571,14 @@ class TestOffseasonNbaWeeklyRun(unittest.TestCase):
         self.assertEqual(payload["run"]["status"], "COMPLETED")
         self.assertEqual(len(payload["todays_leaders"]), 1)
         intel = payload["todays_leaders"][0]["intelligence"]
-        self.assertEqual(intel["previous_season_label"], "2025–26 Season Snapshot")
+        self.assertEqual(intel["season_label"], "2025–26")
+        self.assertEqual(intel["previous_season_label"], "2025–26 Season Performance")
+        self.assertEqual(intel["previous_season_helper_text"], "Most recently completed season")
         self.assertEqual(len(intel["recent_performance"]), 0)
         self.assertNotEqual(intel.get("recommendation"), "BUY")
         self.assertIsNone(intel.get("card_signal_score"))
+        self.assertNotEqual(intel.get("player_name"), "Demo Player")
+        self.assertEqual(intel.get("player_name"), "Test Star")
 
 
 class TestHomepageActivation(unittest.TestCase):
@@ -610,6 +655,13 @@ class TestHomepageActivation(unittest.TestCase):
         self.assertEqual(payload["run"]["status"], "COMPLETED")
         self.assertEqual(len(payload["todays_leaders"]), 1)
         self.assertEqual(payload["todays_leaders"][0]["league"], "NBA")
+        self.assertEqual(payload["todays_leaders"][0]["player_name"], "Test Star")
+        self.assertEqual(payload["todays_leaders"][0]["intelligence"]["season_label"], "2025–26")
+        self.assertEqual(
+            payload["todays_leaders"][0]["intelligence"]["previous_season_label"],
+            "2025–26 Season Performance",
+        )
+        self.assertNotEqual(payload["todays_leaders"][0]["player_name"], "Demo Player")
 
         board = fetch_nba_leaderboard(self.settings)
         self.assertEqual(len(board["items"]), 1)
@@ -707,8 +759,11 @@ class TestMlbRegression(unittest.TestCase):
         snap = build_player_snapshot(output, run, period, 1, self.storage)
 
         self.assertEqual(snap.season_phase, "REGULAR_SEASON")
+        self.assertEqual(snap.season, 2026)
         self.assertEqual(snap.recent_window_label, "Last 7 Days")
+        self.assertEqual(snap.evidence.get("season_performance_label"), "2026 Season Performance")
         self.assertGreater(len(snap.recent_performance), 0)
+        self.assertGreater(len(snap.season_performance), 0)
         self.assertEqual(len(snap.previous_season_performance), 0)
         self.assertIn("stats_7d", critical_evidence_requirements("MLB"))
         self.assertTrue(
@@ -727,9 +782,19 @@ class TestMlbRegression(unittest.TestCase):
         self.assertGreater(len(payload.recent_performance), 0)
         self.assertEqual(len(payload.previous_season_performance), 0)
         self.assertEqual(payload.recent_window_label, "Last 7 Days")
+        self.assertEqual(payload.season, 2026)
+        self.assertEqual(payload.season_label, "2026")
+        self.assertEqual(payload.season_phase, "REGULAR_SEASON")
 
         recent_labels = [e.label for e in build_mlb_recent_evidence(stats_7d, stats_30d)]
         self.assertTrue(any("Last 7 Days" in label for label in recent_labels))
+
+        homepage = build_latest_weekly_api_payload("MLB", self.storage, self.settings)
+        self.assertIsNone(homepage["run"])  # no official run persisted in this unit fixture
+        # Normalized payload remains valid for Scouting Report / homepage consumers
+        self.assertIn("stats_7d", critical_evidence_requirements("MLB"))
+        self.assertTrue(payload.recent_performance)
+        self.assertTrue(payload.signal_drivers)
 
 
 if __name__ == "__main__":

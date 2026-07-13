@@ -33,7 +33,7 @@ Report sections (scrollable, editorial layout):
 | Section | Purpose |
 |---------|---------|
 | **Header** | Player, team, position, CardSignal Score, recommendation, status, updated timestamp, algorithm version |
-| **Player Snapshot** | Recent window and Season Snapshot from stored league stats (MLB: Last 7 Days; NBA: Recent 5 Games; NFL: Recent 3 Games) |
+| **Player Snapshot** | Recent window and Season Performance from stored league stats (MLB: Last 7 Days; NBA: Recent 5 Games; NFL: Recent 3 Games) |
 | **Why This Signal** | Signal contributors explaining score changes from real evidence |
 | **Cards** | Player-linked card intelligence with pricing, movement, listings, PSA population when available |
 | **Market** | Research-style market summary from stored eBay snapshots |
@@ -100,7 +100,7 @@ NFL support follows the same evidence-first architecture as MLB, with football-s
 - **Position-aware performance:** QB, RB, WR, and TE use separate scoring models — defensive players are not forced into offensive formulas
 - **Recent 3-game window:** during the active season, recent form uses the last 3 completed games (not calendar days)
 - **Bye weeks:** bye weeks are excluded from performance windows and do not count as zero-stat games
-- **Season phases:** REGULAR/POSTSEASON show Recent 3 Games + Season Snapshot; PRESEASON shows verified preseason + previous season; OFFSEASON shows previous season only
+- **Season phases:** REGULAR/POSTSEASON show Recent 3 Games + Season Performance; PRESEASON shows verified preseason + previous season; OFFSEASON shows previous season only
 - **No projections or rumors:** Signal Drivers require stored, verified evidence — fantasy projections and rumors are excluded
 - **Data quality:** HIGH / MEDIUM / LOW / INSUFFICIENT based on completed games, metric completeness, and sample size
 - **Player score vs card score:** NFL performance (`NFL_PERFORMANCE_V1`) feeds player-level signals; CardSignal Card Score remains a separate market-aware layer (`NFL_PLAYER_SIGNAL_V1`)
@@ -153,8 +153,19 @@ MLB and NFL may use different source pipelines, but all shared surfaces consume 
 NFL and NBA remain useful during the offseason through verified previous-season context — never fabricated recent form.
 
 - **Prior-season stats provide context, not current momentum:** `previous_season_performance` is stored separately from `recent_performance`; previous-season values are never labeled as current-season production
-- **Offseason Signal Drivers replace empty recent-game panels:** Scouting Reports show `{season} Season Snapshot` (NFL) or `{season}–{end} Season Snapshot` (NBA), then Offseason Signal Drivers — not “Recent 3 Games” or “Recent 5 Games” during `OFFSEASON`
+- **Offseason Signal Drivers replace empty recent-game panels:** Scouting Reports show verified Offseason Signal Drivers — not “Recent 3 Games” or “Recent 5 Games” during `OFFSEASON`
 - **Verified imports must be clearly sourced:** `PreviousSeasonPerformanceSnapshot` records `source_method`, `source_reference`, and `provider_updated_at`; admin-protected `POST /api/admin/performance/import` and `scripts/import_performance.py` write through durable storage
 - **No rumors or fabricated developments:** Signal Drivers require stored, verified evidence; empty driver state uses honest copy
 - **Current recommendations require current supporting evidence:** previous-season stats alone cannot trigger a confident BUY; offseason recommendations default to WATCH unless market and driver evidence support HOLD
 - **Durable storage preferred:** Supabase `performance_snapshots` table is primary; local JSON warns when ephemeral (Render redeploys)
+
+## Season Context Principles
+
+During the offseason, CardSignal shows the most recently completed verified season — never a hardcoded year, stale fixture default, or vague label when the exact season is known.
+
+- **Exact season labels preferred:** NFL/MLB use `{season} Season Performance` (e.g. `2025 Season Performance`); NBA preserves the stored canonical split-year label (e.g. `2025–26 Season Performance`)
+- **Helper line during offseason:** `Most recently completed season`
+- **Fallback only when missing:** `Previous Season Performance` — or `Previous season performance unavailable` when no prior-season snapshot exists
+- **Stored snapshot source of truth:** season years and labels come from verified `PREVIOUS_SEASON` / completed-season snapshots via the centralized season-context helper — not from the calendar year, player age, rank, or browser-side calculations
+- **Active-season labels differ:** REGULAR_SEASON / POSTSEASON keep Recent windows (`Last 7 Days`, `Recent 3 Games`, `Recent 5 Games`) plus `{current stored season} Season Performance`; PRESEASON distinguishes `Preseason Performance` from the prior completed season
+- **API contract serializes context:** normalized intelligence returns `season`, `season_label`, `season_phase`, `previous_season_performance`, `previous_season_label`, `previous_season_helper_text`, source snapshot reference, data quality, and `captured_at` for frontend consumption

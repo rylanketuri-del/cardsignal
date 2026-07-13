@@ -17,6 +17,10 @@ from cardchase_ai.models.intelligence import (
 from cardchase_ai.models.nfl import NFLSignalDriver
 from cardchase_ai.models.weekly import CardWeeklyIntelligenceSnapshot, PlayerWeeklySignalSnapshot
 from cardchase_ai.offseason_scoring import previous_season_label
+from cardchase_ai.season_context import (
+    OFFSEASON_HELPER_TEXT,
+    canonical_season_label,
+)
 from cardchase_ai.weekly_scoring import CARD_QUERY_LABELS, conviction_to_evidence
 
 
@@ -198,10 +202,31 @@ def serialize_player_intelligence(
     evidence_tier = conviction_to_evidence(snapshot.conviction)
     data_confidence = snapshot.data_confidence or _derive_data_confidence(snapshot.missing_inputs, snapshot.conviction)
 
-    prev_label = evidence.get("previous_season_label") or (
-        previous_season_label(league, snapshot.season - 1 if snapshot.season else None)
-        if prev_perf else None
-    )
+    season_phase = snapshot.season_phase or evidence.get("nfl_season_phase") or evidence.get("nba_season_phase") or evidence.get("season_phase")
+    offseason = str(season_phase or "").upper() == "OFFSEASON"
+
+    prev_label = evidence.get("previous_season_label")
+    prev_helper = evidence.get("previous_season_helper_text")
+    prev_source = evidence.get("previous_season_source_snapshot_id")
+    season_label = evidence.get("season_label")
+    if not prev_label and prev_perf:
+        # Prefer season from previous-season evidence / stored label — never calendar guess alone
+        stored_prev_season = evidence.get("nfl_season") or evidence.get("nba_season")
+        if stored_prev_season is None and offseason:
+            stored_prev_season = snapshot.season
+        prev_label = previous_season_label(
+            league,
+            stored_prev_season,
+            stored_label=season_label if league == "NBA" else None,
+        )
+        if offseason and not prev_helper:
+            prev_helper = OFFSEASON_HELPER_TEXT
+    if not season_label:
+        season_label = canonical_season_label(
+            league,
+            snapshot.season,
+            stored_label=evidence.get("season_label"),
+        )
     prev_quality = evidence.get("previous_season_data_quality") or (
         prev_perf[0].quality if prev_perf else "INSUFFICIENT"
     )
@@ -218,7 +243,8 @@ def serialize_player_intelligence(
         headshot_url=snapshot.headshot_url,
         team_logo_url=snapshot.team_logo_url,
         season=snapshot.season,
-        season_phase=snapshot.season_phase or evidence.get("nfl_season_phase") or evidence.get("season_phase"),
+        season_label=season_label,
+        season_phase=season_phase,
         period_type=snapshot.period_type or evidence.get("period_type"),
         period_start=snapshot.period_start,
         period_end=snapshot.period_end,
@@ -240,6 +266,8 @@ def serialize_player_intelligence(
         season_performance=season_perf,
         previous_season_performance=prev_perf,
         previous_season_label=prev_label,
+        previous_season_helper_text=prev_helper,
+        previous_season_source_snapshot_id=prev_source,
         previous_season_data_quality=prev_quality,
         performance_data_quality=perf_quality,
         performance_missing_inputs=snapshot.performance_missing_inputs or [],

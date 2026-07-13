@@ -75,19 +75,32 @@ function srNflIsNflEntry(entry = {}) {
 
 function srNflRecentWindowLabel(phase) {
   if (phase === "OFFSEASON") return "Previous Season Context";
-  if (phase === "PRESEASON") return "Preseason Snapshot";
+  if (phase === "PRESEASON") return "Preseason Performance";
   return "Recent 3 Games";
 }
 
-function srNflSeasonWindowLabel(phase, season) {
-  if (phase === "OFFSEASON") return season ? `${season} Season Snapshot` : "Previous Season Snapshot";
-  if (phase === "PRESEASON") return season ? `Prior Season Snapshot (${season})` : "Prior Season Snapshot";
-  if (phase === "POSTSEASON") return season ? `Season Snapshot (${season}, Postseason)` : "Season Snapshot";
-  return season ? `Season Snapshot (${season})` : "Season Snapshot";
+function srNflSeasonWindowLabel(phase, season, storedLabel) {
+  const fromStored = storedLabel || null;
+  if (fromStored) return fromStored;
+  if (phase === "OFFSEASON") {
+    return season != null && season !== "" ? `${season} Season Performance` : "Previous Season Performance";
+  }
+  if (phase === "PRESEASON") {
+    return season != null && season !== "" ? `${season} Season Performance` : "Previous Season Performance";
+  }
+  if (phase === "POSTSEASON") {
+    return season != null && season !== "" ? `${season} Season Performance` : "Season Performance";
+  }
+  return season != null && season !== "" ? `${season} Season Performance` : "Season Performance";
 }
 
 function srNflOffseasonDriverLabel() {
   return "Offseason Signal Drivers";
+}
+
+function srNflOffseasonHelperText(phase, hasSeason) {
+  if (phase === "OFFSEASON" && hasSeason) return "Most recently completed season";
+  return null;
 }
 
 function srNflShouldShowRecentPanel(phase) {
@@ -123,12 +136,18 @@ function srNflMapSignalDrivers(rawDrivers = []) {
 
 function srNflMapScoutingReport(entry = {}, weeklySnap = null) {
   const evidence = weeklySnap?.evidence || entry.evidence || {};
-  const phase = evidence.nfl_season_phase || entry.nfl_season_phase || "UNKNOWN";
+  const phase = evidence.nfl_season_phase || entry.nfl_season_phase || evidence.season_phase || "UNKNOWN";
   const season = evidence.nfl_season || entry.nfl_season || weeklySnap?.season || entry.season || null;
+  const storedPrevLabel = evidence.previous_season_label || entry.previous_season_label || null;
+  const storedSeasonLabel = evidence.season_performance_label || evidence.season_label || null;
   const recentWindow = evidence.nfl_recent_window || entry.nfl_recent_window || null;
   const seasonWindow = evidence.nfl_season_window || entry.nfl_season_window || null;
   const playerId = srNflResolvePlayerId(entry);
   const csPlayerId = entry.cs_player_id || (playerId ? `CS-NFL-P-${playerId}` : null);
+  const seasonWindowLabel = phase === "OFFSEASON"
+    ? srNflSeasonWindowLabel(phase, season, storedPrevLabel)
+    : srNflSeasonWindowLabel(phase, season, storedSeasonLabel || (season != null ? `${season} Season Performance` : null));
+  const hasSeason = season != null && season !== "";
 
   return {
     playerId,
@@ -136,7 +155,7 @@ function srNflMapScoutingReport(entry = {}, weeklySnap = null) {
     nflSeasonPhase: phase,
     season,
     recentWindowLabel: srNflRecentWindowLabel(phase),
-    seasonWindowLabel: srNflSeasonWindowLabel(phase, season),
+    seasonWindowLabel,
     showRecentPanel: srNflShouldShowRecentPanel(phase),
     recentDateRange: srNflFormatDateRange(recentWindow?.period_start, recentWindow?.period_end),
     seasonDateRange: srNflFormatDateRange(seasonWindow?.period_start, seasonWindow?.period_end),
@@ -146,7 +165,8 @@ function srNflMapScoutingReport(entry = {}, weeklySnap = null) {
     recentStats: evidence.nfl_recent_stats || entry.nfl_recent_stats || null,
     seasonStats: evidence.nfl_season_stats || entry.nfl_season_stats || null,
     previousSeasonStats: evidence.previous_season_performance || entry.previous_season_performance || null,
-    previousSeasonLabel: evidence.previous_season_label || (season ? `${season} Season Snapshot` : "Previous Season Snapshot"),
+    previousSeasonLabel: storedPrevLabel || (phase === "OFFSEASON" ? seasonWindowLabel : null),
+    previousSeasonHelperText: evidence.previous_season_helper_text || srNflOffseasonHelperText(phase, hasSeason || !!storedPrevLabel),
     offseasonDriverLabel: srNflOffseasonDriverLabel(),
     showOffseasonDrivers: srNflShouldShowOffseasonDrivers(phase),
     signalDrivers: srNflMapSignalDrivers(evidence.nfl_signal_drivers || evidence.signal_drivers || entry.nfl_signal_drivers || []),

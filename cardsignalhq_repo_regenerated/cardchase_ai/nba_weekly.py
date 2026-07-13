@@ -22,7 +22,10 @@ from cardchase_ai.offseason_scoring import (
     derive_offseason_recommendation,
     has_offseason_sufficient_evidence,
     is_offseason_phase,
-    previous_season_label,
+)
+from cardchase_ai.season_context import (
+    active_season_performance_label,
+    resolve_offseason_season_context,
 )
 from cardchase_ai.performance_evidence import build_nba_previous_season_evidence
 from cardchase_ai.performance_storage import PerformanceStorage, build_performance_storage
@@ -125,10 +128,21 @@ def build_nba_player_snapshot(
 
     recent_snap = nba_storage.fetch_latest_snapshot_by_period(csp_id, "RECENT_5_GAMES")
     season_snap = nba_storage.fetch_latest_snapshot_by_period(csp_id, "REGULAR_SEASON")
-    prev_season_snap = perf_store.get_previous_season("NBA", csp_id, period.season - 1)
-    drivers = nba_storage.fetch_signal_drivers(csp_id)
     stored_phase = output.nba_season_phase or "UNKNOWN"
     offseason = is_offseason_phase(stored_phase)
+    season_ctx = resolve_offseason_season_context(
+        "NBA",
+        csp_id,
+        perf_store,
+        preferred_season=period.season - 1 if offseason else None,
+    )
+    prev_season_snap = None
+    if season_ctx.season is not None:
+        prev_season_snap = perf_store.get_previous_season("NBA", csp_id, season_ctx.season)
+    if prev_season_snap is None:
+        prev_season_snap = perf_store.get_previous_season("NBA", csp_id, None)
+        season_ctx = resolve_offseason_season_context("NBA", csp_id, perf_store)
+    drivers = nba_storage.fetch_signal_drivers(csp_id)
 
     missing_inputs = list(dict.fromkeys(collector_missing + scarcity_missing))
     if recent_snap and recent_snap.missing_inputs:
@@ -188,13 +202,30 @@ def build_nba_player_snapshot(
 
     prev_evidence = build_nba_previous_season_evidence(prev_season_snap)
     driver_payloads = [d.model_dump(mode="json") for d in drivers]
-    window_label = nba_recent_label(stored_phase) if isinstance(stored_phase, str) else f"Recent {recent_window_value()} Games"
     if offseason:
-        window_label = previous_season_label("NBA", prev_season_snap.season if prev_season_snap else period.season - 1)
+        window_label = season_ctx.display_label if has_prev else "Previous Season Performance"
+        represented_season = season_ctx.season if season_ctx.season is not None else period.season
+        helper_text = season_ctx.helper_text if has_prev else None
+        source_snap_id = season_ctx.source_snapshot_id
+        prev_label = season_ctx.display_label if has_prev else "Previous Season Performance"
+        season_label_value = season_ctx.season_label
+        season_perf_label = prev_label
+    else:
+        window_label = nba_recent_label(stored_phase) if isinstance(stored_phase, str) else f"Recent {recent_window_value()} Games"
+        represented_season = period.season
+        helper_text = None
+        source_snap_id = season_ctx.source_snapshot_id if has_prev else None
+        prev_label = season_ctx.display_label if has_prev else None
+        season_label_value = season_ctx.season_label or str(represented_season)
+        season_perf_label = active_season_performance_label(
+            "NBA",
+            period.season,
+            stored_label=season_ctx.season_label,
+        )
 
     evidence = build_nba_scouting_evidence(
         nba_season_phase=stored_phase,
-        season=period.season,
+        season=represented_season,
         recent_snap=recent_snap if should_show_recent_window(stored_phase) else None,
         season_snap=season_snap,
         drivers=drivers,
@@ -206,10 +237,16 @@ def build_nba_player_snapshot(
     )
     evidence["nba_algorithm_version"] = NBA_PLAYER_SIGNAL_V1
     evidence["previous_season_performance"] = [e.model_dump(mode="json") for e in prev_evidence]
-    evidence["previous_season_label"] = previous_season_label("NBA", prev_season_snap.season if prev_season_snap else period.season - 1)
+    evidence["previous_season_label"] = prev_label
+    evidence["previous_season_helper_text"] = helper_text
+    evidence["previous_season_source_snapshot_id"] = source_snap_id
+    evidence["season_label"] = season_label_value
+    evidence["season_performance_label"] = season_perf_label
+    evidence["previous_season_data_quality"] = prev_season_snap.data_quality if prev_season_snap else "INSUFFICIENT"
     evidence["season_phase"] = stored_phase
     evidence["recent_window_label"] = window_label
     evidence["signal_drivers"] = driver_payloads
+    evidence["period_type"] = "PREVIOUS_SEASON" if offseason else "RECENT_5_GAMES"
 
     perf_quality = prev_season_snap.data_quality if offseason and has_prev else (
         recent_snap.data_quality if recent_snap else "INSUFFICIENT"
@@ -222,7 +259,7 @@ def build_nba_player_snapshot(
         source_player_id=source_id,
         league=run.league,
         sport="BASKETBALL",
-        season=period.season,
+        season=represented_season,
         year=period.year,
         week_number=period.week_number,
         period_start=period.period_start,

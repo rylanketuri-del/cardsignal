@@ -71,14 +71,16 @@
   - [x] NFL momentum/status/market convergence without baseball assumptions
   - [x] Shared intelligence serializer + `GET /api/players/{league}/{player_id}/intelligence`
 
-- **Release v0.16.2 — Sprint 11.3 Offseason Baseline Intelligence** *(verification pass pending)*
+- **Release v0.16.2 — Sprint 11.3 Offseason Baseline Intelligence** *(in progress — verification pending)*
   - [x] `PreviousSeasonPerformanceSnapshot` contract (`PREVIOUS_SEASON`)
   - [x] Admin-protected `POST /api/admin/performance/import` (JSON + CSV via CLI)
   - [x] Durable `performance_snapshots` storage (Supabase + JSON fallback)
+  - [x] Centralized season-context helper (`season`, `season_label`, `display_label`, `helper_text`)
   - [x] Offseason NFL/NBA weekly pipeline (no fabricated recent form)
-  - [x] Offseason Scouting Report labels and Signal Driver sections
+  - [x] Offseason Scouting Report Season Performance labels and Signal Driver sections
   - [x] Storage diagnostics (`GET /api/admin/storage/diagnostics`)
-  - [ ] Production seeding and verification pending — do not merge or deploy until confirmed
+  - [ ] Verification pass pending — do not merge or deploy until confirmed
+  - [ ] Production seeding pending — do not falsely mark complete
 
 NBA remains **Coming Soon** in the UI until verified import data is seeded and weekly intelligence is persisted.
 
@@ -88,8 +90,8 @@ NBA remains **Coming Soon** in the UI until verified import data is seeded and w
 
 - [x] Previous-season performance import and validation (NFL/NBA)
 - [x] Offseason evidence gates (no recent-form requirement when previous season exists)
-- [x] Normalized intelligence fields: `previous_season_performance`, `previous_season_label`, `previous_season_data_quality`
-- [x] Offseason Scouting Report UX (no Recent 3/5 Games during OFFSEASON)
+- [x] Normalized intelligence fields: `season`, `season_label`, `previous_season_performance`, `previous_season_label`, `previous_season_helper_text`
+- [x] Offseason Scouting Report UX (no Recent 3/5 Games during OFFSEASON; exact completed-season labels)
 - [x] Admin ingestion workflow + CLI import script
 - [ ] Verification pass pending — do not merge or deploy until production seeding confirmed
 

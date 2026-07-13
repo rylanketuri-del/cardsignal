@@ -35,6 +35,7 @@ class PreviousSeasonPerformanceSnapshot(BaseModel):
     league: str
     sport: str
     season: int
+    season_label: str | None = None
     position: str | None = None
     team: str | None = None
     games_played: int = 0

@@ -67,14 +67,11 @@ def derive_offseason_recommendation(
     return "WATCH"
 
 
-def previous_season_label(league: str, season: int | None) -> str:
-    league_upper = league.upper()
-    if season is None:
-        return "Previous Season Snapshot"
-    if league_upper == "NBA":
-        end_year = season + 1
-        return f"{season}–{str(end_year)[-2:]} Season Snapshot"
-    return f"{season} Season Snapshot"
+def previous_season_label(league: str, season: int | None, *, stored_label: str | None = None) -> str:
+    """Delegate to the centralized season-context helper (Season Performance labels)."""
+    from cardchase_ai.season_context import format_season_performance_label
+
+    return format_season_performance_label(league, season, stored_label=stored_label)
 
 
 def offseason_driver_section_label() -> str:

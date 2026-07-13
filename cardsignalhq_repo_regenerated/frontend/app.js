@@ -1259,25 +1259,37 @@ function renderPlayerSnapshot(intel, entry = {}) {
   const nba = intel.nba;
 
   let recentTitle = 'Last 7 Days';
-  let seasonTitle = 'Season Snapshot';
+  let seasonTitle = 'Season Performance';
   let recentMeta = '';
   let seasonMeta = '';
+  const helperText = intel.previousSeasonHelperText || null;
   if (intel.isNfl && nfl) {
     recentTitle = nfl.recentWindowLabel;
     seasonTitle = isOffseason ? (intel.previousSeasonLabel || nfl.previousSeasonLabel || nfl.seasonWindowLabel) : nfl.seasonWindowLabel;
     recentMeta = `<p class="sr-section-lead">${nfl.performancePeriodNote}: ${nfl.recentDateRange}${nfl.gamesInWindow != null ? ` · ${nfl.gamesInWindow} games` : ""}</p>`;
-    seasonMeta = `<p class="sr-section-lead">${nfl.performancePeriodNote}: ${nfl.seasonDateRange}</p>`;
+    seasonMeta = isOffseason && (helperText || nfl.previousSeasonHelperText)
+      ? `<p class="sr-section-lead">${helperText || nfl.previousSeasonHelperText}</p>`
+      : `<p class="sr-section-lead">${nfl.performancePeriodNote}: ${nfl.seasonDateRange}</p>`;
   } else if (intel.isNba && nba) {
     recentTitle = nba.recentWindowLabel;
     seasonTitle = isOffseason ? (intel.previousSeasonLabel || nba.previousSeasonLabel || nba.seasonWindowLabel) : nba.seasonWindowLabel;
     recentMeta = `<p class="sr-section-lead">${nba.performancePeriodNote}: ${nba.recentDateRange}${nba.gamesInWindow != null ? ` · ${nba.gamesInWindow} games` : ""}</p>`;
-    seasonMeta = `<p class="sr-section-lead">${nba.performancePeriodNote}: ${nba.seasonDateRange}</p>`;
+    seasonMeta = isOffseason && (helperText || nba.previousSeasonHelperText)
+      ? `<p class="sr-section-lead">${helperText || nba.previousSeasonHelperText}</p>`
+      : `<p class="sr-section-lead">${nba.performancePeriodNote}: ${nba.seasonDateRange}</p>`;
   } else if (isOffseason && intel.previousSeasonLabel) {
     seasonTitle = intel.previousSeasonLabel;
+    if (helperText) {
+      seasonMeta = `<p class="sr-section-lead">${helperText}</p>`;
+    }
+  } else if (intel.seasonLabel || intel.season) {
+    const label = intel.seasonLabel || intel.season;
+    seasonTitle = `${label} Season Performance`;
   }
 
   const seasonStatsSource = isOffseason && hasPreviousSeason ? previousSeason : stats30d;
-  const hasSeasonPanel = isOffseason ? hasPreviousSeason : hasSeason;
+  const hasSeasonPanel = isOffseason ? (hasPreviousSeason || !!intel.previousSeasonLabel) : hasSeason;
+  const offseasonUnavailable = isOffseason && !hasPreviousSeason;
 
   const last7Body = has7d
     ? `
@@ -1289,7 +1301,9 @@ function renderPlayerSnapshot(intel, entry = {}) {
       </div>`
     : `<p class="sr-pending">Performance data pending.</p>`;
 
-  const seasonBody = hasSeasonPanel
+  const seasonBody = offseasonUnavailable
+    ? `<p class="sr-pending">Previous season performance unavailable</p>`
+    : hasSeasonPanel
     ? `
       <div class="sr-snapshot-grid">
         ${(nbaSpecs ? nbaSpecs.season : nflSpecs ? nflSpecs.season : SRMetrics.SR_PLAYER_STAT_SPECS.season).map((spec) => {

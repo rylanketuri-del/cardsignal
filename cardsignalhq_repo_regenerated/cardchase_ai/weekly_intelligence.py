@@ -59,6 +59,7 @@ from cardchase_ai.weekly_scoring import (
 from cardchase_ai.capabilities import declare_mlb_capabilities
 from cardchase_ai.mlb_signal_drivers import driver_data_quality, generate_mlb_signal_drivers
 from cardchase_ai.performance_evidence import build_mlb_recent_evidence, build_mlb_season_evidence
+from cardchase_ai.season_context import active_season_performance_label
 from cardchase_ai.weekly_storage import WeeklyJsonStorage, WeeklyStorage
 from cardchase_ai.nfl_weekly import (
     build_nfl_market_universe,
@@ -248,6 +249,8 @@ def build_player_snapshot(
         "driver_data_quality": driver_quality,
         "season_phase": "REGULAR_SEASON",
         "recent_window_label": "Last 7 Days",
+        "season_label": str(period.season),
+        "season_performance_label": active_season_performance_label("MLB", period.season),
         "period_type": "LAST_7_DAYS",
         "performance_algorithm_version": WEEKLY_INTELLIGENCE_V1,
         "market_snapshots": {

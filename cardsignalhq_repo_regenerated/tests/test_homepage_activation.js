@@ -93,7 +93,7 @@ test("NBA without persisted weekly intelligence is not activated", () => {
   assert.strictEqual(hasGenuineWeeklyIntelligence(payload), false);
 });
 
-test("NBA with genuine persisted weekly intelligence activates", () => {
+test("NBA with genuine persisted weekly intelligence preserves season label", () => {
   const nbaLeader = {
     cs_player_id: "CS-NBA-P-2544",
     source_player_id: "2544",
@@ -105,12 +105,22 @@ test("NBA with genuine persisted weekly intelligence activates", () => {
     performance: 65.0,
     market: 71.0,
     recommendation: "WATCH",
+    intelligence: {
+      season_label: "2025–26",
+      previous_season_label: "2025–26 Season Performance",
+      previous_season_helper_text: "Most recently completed season",
+    },
   };
   const payload = { run: { status: "COMPLETED", league: "NBA" }, todays_leaders: [nbaLeader] };
   assert.strictEqual(hasGenuineWeeklyIntelligence(payload), true);
   const merged = mergeAllSportLeaders([], [], payload.todays_leaders);
   assert.strictEqual(merged.length, 1);
   assert.strictEqual(merged[0].league, "NBA");
+  assert.strictEqual(payload.todays_leaders[0].intelligence.season_label, "2025–26");
+  assert.strictEqual(
+    payload.todays_leaders[0].intelligence.previous_season_label,
+    "2025–26 Season Performance"
+  );
 });
 
 test("invalid incomplete record is excluded from merged leaders", () => {

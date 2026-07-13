@@ -65,23 +65,31 @@ function srNbaIsNbaEntry(entry = {}) {
 
 function srNbaRecentWindowLabel(phase, windowValue = 5) {
   if (phase === "OFFSEASON") return "Previous Season Context";
-  if (phase === "PRESEASON") return "Preseason Snapshot";
+  if (phase === "PRESEASON") return "Preseason Performance";
   return `Recent ${windowValue} Games`;
 }
 
-function srNbaSeasonWindowLabel(phase, season) {
+function srNbaSeasonWindowLabel(phase, season, storedLabel) {
+  if (storedLabel) return storedLabel;
   if (phase === "OFFSEASON") {
-    if (!season) return "Previous Season Snapshot";
-    const endYear = season + 1;
-    return `${season}–${String(endYear).slice(-2)} Season Snapshot`;
+    return "Previous Season Performance";
   }
-  if (phase === "PRESEASON") return season ? `Prior Season Snapshot (${season})` : "Prior Season Snapshot";
-  if (phase === "POSTSEASON") return season ? `Season Snapshot (${season}, Postseason)` : "Season Snapshot";
-  return season ? `Season Snapshot (${season})` : "Season Snapshot";
+  if (phase === "PRESEASON") {
+    return season != null && season !== "" ? `${season} Season Performance` : "Previous Season Performance";
+  }
+  if (season != null && season !== "") {
+    return `${season} Season Performance`;
+  }
+  return "Season Performance";
 }
 
 function srNbaOffseasonDriverLabel() {
   return "Offseason Signal Drivers";
+}
+
+function srNbaOffseasonHelperText(phase, hasLabel) {
+  if (phase === "OFFSEASON" && hasLabel) return "Most recently completed season";
+  return null;
 }
 
 function srNbaShouldShowRecentPanel(phase) {
@@ -113,21 +121,30 @@ function srNbaMapSignalDrivers(rawDrivers = []) {
 
 function srNbaMapScoutingReport(entry = {}, weeklySnap = null) {
   const evidence = weeklySnap?.evidence || entry.evidence || {};
-  const phase = evidence.nba_season_phase || entry.nba_season_phase || "UNKNOWN";
+  const phase = evidence.nba_season_phase || entry.nba_season_phase || evidence.season_phase || "UNKNOWN";
   const season = evidence.nba_season || entry.nba_season || weeklySnap?.season || entry.season || null;
+  const storedPrevLabel = evidence.previous_season_label || entry.previous_season_label || null;
+  const storedSeasonLabel = evidence.season_performance_label || null;
+  const canonicalLabel = evidence.season_label || entry.season_label || null;
   const recentWindow = evidence.nba_recent_window || entry.nba_recent_window || null;
   const seasonWindow = evidence.nba_season_window || entry.nba_season_window || null;
   const windowValue = recentWindow?.recent_window_value || 5;
   const playerId = srNbaResolvePlayerId(entry);
   const csPlayerId = entry.cs_player_id || (playerId ? `CS-NBA-P-${playerId}` : null);
+  const offseasonLabel = storedPrevLabel
+    || (canonicalLabel ? `${canonicalLabel} Season Performance` : null);
+  const seasonWindowLabel = phase === "OFFSEASON"
+    ? srNbaSeasonWindowLabel(phase, season, offseasonLabel)
+    : srNbaSeasonWindowLabel(phase, season, storedSeasonLabel || (canonicalLabel ? `${canonicalLabel} Season Performance` : null));
 
   return {
     playerId,
     csPlayerId,
     nbaSeasonPhase: phase,
     season,
+    seasonLabel: canonicalLabel,
     recentWindowLabel: srNbaRecentWindowLabel(phase, windowValue),
-    seasonWindowLabel: srNbaSeasonWindowLabel(phase, season),
+    seasonWindowLabel,
     showRecentPanel: srNbaShouldShowRecentPanel(phase),
     recentDateRange: srNbaFormatDateRange(recentWindow?.period_start, recentWindow?.period_end),
     seasonDateRange: srNbaFormatDateRange(seasonWindow?.period_start, seasonWindow?.period_end),
@@ -137,7 +154,8 @@ function srNbaMapScoutingReport(entry = {}, weeklySnap = null) {
     recentStats: evidence.nba_recent_stats || entry.nba_recent_stats || null,
     seasonStats: evidence.nba_season_stats || entry.nba_season_stats || null,
     previousSeasonStats: evidence.previous_season_performance || entry.previous_season_performance || null,
-    previousSeasonLabel: evidence.previous_season_label || srNbaSeasonWindowLabel("OFFSEASON", season),
+    previousSeasonLabel: offseasonLabel || (phase === "OFFSEASON" ? seasonWindowLabel : null),
+    previousSeasonHelperText: evidence.previous_season_helper_text || srNbaOffseasonHelperText(phase, !!offseasonLabel || !!canonicalLabel),
     offseasonDriverLabel: srNbaOffseasonDriverLabel(),
     showOffseasonDrivers: phase === "OFFSEASON" || phase === "PRESEASON",
     signalDrivers: srNbaMapSignalDrivers(evidence.nba_signal_drivers || evidence.signal_drivers || entry.nba_signal_drivers || []),

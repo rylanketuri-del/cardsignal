@@ -51,9 +51,14 @@
 - [ ] Verified NFL previous-season data seeded
 - [ ] Verified NBA previous-season data seeded
 - [ ] Offseason Scouting Reports verified
+- [ ] NFL latest completed-season label verified
+- [ ] NBA latest completed-season label verified
+- [ ] No hardcoded production season labels
+- [ ] MLB active-season regression verified
 - [ ] Durable weekly storage confirmed
 - [ ] NFL production weekly snapshots confirmed
 - [ ] NBA production weekly snapshots confirmed
+- [ ] Production seeding complete (do not mark until confirmed)
 
 ## Security
 - [ ] No secrets committed

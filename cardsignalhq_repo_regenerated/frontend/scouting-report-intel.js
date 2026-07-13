@@ -64,7 +64,10 @@ function srIntelFromNormalized(payload = {}, entry = {}) {
     stats30d: nflReport?.seasonStats || nbaReport?.seasonStats || seasonStats || entry.stats_30d || leagueEvidence.nfl_season_stats || leagueEvidence.nba_season_stats || null,
     previousSeasonStats: previousSeasonStats.length ? previousSeasonStats : (nflReport?.previousSeasonStats || nbaReport?.previousSeasonStats || null),
     previousSeasonLabel: payload.previous_season_label || nflReport?.previousSeasonLabel || nbaReport?.previousSeasonLabel || null,
+    previousSeasonHelperText: payload.previous_season_helper_text || nflReport?.previousSeasonHelperText || nbaReport?.previousSeasonHelperText || null,
+    previousSeasonSourceSnapshotId: payload.previous_season_source_snapshot_id || null,
     previousSeasonDataQuality: payload.previous_season_data_quality || "INSUFFICIENT",
+    seasonLabel: payload.season_label || nbaReport?.seasonLabel || null,
     showRecentPanel: payload.season_phase === "REGULAR_SEASON" || payload.season_phase === "POSTSEASON" || payload.season_phase === "PRESEASON",
     showOffseasonDrivers: payload.season_phase === "OFFSEASON" || payload.season_phase === "PRESEASON",
     offseasonDriverLabel: payload.season_phase === "OFFSEASON" ? "Offseason Signal Drivers" : "Signal Drivers",
@@ -78,6 +81,7 @@ function srIntelFromNormalized(payload = {}, entry = {}) {
     nbaSeasonPhase: nbaReport?.nbaSeasonPhase || null,
     recentWindowLabel: payload.recent_window_label || null,
     seasonPhase: payload.season_phase || null,
+    season: payload.season || null,
     mappedDrivers: srMapNormalizedDrivers(payload.signal_drivers || []),
   };
 }

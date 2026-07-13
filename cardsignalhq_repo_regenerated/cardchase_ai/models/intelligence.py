@@ -99,6 +99,7 @@ class PlayerIntelligencePayload(BaseModel):
 
     # Season context
     season: int | None = None
+    season_label: str | None = None
     season_phase: str | None = None
     period_type: str | None = None
     period_start: datetime | str | None = None
@@ -127,6 +128,8 @@ class PlayerIntelligencePayload(BaseModel):
     season_performance: list[NormalizedPerformanceEvidence] = Field(default_factory=list)
     previous_season_performance: list[NormalizedPerformanceEvidence] = Field(default_factory=list)
     previous_season_label: str | None = None
+    previous_season_helper_text: str | None = None
+    previous_season_source_snapshot_id: str | None = None
     previous_season_data_quality: EvidenceQuality = "INSUFFICIENT"
     performance_data_quality: EvidenceQuality = "INSUFFICIENT"
     performance_missing_inputs: list[str] = Field(default_factory=list)

@@ -109,7 +109,7 @@ def _extract_stats(row: dict[str, Any]) -> dict[str, Any]:
     if isinstance(stats, dict):
         return dict(stats)
     known = {k: v for k, v in row.items() if k not in {
-        "source_player_id", "player_name", "league", "season", "position", "team",
+        "source_player_id", "player_name", "league", "season", "season_label", "position", "team",
         "games_played", "starts", "games_started", "source_method", "source_reference",
         "provider_updated_at", "data_quality", "headshot_url", "team_logo_url", "cs_player_id",
         "period_type", "sport",
@@ -208,12 +208,22 @@ def validate_import_row(
 
     cs_id = row.get("cs_player_id") or resolve_cs_player_id(league_upper, source_id)
 
+    from cardchase_ai.season_context import canonical_season_label
+
+    stored_season_label = row.get("season_label")
+    season_label = canonical_season_label(
+        league_upper,
+        row_season,
+        stored_label=str(stored_season_label) if stored_season_label else None,
+    )
+
     snapshot = PreviousSeasonPerformanceSnapshot(
         cs_player_id=str(cs_id),
         source_player_id=source_id,
         league=league_upper,
         sport=_sport_for_league(league_upper),
         season=row_season,
+        season_label=season_label,
         position=str(position) if position else None,
         team=row.get("team"),
         games_played=games_played,

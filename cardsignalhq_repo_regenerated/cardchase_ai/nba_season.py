@@ -53,16 +53,16 @@ def recent_window_label(phase: NBASeasonPhase) -> str:
     if phase in {"REGULAR_SEASON", "POSTSEASON"}:
         return f"Recent {window} Games"
     if phase == "PRESEASON":
-        return "Preseason (when available)"
-    return "Previous Season"
+        return "Preseason Performance"
+    return "Previous Season Performance"
 
 
 def season_snapshot_label(phase: NBASeasonPhase) -> str:
     if phase == "OFFSEASON":
-        return "Previous Season Snapshot"
+        return "Previous Season Performance"
     if phase == "PRESEASON":
-        return "Previous Season Snapshot"
-    return "Season Snapshot"
+        return "Previous Season Performance"
+    return "Season Performance"
 
 
 def should_show_recent_window(phase: NBASeasonPhase) -> bool:
