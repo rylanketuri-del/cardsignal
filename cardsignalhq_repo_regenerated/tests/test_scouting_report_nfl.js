@@ -71,7 +71,7 @@ test("captured_at is not used as performance period in mapper", () => {
   assert.ok(mapped.seasonWindowLabel.includes("2025"));
 });
 
-test("offseason uses previous-season labels", () => {
+test("offseason shows exact stored season label for 2024", () => {
   const mapped = srNflMapScoutingReport(
     {},
     {
@@ -84,7 +84,41 @@ test("offseason uses previous-season labels", () => {
       },
     }
   );
-  assert.ok(mapped.seasonWindowLabel.includes("Previous Season"));
+  assert.strictEqual(mapped.seasonWindowLabel, "2024 Season Snapshot");
+  assert.strictEqual(mapped.showRecentPanel, false);
+  assert.notStrictEqual(mapped.recentWindowLabel, "Recent 3 Games");
+});
+
+test("offseason shows exact stored season label for 2023", () => {
+  const mapped = srNflMapScoutingReport(
+    {},
+    {
+      evidence: {
+        nfl_season_phase: "OFFSEASON",
+        nfl_season: 2023,
+        nfl_season_window: { period_start: "2023-09-01", period_end: "2024-01-15" },
+        nfl_season_stats: { games_played: 16 },
+        nfl_signal_drivers: [],
+      },
+    }
+  );
+  assert.strictEqual(mapped.seasonWindowLabel, "2023 Season Snapshot");
+  assert.strictEqual(mapped.showRecentPanel, false);
+});
+
+test("offseason falls back when stored season is unavailable", () => {
+  const mapped = srNflMapScoutingReport(
+    {},
+    {
+      evidence: {
+        nfl_season_phase: "OFFSEASON",
+        nfl_season_window: { period_start: "2024-09-01", period_end: "2025-01-15" },
+        nfl_season_stats: { games_played: 17 },
+        nfl_signal_drivers: [],
+      },
+    }
+  );
+  assert.strictEqual(mapped.seasonWindowLabel, "Previous Season Snapshot");
   assert.strictEqual(mapped.showRecentPanel, false);
 });
 
