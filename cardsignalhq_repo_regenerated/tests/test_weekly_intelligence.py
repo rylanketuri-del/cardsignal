@@ -23,7 +23,8 @@ from cardchase_ai.utils.reporting_period import (
     next_scheduled_refresh,
     previous_reporting_period,
 )
-from cardchase_ai.weekly_scoring import compute_weekly_change, has_sufficient_evidence
+from cardchase_ai.league_evidence import has_sufficient_evidence
+from cardchase_ai.weekly_scoring import compute_weekly_change
 from cardchase_ai.weekly_storage import WeeklyJsonStorage, WeeklyStorage
 from cardchase_ai.weekly_intelligence import run_weekly_intelligence
 
@@ -182,9 +183,10 @@ class AlgorithmVersionTests(unittest.TestCase):
 
 class EvidenceTests(unittest.TestCase):
     def test_has_sufficient_evidence(self):
-        self.assertTrue(has_sufficient_evidence(70.0, 60.0, []))
-        self.assertFalse(has_sufficient_evidence(70.0, None, []))
-        self.assertFalse(has_sufficient_evidence(70.0, 60.0, ["market_snapshots"]))
+        self.assertTrue(has_sufficient_evidence("MLB", 70.0, 60.0, []))
+        self.assertFalse(has_sufficient_evidence("MLB", 70.0, None, []))
+        self.assertFalse(has_sufficient_evidence("MLB", 70.0, 60.0, ["market_snapshots"]))
+        self.assertFalse(has_sufficient_evidence("MLB", 70.0, 60.0, ["stats_7d"]))
 
 
 class WeeklyRunIntegrationTests(unittest.TestCase):
@@ -575,6 +577,7 @@ class GetEndpointReadOnlyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             from cardchase_ai.config import Settings
             from cardchase_ai.weekly_intelligence import build_latest_weekly_api_payload
+            from cardchase_ai.repositories.factory import build_repository_bundle
 
             settings = Settings(
                 ebay_token="",
@@ -613,6 +616,7 @@ class GetEndpointReadOnlyTests(unittest.TestCase):
                 nba_enabled=False,
             )
             storage = WeeklyStorage(None, WeeklyJsonStorage(Path(tmp)))
+            repos = build_repository_bundle(settings)
             with patch("cardchase_ai.clients.mlb.MLBClient") as mock_mlb:
                 payload = build_latest_weekly_api_payload("MLB", storage, settings)
                 mock_mlb.assert_not_called()

@@ -47,7 +47,7 @@
   - [x] Position-aware scoring with `NFL_PERFORMANCE_V1`
   - [x] NFL Signal Drivers, weekly pipeline, API routes, Scouting Report integration
 
-- **Release v0.16.0 — Sprint 11.1 NBA Performance Adapter** *(complete — verification pass pending)*
+- **Release v0.16.0 — Sprint 11.1 NBA Performance Adapter** *(complete)*
   - [x] Sport Adapter Framework contracts (`SportAdapter`, `LeagueAdapter`, `PerformanceAdapter`, `SeasonAdapter`, `SignalDriverAdapter`)
   - [x] Provider-neutral `NBAPerformanceProvider` interface
   - [x] Approved import path (`output/nba/import/nba_data.json`)
@@ -63,22 +63,45 @@
   - [x] NBA Scouting Report (Recent 5 Games: PPG, RPG, APG, SPG, BPG, FG%, 3PT%, FT%, MPG)
   - [x] Homepage NBA activation only when genuine weekly data exists
 
-NBA remains **Coming Soon** in the UI until verified import data is seeded.
+- **Release v0.16.1 — Sprint 11.2 League Intelligence Convergence** *(complete)*
+  - [x] Normalized `PlayerIntelligencePayload` contract
+  - [x] Explicit capability declarations per league
+  - [x] Structured performance evidence in weekly snapshots
+  - [x] MLB Signal Drivers from stored evidence
+  - [x] NFL momentum/status/market convergence without baseball assumptions
+  - [x] Shared intelligence serializer + `GET /api/players/{league}/{player_id}/intelligence`
+
+- **Release v0.16.2 — Sprint 11.3 Offseason Baseline Intelligence** *(verification pass pending)*
+  - [x] `PreviousSeasonPerformanceSnapshot` contract (`PREVIOUS_SEASON`)
+  - [x] Admin-protected `POST /api/admin/performance/import` (JSON + CSV via CLI)
+  - [x] Durable `performance_snapshots` storage (Supabase + JSON fallback)
+  - [x] Offseason NFL/NBA weekly pipeline (no fabricated recent form)
+  - [x] Offseason Scouting Report labels and Signal Driver sections
+  - [x] Storage diagnostics (`GET /api/admin/storage/diagnostics`)
+  - [ ] Production seeding and verification pending — do not merge or deploy until confirmed
+
+NBA remains **Coming Soon** in the UI until verified import data is seeded and weekly intelligence is persisted.
 
 ## Current Milestone
 
-### Release v0.16.0 — Sprint 11.1 NBA Performance Adapter
+### Release v0.16.2 — Sprint 11.3 Offseason Baseline Intelligence
 
-Verification pass pending. Do not merge or deploy until tests pass.
+- [x] Previous-season performance import and validation (NFL/NBA)
+- [x] Offseason evidence gates (no recent-form requirement when previous season exists)
+- [x] Normalized intelligence fields: `previous_season_performance`, `previous_season_label`, `previous_season_data_quality`
+- [x] Offseason Scouting Report UX (no Recent 3/5 Games during OFFSEASON)
+- [x] Admin ingestion workflow + CLI import script
+- [ ] Verification pass pending — do not merge or deploy until production seeding confirmed
 
 ## Up Next
 
-### Sprint 11.2 — Cross-Sport Signal Center
+### Sprint 11.4 — Cross-Sport Signal Center
 
 - Unified cross-sport leaderboards and filters in Signal Center
 - Cross-sport Signal of the Week selection rules
 - Sport-aware homepage sections when multiple leagues are active
 - Cross-sport universal search ranking polish
+- Builds on normalized league intelligence from Sprint 11.2
 
 ### v0.9.1 — Production QA and Data Seeding
 

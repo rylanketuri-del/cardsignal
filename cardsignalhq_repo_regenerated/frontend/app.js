@@ -25,6 +25,7 @@ let nbaWeeklyIntelligence = null;
 let nbaDataAvailable = false;
 let activeSportFilter = 'all';
 const SCOUTING_REPORT_ALGO = "WEEKLY_INTELLIGENCE_V1";
+const playerIntelligenceCache = new Map();
 
 function tagClass(tag) {
   if (tag === 'BUY LOW') return 'tag buylow';
@@ -77,6 +78,19 @@ async function fetchWeeklyLatest(league = 'MLB') {
 }
 async function fetchPlayerWeeklySignals(playerId) {
   return apiFetch(`/api/players/${playerId}/signals/weekly?limit=12`);
+}
+async function fetchPlayerIntelligence(league, playerId) {
+  const cacheKey = `${String(league).toUpperCase()}:${playerId}`;
+  if (playerIntelligenceCache.has(cacheKey)) {
+    return playerIntelligenceCache.get(cacheKey);
+  }
+  const response = await fetch(`${API_BASE_URL}/api/players/${encodeURIComponent(league)}/${encodeURIComponent(playerId)}/intelligence`);
+  if (!response.ok) {
+    throw new Error(`Intelligence unavailable for ${league} player ${playerId}`);
+  }
+  const payload = await response.json();
+  playerIntelligenceCache.set(cacheKey, payload);
+  return payload;
 }
 
 async function fetchCardWeeklyIntelligence(csCardId) {
@@ -254,6 +268,8 @@ function renderPlayerHeadshot(entry = {}) {
 function weeklyLeaderToEntry(leader = {}) {
   return {
     player_id: leader.source_player_id || leader.cs_player_id,
+    cs_player_id: leader.cs_player_id,
+    source_player_id: leader.source_player_id,
     player_name: leader.player_name,
     rank: leader.rank,
     team: leader.team,
@@ -261,6 +277,11 @@ function weeklyLeaderToEntry(leader = {}) {
     headshot_url: leader.headshot_url,
     team_logo_url: leader.team_logo_url,
     weekly_change: leader.weekly_change,
+    league: leader.league,
+    sport: leader.sport,
+    capabilities: leader.capabilities || leader.intelligence?.capabilities || {},
+    intelligence: leader.intelligence || null,
+    status: leader.status,
     hotness: {
       total_score: leader.score,
       performance_score: leader.performance,
@@ -1048,10 +1069,19 @@ function resolveWeeklySnapshot(entry = {}, weeklyHistory = []) {
   return weeklyHistory[weeklyHistory.length - 1] || null;
 }
 
-function deriveEvidenceTier(weeklySnap, entry = {}) {
+function deriveEvidenceTier(weeklySnap, entry = {}, normalizedPayload = null) {
+  if (normalizedPayload?.evidence) return formatEvidenceTier(normalizedPayload.evidence);
   const stored = weeklySnap?.conviction || entry.conviction;
   if (!stored) return "INSUFFICIENT";
   return formatEvidenceTier(stored);
+}
+
+function resolvePlayerLeague(entry = {}, weeklySnap = null, normalizedPayload = null) {
+  if (normalizedPayload?.league) return String(normalizedPayload.league).toUpperCase();
+  if (weeklySnap?.league) return String(weeklySnap.league).toUpperCase();
+  if (isNflEntry(entry)) return "NFL";
+  if (isNbaEntry(entry)) return "NBA";
+  return "MLB";
 }
 
 function resolveRecommendation(entry = {}, weeklySnap = null) {
@@ -1068,6 +1098,9 @@ function getReportStatus(entry = {}, weeklySnap = null) {
   const statusRaw = String(weeklySnap?.status || entry.status || "").toUpperCase();
   if (!statusRaw) {
     return { label: "Watch", emoji: "⚠", className: "sr-status--watch" };
+  }
+  if (statusRaw.includes("STABLE")) {
+    return { label: "Stable", emoji: "➡", className: "sr-status--stable" };
   }
   if (statusRaw.includes("COOL")) {
     return { label: "Cooling", emoji: "📉", className: "sr-status--cooling" };
@@ -1140,16 +1173,23 @@ function parseStoredContributorDirection(value, fallback = "up") {
   return n >= 0 ? "up" : "down";
 }
 
-function buildStoredPlayerIntel(entry = {}, weeklySnap = null) {
+function buildStoredPlayerIntel(entry = {}, weeklySnap = null, normalizedPayload = null) {
+  const payload = normalizedPayload || entry.intelligence || weeklySnap?.intelligence || null;
+  if (payload) {
+    return SRIntel.srIntelFromNormalized(payload, entry);
+  }
+
   const hotness = entry.hotness || {};
   const missing = weeklySnap?.missing_inputs || [];
   const snapEvidence = weeklySnap?.evidence || {};
+  const capabilities = weeklySnap?.capabilities || snapEvidence.capabilities || {};
   const isNfl = isNflEntry(entry) || weeklySnap?.league === 'NFL' || weeklySnap?.sport === 'FOOTBALL';
   const isNba = isNbaEntry(entry) || weeklySnap?.league === 'NBA' || weeklySnap?.sport === 'BASKETBALL';
   const nflReport = isNfl ? SRNfl.srNflMapScoutingReport(entry, weeklySnap) : null;
   const nbaReport = isNba ? SRNba.srNbaMapScoutingReport(entry, weeklySnap) : null;
 
   return {
+    normalizedPayload: null,
     score: csIntelSafeToNumber(weeklySnap?.card_signal_score ?? hotness.total_score),
     performance: csIntelSafeToNumber(weeklySnap?.performance_score ?? hotness.performance_score),
     market: csIntelSafeToNumber(weeklySnap?.market_score ?? hotness.market_score),
@@ -1162,17 +1202,23 @@ function buildStoredPlayerIntel(entry = {}, weeklySnap = null) {
     weeklyChange: csIntelSafeToNumber(weeklySnap?.weekly_change ?? entry.weekly_change),
     evidence: snapEvidence,
     missingInputs: missing,
+    capabilities,
+    signalDrivers: weeklySnap?.signal_drivers || snapEvidence.signal_drivers || snapEvidence.nfl_signal_drivers || [],
+    mappedDrivers: SRIntel.srMapNormalizedDrivers(weeklySnap?.signal_drivers || snapEvidence.signal_drivers || snapEvidence.nfl_signal_drivers || []),
     algorithmVersion: weeklySnap?.algorithm_version || weeklyIntelligence?.run?.algorithm_version || SCOUTING_REPORT_ALGO,
     capturedAt: weeklySnap?.captured_at || entry.generated_at || weeklyIntelligence?.run?.completed_at,
     stats7d: nbaReport?.recentStats || nflReport?.recentStats || entry.stats_7d || snapEvidence.nba_recent_stats || snapEvidence.nfl_recent_stats || null,
     stats30d: nbaReport?.seasonStats || nflReport?.seasonStats || entry.stats_30d || snapEvidence.nba_season_stats || snapEvidence.nfl_season_stats || null,
-    marketSnapshots: entry.market_snapshots || {},
+    marketSnapshots: entry.market_snapshots || snapEvidence.market_snapshots || {},
     isNfl,
     isNba,
+    isMlb: !isNfl && !isNba,
     nfl: nflReport,
     nba: nbaReport,
-    nflSeasonPhase: nflReport?.nflSeasonPhase || null,
+    nflSeasonPhase: weeklySnap?.season_phase || nflReport?.nflSeasonPhase || snapEvidence.nfl_season_phase || null,
     nbaSeasonPhase: nbaReport?.nbaSeasonPhase || null,
+    recentWindowLabel: weeklySnap?.recent_window_label || snapEvidence.recent_window_label || null,
+    seasonPhase: weeklySnap?.season_phase || snapEvidence.season_phase || null,
   };
 }
 
@@ -1200,8 +1246,11 @@ function renderSnapshotStat(label, value, { title = "" } = {}) {
 function renderPlayerSnapshot(intel, entry = {}) {
   const stats7d = intel.stats7d;
   const stats30d = intel.stats30d;
+  const previousSeason = intel.previousSeasonStats;
+  const isOffseason = intel.seasonPhase === "OFFSEASON" || intel.nflSeasonPhase === "OFFSEASON" || intel.nba?.nbaSeasonPhase === "OFFSEASON";
   const has7d = hasPerformanceStats(stats7d) || (stats7d && Object.keys(stats7d).length > 1);
   const hasSeason = hasPerformanceStats(stats30d) || (stats30d && Object.keys(stats30d).length > 1);
+  const hasPreviousSeason = previousSeason && Object.keys(previousSeason).length > 0;
   const formatters = srMetricFormatters();
   const position = entry.position || piModalEntry?.position || '';
   const nflSpecs = intel.isNfl ? SRMetrics.srGetNflStatSpecs(position) : null;
@@ -1215,15 +1264,20 @@ function renderPlayerSnapshot(intel, entry = {}) {
   let seasonMeta = '';
   if (intel.isNfl && nfl) {
     recentTitle = nfl.recentWindowLabel;
-    seasonTitle = nfl.seasonWindowLabel;
+    seasonTitle = isOffseason ? (intel.previousSeasonLabel || nfl.previousSeasonLabel || nfl.seasonWindowLabel) : nfl.seasonWindowLabel;
     recentMeta = `<p class="sr-section-lead">${nfl.performancePeriodNote}: ${nfl.recentDateRange}${nfl.gamesInWindow != null ? ` · ${nfl.gamesInWindow} games` : ""}</p>`;
     seasonMeta = `<p class="sr-section-lead">${nfl.performancePeriodNote}: ${nfl.seasonDateRange}</p>`;
   } else if (intel.isNba && nba) {
     recentTitle = nba.recentWindowLabel;
-    seasonTitle = nba.seasonWindowLabel;
+    seasonTitle = isOffseason ? (intel.previousSeasonLabel || nba.previousSeasonLabel || nba.seasonWindowLabel) : nba.seasonWindowLabel;
     recentMeta = `<p class="sr-section-lead">${nba.performancePeriodNote}: ${nba.recentDateRange}${nba.gamesInWindow != null ? ` · ${nba.gamesInWindow} games` : ""}</p>`;
     seasonMeta = `<p class="sr-section-lead">${nba.performancePeriodNote}: ${nba.seasonDateRange}</p>`;
+  } else if (isOffseason && intel.previousSeasonLabel) {
+    seasonTitle = intel.previousSeasonLabel;
   }
+
+  const seasonStatsSource = isOffseason && hasPreviousSeason ? previousSeason : stats30d;
+  const hasSeasonPanel = isOffseason ? hasPreviousSeason : hasSeason;
 
   const last7Body = has7d
     ? `
@@ -1235,17 +1289,17 @@ function renderPlayerSnapshot(intel, entry = {}) {
       </div>`
     : `<p class="sr-pending">Performance data pending.</p>`;
 
-  const seasonBody = hasSeason
+  const seasonBody = hasSeasonPanel
     ? `
       <div class="sr-snapshot-grid">
         ${(nbaSpecs ? nbaSpecs.season : nflSpecs ? nflSpecs.season : SRMetrics.SR_PLAYER_STAT_SPECS.season).map((spec) => {
-    const stat = SRMetrics.srFormatPlayerStat(spec, stats30d, formatters);
+    const stat = SRMetrics.srFormatPlayerStat(spec, seasonStatsSource, formatters);
     return renderSnapshotStat(stat.label, stat.display, { title: stat.title });
   }).join("")}
       </div>`
     : `<p class="sr-pending">Performance data pending.</p>`;
 
-  const showRecent = (!intel.isNfl && !intel.isNba) || (nfl && nfl.showRecentPanel) || (nba && nba.showRecentPanel);
+  const showRecent = (!intel.isNfl && !intel.isNba && !isOffseason) || (nfl && nfl.showRecentPanel) || (nba && nba.showRecentPanel) || (intel.showRecentPanel && !isOffseason);
 
   return `
     <section class="sr-section sr-snapshot">
@@ -1265,9 +1319,45 @@ function renderPlayerSnapshot(intel, entry = {}) {
     </section>`;
 }
 
+function renderMlbSignalDrivers(intel) {
+  if (!intel?.isMlb) return "";
+  const drivers = intel.mappedDrivers || SRIntel.srMapNormalizedDrivers(intel.signalDrivers || []);
+  const body = drivers.length
+    ? `
+      <div class="sr-mlb-drivers">
+        ${drivers.map((driver) => `
+          <article class="sr-mlb-driver">
+            <div class="sr-mlb-driver-head">
+              <strong>${driver.title}</strong>
+              <span class="sr-mlb-driver-source">${driver.sourceType}</span>
+            </div>
+            <p class="sr-mlb-driver-summary">${driver.summary}</p>
+            <div class="sr-mlb-driver-meta">
+              <span>Occurred: ${driver.occurredAt}</span>
+            </div>
+          </article>`).join("")}
+      </div>`
+    : `<p class="sr-pending">No verified MLB Signal Drivers are available yet.</p>`;
+
+  return `
+    <section class="sr-section sr-mlb-drivers-section">
+      <h3 class="sr-section-title">MLB Signal Drivers</h3>
+      <p class="sr-section-lead">Verified baseball developments from stored performance evidence only.</p>
+      ${body}
+    </section>`;
+}
+
 function renderNflSignalDrivers(intel) {
   if (!intel?.isNfl || !intel?.nfl) return "";
-  const drivers = intel.nfl.signalDrivers || [];
+  const driverTitle = (intel.showOffseasonDrivers || intel.nfl?.showOffseasonDrivers) ? (intel.offseasonDriverLabel || intel.nfl?.offseasonDriverLabel || "Offseason Signal Drivers") : "NFL Signal Drivers";
+  const drivers = intel.mappedDrivers?.length ? intel.mappedDrivers.map((d) => ({
+    title: d.title,
+    summary: d.summary,
+    sourceType: d.sourceType,
+    impact: d.impact,
+    evidenceQuality: d.evidenceQuality,
+    occurredAt: d.occurredAt,
+  })) : (intel.nfl.signalDrivers || []);
   const body = drivers.length
     ? `
       <div class="sr-nfl-drivers">
@@ -1289,7 +1379,7 @@ function renderNflSignalDrivers(intel) {
 
   return `
     <section class="sr-section sr-nfl-drivers-section">
-      <h3 class="sr-section-title">NFL Signal Drivers</h3>
+      <h3 class="sr-section-title">${driverTitle}</h3>
       <p class="sr-section-lead">Verified football developments from stored evidence only.</p>
       ${body}
     </section>`;
@@ -1297,7 +1387,15 @@ function renderNflSignalDrivers(intel) {
 
 function renderNbaSignalDrivers(intel) {
   if (!intel?.isNba || !intel?.nba) return "";
-  const drivers = intel.nba.signalDrivers || [];
+  const driverTitle = (intel.showOffseasonDrivers || intel.nba?.showOffseasonDrivers) ? (intel.offseasonDriverLabel || intel.nba?.offseasonDriverLabel || "Offseason Signal Drivers") : "NBA Signal Drivers";
+  const drivers = intel.mappedDrivers?.length ? intel.mappedDrivers.map((d) => ({
+    title: d.title,
+    summary: d.summary,
+    sourceType: d.sourceType,
+    impact: d.impact,
+    evidenceQuality: d.evidenceQuality,
+    occurredAt: d.occurredAt,
+  })) : (intel.nba.signalDrivers || []);
   const body = drivers.length
     ? `
       <div class="sr-nba-drivers">
@@ -1319,7 +1417,7 @@ function renderNbaSignalDrivers(intel) {
 
   return `
     <section class="sr-section sr-nba-drivers-section">
-      <h3 class="sr-section-title">NBA Signal Drivers</h3>
+      <h3 class="sr-section-title">${driverTitle}</h3>
       ${body}
     </section>`;
 }
@@ -1414,6 +1512,7 @@ function buildSignalContributors(entry, intel, weeklySnap = null) {
 
 function renderWhyThisSignal(entry, intel, weeklySnap = null) {
   const contributors = buildSignalContributors(entry, intel, weeklySnap);
+  const mlbDriversSection = intel.isMlb ? renderMlbSignalDrivers(intel) : "";
   const nflDriversSection = intel.isNfl ? renderNflSignalDrivers(intel) : "";
   const nbaDriversSection = intel.isNba ? renderNbaSignalDrivers(intel) : "";
   const body = contributors.length
@@ -1436,6 +1535,7 @@ function renderWhyThisSignal(entry, intel, weeklySnap = null) {
       <h3 class="sr-section-title">Why This Signal</h3>
       <p class="sr-section-lead">How recent performance and market activity shaped this week's CardSignal Score.</p>
       ${body}
+      ${mlbDriversSection}
       ${nflDriversSection}
       ${nbaDriversSection}
     </section>`;
@@ -1606,43 +1706,57 @@ function renderSignalCategory(label, score, explanation, quality) {
 }
 
 function renderSignalAnalysis(entry, intel) {
-  const missing = intel.missingInputs || [];
+  const payload = intel.normalizedPayload || {
+    capabilities: intel.capabilities || {},
+    missing_inputs: intel.missingInputs || [],
+  };
+  const missing = payload.missing_inputs || intel.missingInputs || [];
   const evidence = intel.evidence || {};
   const categories = [
     {
       label: "Performance",
+      capability: "recent_form",
       score: intel.performance,
       explanation: (evidence.performance_reasons || [])[0]
-        || (intel.performance != null ? "Performance score captured from stored weekly intelligence." : "Performance inputs are still being collected for this player."),
-      quality: deriveEvidenceQuality(intel.performance, missing, "stats_7d"),
+        || capabilityStatusCopy(payload, "recent_form", intel.performance != null
+          ? "Performance score captured from stored weekly intelligence."
+          : "Performance inputs are still being collected for this player."),
     },
     {
       label: "Market",
+      capability: "market_snapshots",
       score: intel.market,
       explanation: (evidence.market_reasons || evidence.collector_evidence || [])[0]
-        || (intel.market != null ? "Market score captured from stored weekly intelligence." : "Market snapshots are not yet available for this reporting period."),
-      quality: deriveEvidenceQuality(intel.market, missing, "market_snapshots"),
+        || capabilityStatusCopy(payload, "market_snapshots", intel.market != null
+          ? "Market score captured from stored weekly intelligence."
+          : "Market snapshots are not yet available for this reporting period."),
     },
     {
       label: "Momentum",
+      capability: "momentum",
       score: intel.momentum,
       explanation: (evidence.momentum_evidence || [])[0]
-        || (intel.momentum != null ? "Momentum score captured from stored weekly intelligence." : "Momentum history still building."),
-      quality: deriveEvidenceQuality(intel.momentum, missing),
+        || capabilityStatusCopy(payload, "momentum", intel.momentum != null
+          ? "Momentum score (0–100) from stored weekly intelligence — not a percentage."
+          : "Momentum history still building."),
     },
     {
       label: "Scarcity",
+      capability: "card_intelligence",
       score: intel.scarcity,
       explanation: (evidence.scarcity_evidence || [])[0]
-        || (intel.scarcity != null ? "Scarcity score captured from stored weekly intelligence." : "PSA population pending."),
-      quality: deriveEvidenceQuality(intel.scarcity, missing),
+        || capabilityStatusCopy(payload, "card_intelligence", intel.scarcity != null
+          ? "Scarcity score captured from stored weekly intelligence."
+          : "PSA population pending."),
     },
     {
       label: "Collector Demand",
+      capability: "card_intelligence",
       score: intel.collector,
       explanation: (evidence.collector_evidence || [])[0]
-        || (intel.collector != null ? "Collector demand score captured from stored weekly intelligence." : "Collector demand signals are pending."),
-      quality: deriveEvidenceQuality(intel.collector, missing, "market_snapshots"),
+        || capabilityStatusCopy(payload, "card_intelligence", intel.collector != null
+          ? "Collector demand score captured from stored weekly intelligence."
+          : "Collector demand signals are pending."),
     },
   ];
 
@@ -1651,7 +1765,12 @@ function renderSignalAnalysis(entry, intel) {
       <h3 class="sr-section-title">Signal Analysis</h3>
       <p class="sr-section-lead">How performance, market, momentum, scarcity, and collector demand combine into the CardSignal Score.</p>
       <div class="sr-signal-grid">
-        ${categories.map((c) => renderSignalCategory(c.label, c.score, c.explanation, c.quality)).join("")}
+        ${categories.map((c) => renderSignalCategory(
+          c.label,
+          c.score,
+          c.explanation,
+          deriveSupportedEvidenceQuality(payload, c.capability, c.score, missing),
+        )).join("")}
       </div>
     </section>`;
 }
@@ -1788,8 +1907,8 @@ function renderScoutingReport(entry, intel, cards = [], weeklySnap = null) {
     </div>`;
 }
 
-function buildPlayerIntel(entry, weeklySnap = null) {
-  return buildStoredPlayerIntel(entry, weeklySnap);
+function buildPlayerIntel(entry, weeklySnap = null, normalizedPayload = null) {
+  return buildStoredPlayerIntel(entry, weeklySnap, normalizedPayload);
 }
 
 function isPlayerIntelligenceModalOpen() {
@@ -1874,9 +1993,21 @@ async function openPlayerIntelligenceModal(entry) {
     }
     selectedPlayer = player;
 
+    let normalizedPayload = entry.intelligence || null;
+    const league = resolvePlayerLeague(player, null, normalizedPayload);
+    const playerKey = player.source_player_id || player.player_id || player.cs_player_id;
+
+    if (!normalizedPayload && playerKey) {
+      try {
+        normalizedPayload = await fetchPlayerIntelligence(league, playerKey);
+      } catch (_) {
+        normalizedPayload = null;
+      }
+    }
+
     let weeklySnap = null;
     const weeklyPlayerKey = player.cs_player_id || normalizeCsPlayerId(player);
-    if (weeklyPlayerKey) {
+    if (!normalizedPayload && weeklyPlayerKey) {
       try {
         const weeklyData = await fetchPlayerWeeklySignals(weeklyPlayerKey);
         weeklySnap = resolveWeeklySnapshot(player, weeklyData?.items || []);
@@ -1885,7 +2016,11 @@ async function openPlayerIntelligenceModal(entry) {
       }
     }
 
-    const intel = buildPlayerIntel(player, weeklySnap);
+    if (!normalizedPayload && !weeklySnap) {
+      throw new Error("Stored intelligence is unavailable for this player.");
+    }
+
+    const intel = buildPlayerIntel(player, weeklySnap, normalizedPayload);
     const cardRows = collectPlayerCards(player);
     const cards = await enrichPlayerCards(cardRows);
 

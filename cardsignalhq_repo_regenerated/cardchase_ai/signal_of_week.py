@@ -16,7 +16,12 @@ def select_signal_of_the_week(
     for snap in snapshots:
         if snap.card_signal_score is None:
             continue
-        if not has_sufficient_evidence(snap.performance_score, snap.market_score, snap.missing_inputs):
+        if not has_sufficient_evidence(
+            snap.performance_score,
+            snap.market_score,
+            snap.missing_inputs,
+            league=snap.league,
+        ):
             continue
         if snap.recommendation is None:
             continue
