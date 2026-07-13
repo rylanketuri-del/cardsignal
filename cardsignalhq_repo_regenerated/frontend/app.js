@@ -1069,6 +1069,9 @@ function getReportStatus(entry = {}, weeklySnap = null) {
   if (!statusRaw) {
     return { label: "Watch", emoji: "⚠", className: "sr-status--watch" };
   }
+  if (statusRaw.includes("STABLE")) {
+    return { label: "Stable", emoji: "➡", className: "sr-status--stable" };
+  }
   if (statusRaw.includes("COOL")) {
     return { label: "Cooling", emoji: "📉", className: "sr-status--cooling" };
   }
@@ -1140,10 +1143,19 @@ function parseStoredContributorDirection(value, fallback = "up") {
   return n >= 0 ? "up" : "down";
 }
 
+function capabilityPendingCopy(capabilities, key, fallback) {
+  const status = capabilities?.[key];
+  if (status === "PENDING") return `${fallback} — prior weekly snapshots required.`;
+  if (status === "UNAVAILABLE") return `${fallback} — not available for this league.`;
+  if (status === "DISABLED") return `${fallback} — not enabled for this league.`;
+  return fallback;
+}
+
 function buildStoredPlayerIntel(entry = {}, weeklySnap = null) {
   const hotness = entry.hotness || {};
   const missing = weeklySnap?.missing_inputs || [];
   const snapEvidence = weeklySnap?.evidence || {};
+  const capabilities = weeklySnap?.capabilities || snapEvidence.capabilities || {};
   const isNfl = isNflEntry(entry) || weeklySnap?.league === 'NFL' || weeklySnap?.sport === 'FOOTBALL';
   const isNba = isNbaEntry(entry) || weeklySnap?.league === 'NBA' || weeklySnap?.sport === 'BASKETBALL';
   const nflReport = isNfl ? SRNfl.srNflMapScoutingReport(entry, weeklySnap) : null;
@@ -1162,17 +1174,21 @@ function buildStoredPlayerIntel(entry = {}, weeklySnap = null) {
     weeklyChange: csIntelSafeToNumber(weeklySnap?.weekly_change ?? entry.weekly_change),
     evidence: snapEvidence,
     missingInputs: missing,
+    capabilities,
+    signalDrivers: weeklySnap?.signal_drivers || snapEvidence.signal_drivers || snapEvidence.nfl_signal_drivers || [],
     algorithmVersion: weeklySnap?.algorithm_version || weeklyIntelligence?.run?.algorithm_version || SCOUTING_REPORT_ALGO,
     capturedAt: weeklySnap?.captured_at || entry.generated_at || weeklyIntelligence?.run?.completed_at,
     stats7d: nbaReport?.recentStats || nflReport?.recentStats || entry.stats_7d || snapEvidence.nba_recent_stats || snapEvidence.nfl_recent_stats || null,
     stats30d: nbaReport?.seasonStats || nflReport?.seasonStats || entry.stats_30d || snapEvidence.nba_season_stats || snapEvidence.nfl_season_stats || null,
-    marketSnapshots: entry.market_snapshots || {},
+    marketSnapshots: entry.market_snapshots || snapEvidence.market_snapshots || {},
     isNfl,
     isNba,
     nfl: nflReport,
     nba: nbaReport,
-    nflSeasonPhase: nflReport?.nflSeasonPhase || null,
+    nflSeasonPhase: weeklySnap?.season_phase || nflReport?.nflSeasonPhase || snapEvidence.nfl_season_phase || null,
     nbaSeasonPhase: nbaReport?.nbaSeasonPhase || null,
+    recentWindowLabel: weeklySnap?.recent_window_label || snapEvidence.recent_window_label || null,
+    seasonPhase: weeklySnap?.season_phase || snapEvidence.season_phase || null,
   };
 }
 
@@ -1608,26 +1624,30 @@ function renderSignalCategory(label, score, explanation, quality) {
 function renderSignalAnalysis(entry, intel) {
   const missing = intel.missingInputs || [];
   const evidence = intel.evidence || {};
+  const caps = intel.capabilities || {};
+  const perfMissingKey = intel.isNfl ? "stats_recent" : "stats_7d";
   const categories = [
     {
       label: "Performance",
       score: intel.performance,
       explanation: (evidence.performance_reasons || [])[0]
         || (intel.performance != null ? "Performance score captured from stored weekly intelligence." : "Performance inputs are still being collected for this player."),
-      quality: deriveEvidenceQuality(intel.performance, missing, "stats_7d"),
+      quality: deriveEvidenceQuality(intel.performance, missing, perfMissingKey),
     },
     {
       label: "Market",
       score: intel.market,
       explanation: (evidence.market_reasons || evidence.collector_evidence || [])[0]
-        || (intel.market != null ? "Market score captured from stored weekly intelligence." : "Market snapshots are not yet available for this reporting period."),
+        || (intel.market != null ? "Market score captured from stored weekly intelligence." : capabilityPendingCopy(caps, "market_snapshots", "Market snapshots are not yet available for this reporting period.")),
       quality: deriveEvidenceQuality(intel.market, missing, "market_snapshots"),
     },
     {
       label: "Momentum",
       score: intel.momentum,
       explanation: (evidence.momentum_evidence || [])[0]
-        || (intel.momentum != null ? "Momentum score captured from stored weekly intelligence." : "Momentum history still building."),
+        || (intel.momentum != null
+          ? "Momentum score (0–100) from stored weekly intelligence — not a percentage."
+          : capabilityPendingCopy(caps, "momentum", "Momentum history still building.")),
       quality: deriveEvidenceQuality(intel.momentum, missing),
     },
     {

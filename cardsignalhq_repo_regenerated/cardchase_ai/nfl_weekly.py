@@ -23,8 +23,19 @@ from cardchase_ai.score import score_market
 from cardchase_ai.utils.normalize import summarize_market
 from cardchase_ai.utils.reporting_period import ReportingPeriod
 from cardchase_ai.utils.nfl_rolling import aggregate_position_stats, select_recent_games
-from cardchase_ai.weekly_scoring import derive_collector_score, derive_scarcity_score
+from cardchase_ai.weekly_scoring import (
+    compute_weekly_change,
+    derive_collector_score,
+    derive_conviction,
+    derive_momentum_from_prior_snapshots,
+    derive_nfl_status,
+    derive_recommendation,
+    derive_scarcity_score,
+    has_sufficient_evidence,
+)
 from cardchase_ai.weekly_storage import WeeklyStorage
+from cardchase_ai.capabilities import declare_nfl_capabilities
+from cardchase_ai.performance_evidence import build_nfl_performance_evidence
 
 NFL_SEARCH_TEMPLATES = {
     "broad": '{player} football card',
@@ -101,14 +112,6 @@ def build_nfl_player_snapshot(
     performance = recent_snap.performance_score if recent_snap else hotness.performance_score
     market = hotness.market_score if output.market_snapshots else None
 
-    from cardchase_ai.weekly_scoring import (
-        compute_weekly_change,
-        derive_conviction,
-        derive_recommendation,
-        derive_status,
-        has_sufficient_evidence,
-    )
-
     card_signal = None
     if performance is not None and has_sufficient_evidence(performance, market, missing_inputs):
         card_signal = round(0.55 * performance + 0.45 * (market or 0), 2)
@@ -117,9 +120,35 @@ def build_nfl_player_snapshot(
     prior_score = prior.card_signal_score if prior else None
     weekly_change = compute_weekly_change(card_signal, prior_score)
 
+    momentum = None
+    if prior is not None:
+        momentum = derive_momentum_from_prior_snapshots(
+            performance,
+            prior.performance_score,
+        )
+
     conviction = derive_conviction(hotness.confidence_multiplier, len(missing_inputs))
     recommendation = derive_recommendation(hotness, collector) if card_signal is not None else None
-    status = derive_status(hotness, None)
+    status = derive_nfl_status(
+        performance_score=performance,
+        weekly_change=weekly_change,
+        card_signal_score=card_signal,
+        recommendation=recommendation,
+    )
+
+    recent_evidence = build_nfl_performance_evidence(recent_snap)
+    season_evidence = build_nfl_performance_evidence(season_snap)
+    driver_payloads = [d.model_dump(mode="json") for d in drivers]
+    perf_quality = recent_snap.data_quality if recent_snap else "INSUFFICIENT"
+    driver_quality = "HIGH" if len(drivers) >= 2 else "MEDIUM" if drivers else "INSUFFICIENT"
+    capabilities = declare_nfl_capabilities(
+        has_prior_weekly_snapshot=prior is not None,
+        has_market_history=False,
+        has_import_data=bool(recent_snap or season_snap),
+    )
+
+    period_start_str = period.period_start.isoformat() if period.period_start else None
+    period_end_str = period.period_end.isoformat() if period.period_end else None
 
     evidence = build_nfl_scouting_evidence(
         nfl_season_phase=stored_phase,
@@ -131,9 +160,25 @@ def build_nfl_player_snapshot(
         collector_evidence=collector_evidence,
         scarcity_evidence=scarcity_evidence,
         confidence_multiplier=hotness.confidence_multiplier,
-        tag=hotness.tag,
+        tag=status,
     )
     evidence["nfl_algorithm_version"] = NFL_PLAYER_SIGNAL_V1
+    evidence["recent_performance"] = [e.model_dump(mode="json") for e in recent_evidence]
+    evidence["season_performance"] = [e.model_dump(mode="json") for e in season_evidence]
+    evidence["signal_drivers"] = driver_payloads
+    evidence["performance_data_quality"] = perf_quality
+    evidence["driver_data_quality"] = driver_quality
+    evidence["season_phase"] = stored_phase
+    evidence["recent_window_label"] = "Recent 3 Games"
+    evidence["period_type"] = "RECENT_3_GAMES"
+    evidence["performance_algorithm_version"] = NFL_PLAYER_SIGNAL_V1
+    evidence["market_snapshots"] = {
+        k: v.model_dump(mode="json") if hasattr(v, "model_dump") else v
+        for k, v in output.market_snapshots.items()
+    }
+
+    market_missing = [m for m in missing_inputs if m in {"market_snapshots", "listing_volume"}]
+    performance_missing = [m for m in missing_inputs if m.startswith("stats")]
 
     return PlayerWeeklySignalSnapshot(
         snapshot_id=str(uuid.uuid4()),
@@ -151,7 +196,7 @@ def build_nfl_player_snapshot(
         performance_score=performance,
         market_score=market,
         collector_score=collector,
-        momentum_score=None,
+        momentum_score=momentum,
         scarcity_score=scarcity,
         news_score=None,
         recommendation=recommendation,
@@ -168,6 +213,27 @@ def build_nfl_player_snapshot(
         position=output.position,
         headshot_url=output.headshot_url,
         team_logo_url=output.team_logo_url,
+        season_phase=stored_phase,
+        period_type="RECENT_3_GAMES",
+        recent_window_label="Recent 3 Games",
+        signal_drivers=driver_payloads,
+        recent_performance=[e.model_dump(mode="json") for e in recent_evidence],
+        season_performance=[e.model_dump(mode="json") for e in season_evidence],
+        performance_data_quality=perf_quality,
+        performance_missing_inputs=performance_missing,
+        market_data_quality="MEDIUM" if output.market_snapshots else "INSUFFICIENT",
+        market_missing_inputs=market_missing,
+        driver_data_quality=driver_quality,
+        capabilities=capabilities,
+        weekly_algorithm_version=NFL_PLAYER_SIGNAL_V1,
+        scoring_algorithm_version=NFL_PLAYER_SIGNAL_V1,
+        performance_algorithm_version=NFL_PLAYER_SIGNAL_V1,
+        card_algorithm_version=NFL_PLAYER_SIGNAL_V1,
+        prior_score=prior_score,
+        official_weekly_snapshot=True,
+        data_confidence=perf_quality,
+        evidence_summary=f"{len(drivers)} NFL signal drivers from stored evidence",
+        freshness_summary=period_end_str,
     )
 
 
@@ -259,7 +325,7 @@ def process_player_for_nfl_weekly(
             market_score=market_score,
             total_score=round(0.55 * perf_score + 0.45 * market_score, 2) if perf_score else round(market_score * 0.45, 2),
             confidence_multiplier=0.9 if recent_snapshot.data_quality == "LOW" else 1.0,
-            tag="RISING" if perf_score >= 65 else "WATCH",
+            tag="WATCH",
             reasons=(list(recent_snapshot.normalized_metrics.keys()) if recent_snapshot.normalized_metrics else []) + market_reasons,
         )
 

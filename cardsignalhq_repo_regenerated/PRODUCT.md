@@ -136,3 +136,14 @@ NBA support follows the same evidence-first Sport Adapter architecture as MLB an
 - Frontend-only releases must not modify backend files unless explicitly scoped
 - No new dependencies without approval
 - Preserve existing homepage sections during modal and report releases
+
+## League Intelligence Convergence Principles (Sprint 11.2)
+
+MLB and NFL may use different source pipelines, but all shared surfaces consume one normalized intelligence contract:
+
+- **Common output contract:** `PlayerIntelligencePayload` with identity, scores, performance evidence, signal drivers, market, cards, weekly movement, capabilities, and algorithm versions
+- **Explicit capability declarations:** each league adapter declares `SUPPORTED`, `UNAVAILABLE`, `PENDING`, or `DISABLED` per capability — the frontend never infers capabilities from missing fields
+- **League-specific sources may differ:** MLB uses live API + legacy Supabase; NFL uses approved import + local JSON storage
+- **Unsupported is better than fabricated:** null scores stay null; pending states use intentional copy
+- **Momentum, weekly change, and market movement are distinct:** Momentum Score is a 0–100 intelligence score (not a percentage); Weekly Change is CardSignal Score delta between official weekly snapshots; Market Movement is historical change in stored market observations
+- **Frontend surfaces consume normalized intelligence:** Homepage, Scouting Report, and `GET /api/players/{league}/{player_id}/intelligence` share the same serializer

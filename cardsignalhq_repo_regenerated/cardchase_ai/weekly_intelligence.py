@@ -56,6 +56,9 @@ from cardchase_ai.weekly_scoring import (
     derive_status,
     has_sufficient_evidence,
 )
+from cardchase_ai.capabilities import declare_mlb_capabilities
+from cardchase_ai.mlb_signal_drivers import driver_data_quality, generate_mlb_signal_drivers
+from cardchase_ai.performance_evidence import build_mlb_recent_evidence, build_mlb_season_evidence
 from cardchase_ai.weekly_storage import WeeklyJsonStorage, WeeklyStorage
 from cardchase_ai.nfl_weekly import (
     build_nfl_market_universe,
@@ -204,6 +207,31 @@ def build_player_snapshot(
     recommendation = derive_recommendation(hotness, collector) if card_signal is not None else None
     status = derive_status(hotness, momentum)
 
+    period_start_str = period.period_start.isoformat() if period.period_start else None
+    period_end_str = period.period_end.isoformat() if period.period_end else None
+    recent_evidence = build_mlb_recent_evidence(
+        output.stats_7d,
+        output.stats_30d,
+        period_start=period_start_str,
+        period_end=period_end_str,
+    )
+    season_evidence = build_mlb_season_evidence(
+        output.stats_30d,
+        period_start=period_start_str,
+        period_end=period_end_str,
+    )
+    drivers = generate_mlb_signal_drivers(
+        stats_7d=output.stats_7d,
+        stats_30d=output.stats_30d,
+        season_phase="REGULAR_SEASON",
+    )
+    perf_quality = "HIGH" if output.stats_7d.games >= 5 else "MEDIUM" if output.stats_7d.games >= 3 else "LOW" if output.stats_7d.games > 0 else "INSUFFICIENT"
+    driver_quality = driver_data_quality(drivers, output.stats_7d.games)
+    capabilities = declare_mlb_capabilities(has_market_history=False, has_weekly_history=prior is not None)
+
+    market_missing = [m for m in missing_inputs if m in {"market_snapshots", "listing_volume"}]
+    performance_missing = [m for m in missing_inputs if m.startswith("stats")]
+
     evidence = {
         "performance_reasons": hotness.reasons,
         "market_reasons": hotness.reasons,
@@ -212,6 +240,19 @@ def build_player_snapshot(
         "scarcity_evidence": scarcity_evidence,
         "confidence_multiplier": hotness.confidence_multiplier,
         "tag": hotness.tag,
+        "recent_performance": [e.model_dump(mode="json") for e in recent_evidence],
+        "season_performance": [e.model_dump(mode="json") for e in season_evidence],
+        "signal_drivers": [d.model_dump(mode="json") for d in drivers],
+        "performance_data_quality": perf_quality,
+        "driver_data_quality": driver_quality,
+        "season_phase": "REGULAR_SEASON",
+        "recent_window_label": "Last 7 Days",
+        "period_type": "LAST_7_DAYS",
+        "performance_algorithm_version": WEEKLY_INTELLIGENCE_V1,
+        "market_snapshots": {
+            k: v.model_dump(mode="json") if hasattr(v, "model_dump") else v
+            for k, v in output.market_snapshots.items()
+        },
     }
 
     return PlayerWeeklySignalSnapshot(
@@ -247,6 +288,27 @@ def build_player_snapshot(
         position=output.position,
         headshot_url=output.headshot_url,
         team_logo_url=output.team_logo_url,
+        season_phase="REGULAR_SEASON",
+        period_type="LAST_7_DAYS",
+        recent_window_label="Last 7 Days",
+        signal_drivers=[d.model_dump(mode="json") for d in drivers],
+        recent_performance=[e.model_dump(mode="json") for e in recent_evidence],
+        season_performance=[e.model_dump(mode="json") for e in season_evidence],
+        performance_data_quality=perf_quality,
+        performance_missing_inputs=performance_missing,
+        market_data_quality="MEDIUM" if output.market_snapshots else "INSUFFICIENT",
+        market_missing_inputs=market_missing,
+        driver_data_quality=driver_quality,
+        capabilities=capabilities,
+        weekly_algorithm_version=WEEKLY_INTELLIGENCE_V1,
+        scoring_algorithm_version=WEEKLY_INTELLIGENCE_V1,
+        performance_algorithm_version=WEEKLY_INTELLIGENCE_V1,
+        card_algorithm_version=WEEKLY_INTELLIGENCE_V1,
+        prior_score=prior_score,
+        official_weekly_snapshot=True,
+        data_confidence=perf_quality if perf_quality != "INSUFFICIENT" else "LOW",
+        evidence_summary=f"{len(drivers)} signal drivers from stored performance",
+        freshness_summary=period_end_str,
     )
 
 
