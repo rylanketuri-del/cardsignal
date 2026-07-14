@@ -29,10 +29,18 @@ def is_league_available(league: str, settings: Settings | None = None) -> bool:
         return True
     if league_upper == "NFL":
         provider = get_nfl_provider(settings)
-        return provider.is_available()
+        if provider.is_available():
+            return True
+        from cardchase_ai.performance_storage import build_performance_storage
+        perf = build_performance_storage(settings)
+        return perf.league_summary("NFL")["has_data"]
     if league_upper == "NBA":
         provider = get_nba_provider(settings)
-        return provider.is_available()
+        if provider.is_available():
+            return True
+        from cardchase_ai.performance_storage import build_performance_storage
+        perf = build_performance_storage(settings)
+        return perf.league_summary("NBA")["has_data"]
     return False
 
 

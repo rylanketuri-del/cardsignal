@@ -5,6 +5,15 @@
 - [ ] NFL uses real data
 - [ ] NBA uses real data before collector invites
 - [ ] No fabricated intelligence
+- [ ] MLB normalized payload verified
+- [ ] NFL normalized payload verified
+- [ ] Cross-league data parity verified
+- [ ] No silent field dropping in serialization
+- [ ] Genuine NFL production seed required before NFL tab goes live
+- [ ] MLB evidence gate preserved
+- [ ] Normalized homepage contract verified
+- [ ] Normalized Scouting Report contract verified
+- [ ] Explicit capability rendering verified
 - [ ] Stable Player Registry
 - [ ] Stable Card Registry
 - [ ] Stable IDs
@@ -39,6 +48,17 @@
 - [ ] PSA population
 - [ ] No duplicate scoring
 - [ ] No duplicate registry logic
+- [ ] Verified NFL previous-season data seeded
+- [ ] Verified NBA previous-season data seeded
+- [ ] Offseason Scouting Reports verified
+- [ ] NFL latest completed-season label verified
+- [ ] NBA latest completed-season label verified
+- [ ] No hardcoded production season labels
+- [ ] MLB active-season regression verified
+- [ ] Durable weekly storage confirmed
+- [ ] NFL production weekly snapshots confirmed
+- [ ] NBA production weekly snapshots confirmed
+- [ ] Production seeding complete (do not mark until confirmed)
 
 ## Security
 - [ ] No secrets committed
