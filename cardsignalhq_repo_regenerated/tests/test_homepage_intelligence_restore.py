@@ -198,7 +198,7 @@ class TrendCalculationTests(unittest.TestCase):
 
 
 class PipelineIntegrationTests(unittest.TestCase):
-    def test_run_pipeline_invokes_weekly_intelligence(self) -> None:
+    def test_weekly_generates_only_when_due(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             settings = _settings(tmp)
             fake_summary = WeeklyRunSummary(
@@ -218,43 +218,121 @@ class PipelineIntegrationTests(unittest.TestCase):
                     cards_processed=4,
                 ),
                 stages=[],
-                homepage=WeeklyHomepageIntelligence(
-                    run=WeeklyIntelligenceRun(
-                        run_id="weekly-1",
-                        league="MLB",
-                        sport="MLB",
-                        season=2026,
-                        year=2026,
-                        week_number=28,
-                        period_start=datetime(2026, 7, 7, tzinfo=ZoneInfo("UTC")),
-                        period_end=datetime(2026, 7, 13, tzinfo=ZoneInfo("UTC")),
-                        status="COMPLETED",
-                        algorithm_version=WEEKLY_INTELLIGENCE_V1,
-                    ),
-                    trending_cards=[{"cs_card_id": "c1", "score": 80}],
-                    biggest_movers=[{"cs_card_id": "c2", "score": 70}],
-                    buy_low_watch=[{"cs_card_id": "c3", "score": 55}],
-                    most_chased=[{"cs_card_id": "c1", "score": 80}],
-                ),
+                homepage=None,
             )
+            from cardchase_ai.pipeline import _ensure_weekly_intelligence
 
-            with patch("cardchase_ai.pipeline.get_settings", return_value=settings), \
-                 patch("cardchase_ai.pipeline._build_outputs", return_value=[]), \
-                 patch("cardchase_ai.pipeline._write_outputs", return_value=Path(tmp) / "latest_leaderboard.json"), \
+            with patch("cardchase_ai.sports.registry.is_league_available", return_value=False), \
+                 patch("cardchase_ai.weekly_intelligence.build_weekly_storage") as mock_storage_factory, \
                  patch("cardchase_ai.weekly_intelligence.run_weekly_intelligence", return_value=fake_summary) as mock_weekly, \
-                 patch("cardchase_ai.sports.registry.is_league_available", return_value=False):
-                from cardchase_ai.pipeline import run_pipeline
-
-                (Path(tmp) / "latest_leaderboard.json").write_text("[]", encoding="utf-8")
-                result = run_pipeline()
+                 patch(
+                     "cardchase_ai.utils.reporting_period.is_weekly_refresh_window_open",
+                     return_value=(True, datetime(2026, 7, 8, 6, tzinfo=ZoneInfo("America/New_York"))),
+                 ):
+                mock_storage = mock_storage_factory.return_value
+                mock_storage.find_official_completed_run.return_value = None
+                results = _ensure_weekly_intelligence(settings)
 
             mock_weekly.assert_called_once()
             kwargs = mock_weekly.call_args.kwargs
             self.assertEqual(kwargs["league"], "MLB")
             self.assertEqual(kwargs["triggered_by"], "scheduler")
             self.assertFalse(kwargs["force"])
-            self.assertEqual(result.weekly_intelligence[0]["status"], "COMPLETED")
-            self.assertEqual(result.weekly_intelligence[0]["cards_processed"], 4)
+            self.assertEqual(results[0]["status"], "COMPLETED")
+            self.assertEqual(results[0]["cards_processed"], 4)
+
+    def test_weekly_skipped_before_refresh_window(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = _settings(tmp)
+            from cardchase_ai.pipeline import _ensure_weekly_intelligence
+
+            refresh_at = datetime(2026, 7, 14, 6, tzinfo=ZoneInfo("America/New_York"))
+            with patch("cardchase_ai.sports.registry.is_league_available", return_value=False), \
+                 patch("cardchase_ai.weekly_intelligence.build_weekly_storage") as mock_storage_factory, \
+                 patch("cardchase_ai.weekly_intelligence.run_weekly_intelligence") as mock_weekly, \
+                 patch("cardchase_ai.utils.reporting_period.is_weekly_refresh_window_open", return_value=(False, refresh_at)):
+                mock_storage = mock_storage_factory.return_value
+                mock_storage.find_official_completed_run.return_value = None
+                results = _ensure_weekly_intelligence(settings)
+
+            mock_weekly.assert_not_called()
+            self.assertEqual(results[0]["status"], "SKIPPED")
+            self.assertIn("not yet due", results[0]["skipped_reason"])
+
+    def test_weekly_skipped_when_official_snapshot_exists(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = _settings(tmp)
+            from cardchase_ai.pipeline import _ensure_weekly_intelligence
+
+            existing = WeeklyIntelligenceRun(
+                run_id="existing-run",
+                league="MLB",
+                sport="MLB",
+                season=2026,
+                year=2026,
+                week_number=28,
+                period_start=datetime(2026, 7, 7, tzinfo=ZoneInfo("UTC")),
+                period_end=datetime(2026, 7, 13, tzinfo=ZoneInfo("UTC")),
+                status="COMPLETED",
+                algorithm_version=WEEKLY_INTELLIGENCE_V1,
+            )
+            with patch("cardchase_ai.sports.registry.is_league_available", return_value=False), \
+                 patch("cardchase_ai.weekly_intelligence.build_weekly_storage") as mock_storage_factory, \
+                 patch("cardchase_ai.weekly_intelligence.run_weekly_intelligence") as mock_weekly:
+                mock_storage = mock_storage_factory.return_value
+                mock_storage.find_official_completed_run.return_value = existing
+                results = _ensure_weekly_intelligence(settings)
+
+            mock_weekly.assert_not_called()
+            self.assertEqual(results[0]["status"], "SKIPPED")
+            self.assertIn("already completed", results[0]["skipped_reason"])
+
+
+class WeeklyRefreshWindowTests(unittest.TestCase):
+    def test_refresh_window_closed_before_tuesday(self) -> None:
+        from cardchase_ai.utils.reporting_period import (
+            build_reporting_period,
+            is_weekly_refresh_window_open,
+        )
+
+        period = build_reporting_period(
+            league="MLB",
+            anchor=datetime(2026, 7, 13, 12, 0, tzinfo=ZoneInfo("America/New_York")),
+            timezone_name="America/New_York",
+            season=2026,
+        )
+        monday = datetime(2026, 7, 13, 10, 0, tzinfo=ZoneInfo("America/New_York"))
+        open_now, refresh_at = is_weekly_refresh_window_open(
+            period,
+            now=monday,
+            timezone_name="America/New_York",
+            refresh_day=1,
+            refresh_hour=6,
+        )
+        self.assertFalse(open_now)
+        self.assertEqual(refresh_at.weekday(), 1)
+
+    def test_refresh_window_open_after_tuesday_six(self) -> None:
+        from cardchase_ai.utils.reporting_period import (
+            build_reporting_period,
+            is_weekly_refresh_window_open,
+        )
+
+        period = build_reporting_period(
+            league="MLB",
+            anchor=datetime(2026, 7, 14, 12, 0, tzinfo=ZoneInfo("America/New_York")),
+            timezone_name="America/New_York",
+            season=2026,
+        )
+        tuesday = datetime(2026, 7, 14, 6, 0, tzinfo=ZoneInfo("America/New_York"))
+        open_now, _ = is_weekly_refresh_window_open(
+            period,
+            now=tuesday,
+            timezone_name="America/New_York",
+            refresh_day=1,
+            refresh_hour=6,
+        )
+        self.assertTrue(open_now)
 
 
 if __name__ == "__main__":
