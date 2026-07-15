@@ -326,10 +326,12 @@ function signalOfWeekToEntry(signal = {}) {
 function weeklyCardRowToIntelItem(row = {}) {
   const label = row.card_label || 'Card';
   const player = row.player_name || 'Player';
+  const movementValue = row.movement != null ? row.movement
+    : (row.momentum_score != null ? row.momentum_score : row.demand_score);
   return {
     name: `${player} · ${label}`,
     price: row.evidence?.avg_price ?? null,
-    movement: row.demand_score != null ? `${row.demand_score > 0 ? '+' : ''}${Number(row.demand_score).toFixed(1)}%` : '—',
+    movement: movementValue != null ? `${movementValue > 0 ? '+' : ''}${Number(movementValue).toFixed(1)}%` : '—',
     score: row.score != null ? Number(row.score).toFixed(1) : '—',
   };
 }

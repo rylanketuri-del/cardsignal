@@ -451,10 +451,17 @@ def update_alerts(payload: AlertsUpdateRequest, auth=Depends(get_current_user)) 
 
 
 @app.post("/api/pipeline/run")
-def trigger_pipeline(authorization: str | None = Header(default=None)) -> dict[str, str | int]:
+def trigger_pipeline(authorization: str | None = Header(default=None)) -> dict:
     _authorize_pipeline_trigger(authorization)
     result = run_pipeline()
-    return {"status": "ok", "output_path": result.leaderboard_path, "run_id": result.run_id or 0, "alerts_created": result.alerts_created, "deliveries_attempted": result.deliveries_attempted}
+    return {
+        "status": "ok",
+        "output_path": result.leaderboard_path,
+        "run_id": result.run_id or 0,
+        "alerts_created": result.alerts_created,
+        "deliveries_attempted": result.deliveries_attempted,
+        "weekly_intelligence": result.weekly_intelligence,
+    }
 
 
 @app.get("/api/weekly/latest")

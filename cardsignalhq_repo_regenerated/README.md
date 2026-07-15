@@ -189,7 +189,7 @@ on this schedule:
 0 */3 * * *
 ```
 
-That refreshes the MLB leaderboard every 3 hours.
+That refreshes the MLB leaderboard every 3 hours. After each leaderboard write it checks whether a weekly intelligence snapshot is due (configured Tuesday 06:00 window, and no official run yet for the current reporting week). Weekly intelligence — Trending Cards, Biggest Movers, Buy Low Watch, Most Chased, and Trend / `weekly_change` — generates only when that gate passes; otherwise it is skipped.
 
 ### Option 2: GitHub Actions
 

@@ -396,12 +396,17 @@ class WeeklyStorage:
                     },
                 )
                 for row in rows:
-                    if row.get("week_number", 0) < week_number or row.get("year", 0) < year:
+                    row_year = int(row.get("year") or 0)
+                    row_week = int(row.get("week_number") or 0)
+                    if (row_year, row_week) < (year, week_number):
                         return PlayerWeeklySignalSnapshot.model_validate(self._player_row_to_dict(row))
             except SupabaseError:
                 pass
         history = self.json.fetch_player_weekly_history(cs_player_id, limit=24)
-        prior = [h for h in history if h.get("week_number", 0) < week_number]
+        prior = [
+            h for h in history
+            if (int(h.get("year") or 0), int(h.get("week_number") or 0)) < (year, week_number)
+        ]
         if prior:
             return PlayerWeeklySignalSnapshot.model_validate(prior[-1])
         return None

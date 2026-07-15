@@ -10,3 +10,8 @@ if __name__ == "__main__":
         print(f"Supabase run id: {result.run_id}")
         print(f"Alerts created: {result.alerts_created}")
         print(f"Deliveries attempted: {result.deliveries_attempted}")
+    for weekly in result.weekly_intelligence or []:
+        league = weekly.get("league", "?")
+        status = weekly.get("status", "?")
+        extra = weekly.get("skipped_reason") or weekly.get("error") or ""
+        print(f"Weekly intelligence {league}: {status}" + (f" — {extra}" if extra else ""))

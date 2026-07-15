@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from cardchase_ai.alerts import AlertEvent, build_daily_digest, detect_player_events, event_passes_player_rule
 from cardchase_ai.clients.ebay import EbayClient
@@ -54,6 +54,7 @@ class PipelineResult(BaseModel):
     run_id: int | None = None
     alerts_created: int = 0
     deliveries_attempted: int = 0
+    weekly_intelligence: list[dict] = Field(default_factory=list)
 
 
 def _build_market_universe(mlb_client: MLBClient, settings, *, scan_limit: int | None = None) -> list[dict]:
@@ -419,6 +420,104 @@ def run() -> Path:
     return Path(result.leaderboard_path)
 
 
+def _ensure_weekly_intelligence(settings) -> list[dict]:
+    """Optionally generate weekly intelligence after a daily/leaderboard pipeline run.
+
+    Preserves the daily vs weekly architecture:
+      - Daily pipeline always refreshes the leaderboard/market.
+      - Weekly intelligence only executes when a new official weekly snapshot is due:
+          1) no completed official run for the current reporting week, AND
+          2) the configured weekly refresh window has opened (default Tue 06:00).
+      - Otherwise this returns SKIPPED without running the weekly pipeline.
+      - `run_weekly_intelligence` itself is also idempotent (duplicate-week guard).
+    """
+    # Lazy import avoids a circular dependency (weekly_intelligence imports pipeline helpers).
+    from cardchase_ai.sports.registry import is_league_available, season_for_league
+    from cardchase_ai.utils.reporting_period import (
+        build_reporting_period,
+        is_weekly_refresh_window_open,
+    )
+    from cardchase_ai.weekly_intelligence import build_weekly_storage, run_weekly_intelligence
+
+    leagues = ["MLB"]
+    if is_league_available("NFL", settings):
+        leagues.append("NFL")
+    if is_league_available("NBA", settings):
+        leagues.append("NBA")
+
+    storage = build_weekly_storage(settings)
+    results: list[dict] = []
+    for league in leagues:
+        try:
+            period = build_reporting_period(
+                league=league,
+                timezone_name=settings.weekly_timezone,
+                season=season_for_league(league, settings),
+            )
+            existing = storage.find_official_completed_run(league, period.year, period.week_number)
+            if existing:
+                entry = {
+                    "league": league,
+                    "status": "SKIPPED",
+                    "run_id": existing.run_id,
+                    "players_processed": 0,
+                    "cards_processed": 0,
+                    "skipped_reason": (
+                        f"Official weekly run already completed for "
+                        f"{league} {period.year} W{period.week_number:02d}"
+                    ),
+                }
+                results.append(entry)
+                print(f"Weekly intelligence {league}: SKIPPED ({entry['skipped_reason']})")
+                continue
+
+            window_open, refresh_at = is_weekly_refresh_window_open(
+                period,
+                timezone_name=settings.weekly_timezone,
+                refresh_day=settings.weekly_refresh_day,
+                refresh_hour=settings.weekly_refresh_hour,
+            )
+            if not window_open:
+                entry = {
+                    "league": league,
+                    "status": "SKIPPED",
+                    "run_id": None,
+                    "players_processed": 0,
+                    "cards_processed": 0,
+                    "skipped_reason": (
+                        f"Weekly refresh not yet due until {refresh_at.isoformat()} "
+                        f"({league} {period.year} W{period.week_number:02d})"
+                    ),
+                }
+                results.append(entry)
+                print(f"Weekly intelligence {league}: SKIPPED ({entry['skipped_reason']})")
+                continue
+
+            summary = run_weekly_intelligence(
+                league=league,
+                force=False,
+                triggered_by="scheduler",
+                settings=settings,
+                storage=storage,
+            )
+            entry = {
+                "league": league,
+                "status": summary.run.status,
+                "run_id": summary.run.run_id,
+                "players_processed": summary.run.players_processed,
+                "cards_processed": summary.run.cards_processed,
+            }
+            if summary.skipped_reason:
+                entry["skipped_reason"] = summary.skipped_reason
+            results.append(entry)
+            detail = summary.skipped_reason or f"{summary.run.players_processed} players / {summary.run.cards_processed} cards"
+            print(f"Weekly intelligence {league}: {summary.run.status} ({detail})")
+        except Exception as error:
+            print(f"Weekly intelligence {league} failed: {error}")
+            results.append({"league": league, "status": "FAILED", "error": str(error)})
+    return results
+
+
 def run_pipeline() -> PipelineResult:
     settings = get_settings()
 
@@ -446,5 +545,9 @@ def run_pipeline() -> PipelineResult:
             alerts_created=alerts_created,
             deliveries_attempted=deliveries_attempted,
         )
+
+    # Daily pipeline may host the weekly scheduler check, but weekly generation is gated.
+    weekly_results = _ensure_weekly_intelligence(settings)
+    result = result.model_copy(update={"weekly_intelligence": weekly_results})
 
     return result

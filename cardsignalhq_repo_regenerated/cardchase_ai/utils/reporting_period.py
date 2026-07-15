@@ -141,5 +141,36 @@ def next_scheduled_refresh(
     return candidate
 
 
+def refresh_datetime_for_period(
+    period: ReportingPeriod,
+    *,
+    refresh_day: int = DEFAULT_REFRESH_DAY,
+    refresh_hour: int = DEFAULT_REFRESH_HOUR,
+) -> datetime:
+    """Scheduled refresh instant belonging to a reporting period (e.g. Tuesday 06:00)."""
+    days_from_start = (refresh_day - period.period_start.weekday()) % 7
+    return period.period_start.replace(
+        hour=refresh_hour,
+        minute=0,
+        second=0,
+        microsecond=0,
+    ) + timedelta(days=days_from_start)
+
+
+def is_weekly_refresh_window_open(
+    period: ReportingPeriod,
+    *,
+    now: datetime | None = None,
+    timezone_name: str = DEFAULT_TIMEZONE,
+    refresh_day: int = DEFAULT_REFRESH_DAY,
+    refresh_hour: int = DEFAULT_REFRESH_HOUR,
+) -> tuple[bool, datetime]:
+    """Return whether the configured weekly refresh window has opened for this period."""
+    tz = _league_tz(timezone_name)
+    current = (now or datetime.now(tz)).astimezone(tz)
+    refresh_at = refresh_datetime_for_period(period, refresh_day=refresh_day, refresh_hour=refresh_hour)
+    return current >= refresh_at, refresh_at
+
+
 def official_run_key(period: ReportingPeriod) -> str:
     return f"{period.league}:{period.year}:W{period.week_number:02d}"
