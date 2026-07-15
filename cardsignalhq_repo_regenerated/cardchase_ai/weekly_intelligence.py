@@ -360,6 +360,31 @@ def build_card_snapshots(
     return snapshots
 
 
+def empty_card_intelligence() -> dict[str, list[dict[str, Any]]]:
+    return {
+        "trending_cards": [],
+        "biggest_movers": [],
+        "buy_low_watch": [],
+        "most_chased": [],
+    }
+
+
+def card_intelligence_from_homepage(homepage: Any) -> dict[str, list[dict[str, Any]]]:
+    """Extract homepage card sections from a persisted homepage payload."""
+    if homepage is None:
+        return empty_card_intelligence()
+    if hasattr(homepage, "model_dump"):
+        homepage = homepage.model_dump(mode="json")
+    if not isinstance(homepage, dict):
+        return empty_card_intelligence()
+    return {
+        "trending_cards": list(homepage.get("trending_cards") or []),
+        "biggest_movers": list(homepage.get("biggest_movers") or []),
+        "buy_low_watch": list(homepage.get("buy_low_watch") or []),
+        "most_chased": list(homepage.get("most_chased") or []),
+    }
+
+
 def build_homepage_card_sections(card_snapshots: list[CardWeeklyIntelligenceSnapshot]) -> dict[str, list[dict[str, Any]]]:
     scored = [c for c in card_snapshots if c.card_signal_score is not None]
 
@@ -374,7 +399,8 @@ def build_homepage_card_sections(card_snapshots: list[CardWeeklyIntelligenceSnap
     )[:5]
     chased = sorted(scored, key=lambda c: (-(c.demand_score or 0), c.cs_card_id))[:5]
 
-    def row(c: CardWeeklyIntelligenceSnapshot) -> dict[str, Any]:
+    def row(c: CardWeeklyIntelligenceSnapshot, *, movement_score: float | None = None) -> dict[str, Any]:
+        display_movement = movement_score if movement_score is not None else c.demand_score
         return {
             "cs_card_id": c.cs_card_id,
             "cs_player_id": c.cs_player_id,
@@ -383,12 +409,15 @@ def build_homepage_card_sections(card_snapshots: list[CardWeeklyIntelligenceSnap
             "score": c.card_signal_score,
             "recommendation": c.recommendation,
             "demand_score": c.demand_score,
+            "momentum_score": c.momentum_score,
             "market_activity_score": c.market_activity_score,
+            "movement": display_movement,
+            "evidence": c.evidence or {},
         }
 
     return {
         "trending_cards": [row(c) for c in trending],
-        "biggest_movers": [row(c) for c in movers],
+        "biggest_movers": [row(c, movement_score=c.momentum_score) for c in movers],
         "buy_low_watch": [row(c) for c in buy_low],
         "most_chased": [row(c) for c in chased],
     }
@@ -1209,12 +1238,7 @@ def build_latest_weekly_api_payload(league: str, storage: WeeklyStorage, setting
             "homepage": None,
             "next_refresh": next_refresh.isoformat(),
             "data_quality_summary": {},
-            "card_intelligence": {
-                "trending_cards": [],
-                "biggest_movers": [],
-                "buy_low_watch": [],
-                "most_chased": [],
-            },
+            "card_intelligence": empty_card_intelligence(),
         }
 
     run_data = payload.get("run")
@@ -1232,22 +1256,24 @@ def build_latest_weekly_api_payload(league: str, storage: WeeklyStorage, setting
     if parsed_snaps:
         leaders = build_normalized_leader_rows(league, parsed_snaps, repos)
         card_snaps = payload.get("card_snapshots", [])
-        sections = build_homepage_card_sections(
-            [CardWeeklyIntelligenceSnapshot.model_validate(c) for c in card_snaps]
-        ) if card_snaps else {"trending_cards": [], "biggest_movers": [], "buy_low_watch": [], "most_chased": []}
-        card_intel = sections
+        if card_snaps:
+            card_intel = build_homepage_card_sections(
+                [CardWeeklyIntelligenceSnapshot.model_validate(c) for c in card_snaps]
+            )
+        else:
+            # Prefer rebuilt sections when snapshots exist; otherwise keep persisted homepage sections.
+            card_intel = card_intelligence_from_homepage(homepage)
         quality = build_data_quality_summary(parsed_snaps)
-    elif isinstance(homepage, dict):
-        card_intel = {
-            "trending_cards": homepage.get("trending_cards", []),
-            "biggest_movers": homepage.get("biggest_movers", []),
-            "buy_low_watch": homepage.get("buy_low_watch", []),
-            "most_chased": homepage.get("most_chased", []),
-        }
-        quality = homepage.get("data_quality_summary", {})
-        leaders = homepage.get("todays_leaders", [])
+    elif homepage is not None:
+        card_intel = card_intelligence_from_homepage(homepage)
+        if isinstance(homepage, dict):
+            quality = homepage.get("data_quality_summary", {})
+            leaders = homepage.get("todays_leaders", [])
+        else:
+            quality = getattr(homepage, "data_quality_summary", {}) or {}
+            leaders = getattr(homepage, "todays_leaders", []) or []
     else:
-        card_intel = {"trending_cards": [], "biggest_movers": [], "buy_low_watch": [], "most_chased": []}
+        card_intel = empty_card_intelligence()
         quality = {}
         leaders = []
 

@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from cardchase_ai.alerts import AlertEvent, build_daily_digest, detect_player_events, event_passes_player_rule
 from cardchase_ai.clients.ebay import EbayClient
@@ -54,6 +54,7 @@ class PipelineResult(BaseModel):
     run_id: int | None = None
     alerts_created: int = 0
     deliveries_attempted: int = 0
+    weekly_intelligence: list[dict] = Field(default_factory=list)
 
 
 def _build_market_universe(mlb_client: MLBClient, settings, *, scan_limit: int | None = None) -> list[dict]:
@@ -419,6 +420,51 @@ def run() -> Path:
     return Path(result.leaderboard_path)
 
 
+def _ensure_weekly_intelligence(settings) -> list[dict]:
+    """Ensure official weekly intelligence exists for the current reporting week.
+
+    Homepage card sections (Trending / Movers / Buy Low / Most Chased) and
+    Trend (`weekly_change`) are produced only by the weekly intelligence layer.
+    The scheduled leaderboard pipeline calls this after a successful run.
+    Duplicate official runs for the same league/year/week are SKIPPED.
+    """
+    # Lazy import avoids a circular dependency (weekly_intelligence imports pipeline helpers).
+    from cardchase_ai.sports.registry import is_league_available
+    from cardchase_ai.weekly_intelligence import run_weekly_intelligence
+
+    leagues = ["MLB"]
+    if is_league_available("NFL", settings):
+        leagues.append("NFL")
+    if is_league_available("NBA", settings):
+        leagues.append("NBA")
+
+    results: list[dict] = []
+    for league in leagues:
+        try:
+            summary = run_weekly_intelligence(
+                league=league,
+                force=False,
+                triggered_by="scheduler",
+                settings=settings,
+            )
+            entry: dict = {
+                "league": league,
+                "status": summary.run.status,
+                "run_id": summary.run.run_id,
+                "players_processed": summary.run.players_processed,
+                "cards_processed": summary.run.cards_processed,
+            }
+            if summary.skipped_reason:
+                entry["skipped_reason"] = summary.skipped_reason
+            results.append(entry)
+            detail = summary.skipped_reason or f"{summary.run.players_processed} players / {summary.run.cards_processed} cards"
+            print(f"Weekly intelligence {league}: {summary.run.status} ({detail})")
+        except Exception as error:
+            print(f"Weekly intelligence {league} failed: {error}")
+            results.append({"league": league, "status": "FAILED", "error": str(error)})
+    return results
+
+
 def run_pipeline() -> PipelineResult:
     settings = get_settings()
 
@@ -446,5 +492,10 @@ def run_pipeline() -> PipelineResult:
             alerts_created=alerts_created,
             deliveries_attempted=deliveries_attempted,
         )
+
+    # Always attempt weekly intelligence after a successful leaderboard write.
+    # Idempotent: subsequent runs in the same reporting week are SKIPPED.
+    weekly_results = _ensure_weekly_intelligence(settings)
+    result = result.model_copy(update={"weekly_intelligence": weekly_results})
 
     return result
