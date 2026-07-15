@@ -123,8 +123,64 @@ Manual checks:
 4. `GET /api/leaderboard/latest` → MLB still healthy
 5. Frontend NFL tab no longer Coming Soon; All includes NFL
 
-## Missing genuine source data
+## Verified 2025 previous-season seed (nflverse)
 
-This repo only contains synthetic unit fixtures (`TEST-*`). Do **not** deploy them.
+Source suitability: nflverse `nflverse-data` is **CC BY 4.0** (commercial use allowed with attribution).
 
-You must supply a verified NFL dataset from an approved source and place it in the import JSON formats above before production activation can complete.
+Built artifact (review before production import):
+
+- `output/nfl/import/verified_nfl_previous_season_2025.json`
+- `output/nfl/import/verified_nfl_previous_season_2025.manifest.json`
+
+Rebuild:
+
+```bash
+cd cardsignalhq_repo_regenerated
+python3 scripts/build_nfl_previous_season_seed.py --season 2025
+python3 scripts/validate_nfl_import.py \
+  output/nfl/import/verified_nfl_previous_season_2025.json \
+  --expected-season 2025
+```
+
+Attribution must remain with the dataset (see manifest `attribution` field).
+
+## Production activation checklist (manual — do not skip)
+
+1. **Supabase SQL** — run `supabase/migrations/20260713_performance_snapshots.sql` in the Supabase SQL editor.
+2. **Render → cardchase-ai-api → Environment**
+   - Create `ADMIN_API_TOKEN` (long random secret)
+   - Confirm `SUPABASE_URL`
+   - Confirm `SUPABASE_SERVICE_ROLE_KEY`
+   - Set `NFL_SEASON=2025` (or confirm default)
+3. **Import** (from a machine with the seed + token):
+
+```bash
+export ADMIN_API_TOKEN='…'
+cd cardsignalhq_repo_regenerated
+python3 scripts/import_nfl_data.py \
+  --mode previous-season \
+  --input output/nfl/import/verified_nfl_previous_season_2025.json \
+  --season 2025 \
+  --environment production \
+  --api-base https://cardsignal-api.onrender.com
+```
+
+4. **Weekly run**
+
+```bash
+curl -sS -X POST \
+  'https://cardsignal-api.onrender.com/api/weekly/run' \
+  -H "Authorization: Bearer $ADMIN_API_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"league":"NFL","force":true,"market_enabled":false}'
+```
+
+5. **Verify**
+
+```bash
+python3 scripts/smoke_nfl_activation.py \
+  --base-url https://cardsignal-api.onrender.com \
+  --expect-available
+```
+
+Do **not** import until the seed/manifest are reviewed.
