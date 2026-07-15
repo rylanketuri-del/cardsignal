@@ -561,6 +561,31 @@ def admin_storage_diagnostics(admin=Depends(_require_admin)) -> JSONResponse:
     return JSONResponse(build_storage_diagnostics(_settings()))
 
 
+@app.get("/api/admin/pipeline/status")
+def admin_pipeline_status(
+    league: str = "MLB",
+    admin=Depends(_require_admin),
+) -> JSONResponse:
+    """Admin-only pipeline health diagnostics — leaderboard + weekly readiness."""
+    from cardchase_ai.pipeline_status import build_pipeline_status
+
+    settings = _settings()
+    leaderboard_items: list[dict[str, Any]] | None = None
+    try:
+        leaderboard_items, _source = _load_latest()
+    except HTTPException:
+        leaderboard_items = []
+
+    return JSONResponse(
+        build_pipeline_status(
+            settings,
+            league=league.upper(),
+            leaderboard_items=leaderboard_items,
+            supabase=_storage(),
+        )
+    )
+
+
 @app.get("/api/notifications")
 def get_notifications(auth=Depends(get_current_user)) -> JSONResponse:
     storage = _storage()
