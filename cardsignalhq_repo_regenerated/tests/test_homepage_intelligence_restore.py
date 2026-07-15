@@ -14,7 +14,6 @@ from cardchase_ai.models.schemas import ListingTagSummary, MarketSnapshot
 from cardchase_ai.models.weekly import (
     WEEKLY_INTELLIGENCE_V1,
     CardWeeklyIntelligenceSnapshot,
-    WeeklyHomepageIntelligence,
     WeeklyIntelligenceRun,
     WeeklyRunSummary,
 )
