@@ -19,8 +19,17 @@ services:
       - key: PIPELINE_TRIGGER_TOKEN
         sync: false
 
-  # MLB leaderboard: every 3 days at 10:00 UTC (~06:00 Eastern).
-  # The pipeline also runs the shared weekly due-check for NFL/NBA.
+  # ---------------------------------------------------------------------------
+  # Scheduling notes (Render cron is UTC-only; America/New_York observes DST):
+  #   EDT (UTC-4, ~Mar–Nov): 10:00 UTC == 06:00 Eastern
+  #   EST (UTC-5, ~Nov–Mar): 10:00 UTC == 05:00 Eastern
+  # Beta intentionally anchors to 06:00 Eastern Daylight Time (10:00 UTC).
+  # During EST the weekly job runs one hour earlier local time (05:00).
+  # There is no second production scheduler (no GitHub Actions cron).
+  # ---------------------------------------------------------------------------
+
+  # MLB leaderboard refresh: every 3 days at 10:00 UTC.
+  # Entry point: python scripts/run_pipeline.py  (→ pipelines.mlb_pipeline / run_pipeline)
   - type: cron
     name: cardchase-ai-mlb-pipeline-cron
     env: python
@@ -40,8 +49,10 @@ services:
       - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
 
-  # NFL + NBA weekly intelligence: every Tuesday 10:00 UTC (~06:00 Eastern).
-  # Idempotent — skips when the official weekly snapshot already exists.
+  # NFL + NBA weekly intelligence: Tuesdays at 10:00 UTC (~06:00 Eastern Daylight).
+  # Entry point: python scripts/run_weekly_pipelines.py
+  #   → pipelines.weekly_pipeline.run_weekly_pipeline (NFL, then NBA)
+  # Idempotent — skips when an official weekly snapshot already exists.
   - type: cron
     name: cardchase-ai-weekly-pipeline-cron
     env: python

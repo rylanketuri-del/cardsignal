@@ -1,5 +1,16 @@
 #!/usr/bin/env python3
-"""Tuesday cron entry point for NFL and NBA weekly intelligence."""
+"""Tuesday cron entry point for NFL and NBA weekly intelligence.
+
+Production schedule (Render, UTC):
+  0 10 * * 2
+
+Eastern mapping (Render cannot express TZ-aware cron):
+  - EDT (UTC-4): 10:00 UTC == 06:00 America/New_York
+  - EST (UTC-5): 10:00 UTC == 05:00 America/New_York
+
+Beta anchors to 06:00 Eastern Daylight Time. This is the single production
+entry point for NFL and NBA weekly refresh (see also render.yaml).
+"""
 
 from __future__ import annotations
 

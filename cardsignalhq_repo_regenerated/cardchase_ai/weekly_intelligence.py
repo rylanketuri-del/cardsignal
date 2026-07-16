@@ -962,7 +962,9 @@ def build_latest_weekly_api_payload(league: str, storage: WeeklyStorage, setting
         refresh_hour=settings.weekly_refresh_hour,
     )
 
+    data_source = "supabase" if storage.uses_supabase else "local_json"
     if not payload:
+        # Explicit unavailable — never synthesize homepage activation from player history alone.
         return {
             "run": None,
             "signal_of_the_week": None,
@@ -971,6 +973,9 @@ def build_latest_weekly_api_payload(league: str, storage: WeeklyStorage, setting
             "next_refresh": next_refresh.isoformat(),
             "data_quality_summary": {},
             "card_intelligence": empty_card_intelligence(),
+            "available": False,
+            "activation": "INACTIVE",
+            "data_source": data_source,
         }
 
     run_data = payload.get("run")
@@ -1017,4 +1022,7 @@ def build_latest_weekly_api_payload(league: str, storage: WeeklyStorage, setting
         "next_refresh": next_refresh.isoformat(),
         "data_quality_summary": quality,
         "card_intelligence": card_intel,
+        "available": True,
+        "activation": "ACTIVE",
+        "data_source": data_source,
     }

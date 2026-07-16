@@ -123,6 +123,7 @@ def _storage() -> SupabaseStorage | None:
 
 
 def _load_latest_from_file() -> list[dict[str, Any]]:
+    """Local/dev fallback only — never used when Supabase is configured."""
     latest = _latest_file()
     if not latest.exists():
         raise HTTPException(status_code=404, detail="No leaderboard found yet. Run the pipeline first.")
@@ -130,14 +131,23 @@ def _load_latest_from_file() -> list[dict[str, Any]]:
 
 
 def _load_latest() -> tuple[list[dict[str, Any]], str]:
+    """Production reads Supabase only when credentials are configured.
+
+    Silent filesystem fallback is intentionally disabled in production so the
+    API cannot serve stale Render-local JSON when Supabase is the source of truth.
+    """
     storage = _storage()
     if storage:
         try:
             payload = storage.fetch_latest_leaderboard()
-            if payload:
-                return payload, "supabase"
-        except SupabaseError:
-            pass
+        except SupabaseError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="Supabase leaderboard read failed.",
+            ) from exc
+        if not payload:
+            raise HTTPException(status_code=404, detail="No leaderboard found in Supabase.")
+        return payload, "supabase"
     return _load_latest_from_file(), "file"
 
 
@@ -146,16 +156,19 @@ def _load_player(player_id: str) -> tuple[dict[str, Any], str]:
     if storage:
         try:
             payload = storage.fetch_player_latest(player_id)
-            if payload:
-                return payload, "supabase"
-        except SupabaseError:
-            pass
+        except SupabaseError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="Supabase player read failed.",
+            ) from exc
+        if not payload:
+            raise HTTPException(status_code=404, detail=f"Player {player_id} not found in Supabase.")
+        return payload, "supabase"
     payload, _ = _load_latest()
     for entry in payload:
         if str(entry.get("player_id")) == str(player_id):
             return entry, "file"
     raise HTTPException(status_code=404, detail=f"Player {player_id} not found in latest leaderboard.")
-
 
 def _authorize_pipeline_trigger(authorization: str | None) -> None:
     expected = _settings().pipeline_trigger_token
@@ -212,10 +225,11 @@ def health() -> ApiStatus:
             latest_run = storage.fetch_latest_run()
             if latest_run:
                 generated_at = latest_run["created_at"]
-                data_source = "supabase"
+            # Fail closed: never advertise filesystem data when Supabase is configured.
+            data_source = "supabase"
         except SupabaseError:
-            data_source = "file"
-    if generated_at is None:
+            data_source = "supabase_error"
+    else:
         latest = _latest_file()
         if latest.exists():
             generated_at = datetime.fromtimestamp(latest.stat().st_mtime, tz=timezone.utc).isoformat()

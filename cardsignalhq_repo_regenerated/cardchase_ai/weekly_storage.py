@@ -1,4 +1,12 @@
-"""Persistence layer for weekly intelligence (Supabase + local JSON fallback)."""
+"""Persistence layer for weekly intelligence (Supabase primary, local JSON debug).
+
+Production contract when a Supabase client is configured:
+  - Writes must succeed against Supabase (no silent JSON fallback).
+  - Reads must use Supabase only (no silent stale-file fallback).
+  - Missing official COMPLETED/PARTIAL runs return explicit empty/None.
+
+Local JSON remains for tests and local debugging when Supabase is not configured.
+"""
 
 from __future__ import annotations
 
@@ -20,6 +28,20 @@ from cardchase_ai.storage import SupabaseStorage, SupabaseError
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _is_official_completed_row(row: dict[str, Any]) -> bool:
+    """Python-side official-run filter (avoids fragile PostgREST boolean/null filters)."""
+    status = str(row.get("status") or "").upper()
+    if status not in {"COMPLETED", "PARTIAL"}:
+        return False
+    force = row.get("force")
+    if force in (True, "true", "t", "1", 1):
+        return False
+    triggered_by = str(row.get("triggered_by") or "").lower()
+    if triggered_by == "test":
+        return False
+    return True
 
 
 def _serialize(obj: Any) -> Any:
@@ -188,7 +210,7 @@ class WeeklyJsonStorage:
 
 
 class WeeklyStorage:
-    """Unified weekly storage with Supabase primary and JSON fallback."""
+    """Unified weekly storage with Supabase primary and JSON debug/local fallback."""
 
     RUNS_TABLE = "weekly_intelligence_runs"
     PLAYER_SNAPSHOTS_TABLE = "player_weekly_signal_snapshots"
@@ -210,50 +232,49 @@ class WeeklyStorage:
         week_number: int,
     ) -> WeeklyIntelligenceRun | None:
         if self.supabase:
-            try:
-                rows = self.supabase._get(
-                    self.RUNS_TABLE,
-                    {
-                        "select": "*",
-                        "league": f"eq.{league.upper()}",
-                        "year": f"eq.{year}",
-                        "week_number": f"eq.{week_number}",
-                        "status": "in.(COMPLETED,PARTIAL)",
-                        "force": "eq.false",
-                        "triggered_by": "neq.test",
-                        "order": "created_at.desc",
-                        "limit": "1",
-                    },
-                )
-                if rows:
-                    return self._row_to_run(rows[0])
-            except SupabaseError:
-                pass
+            rows = self.supabase._get(
+                self.RUNS_TABLE,
+                {
+                    "select": "*",
+                    "league": f"eq.{league.upper()}",
+                    "year": f"eq.{year}",
+                    "week_number": f"eq.{week_number}",
+                    "status": "in.(COMPLETED,PARTIAL)",
+                    "order": "created_at.desc",
+                    "limit": "20",
+                },
+            )
+            for row in rows:
+                if _is_official_completed_row(row):
+                    return self._row_to_run(row)
+            return None
         return self.json.find_official_completed_run(league, year, week_number)
 
     def create_run(self, run: WeeklyIntelligenceRun) -> WeeklyIntelligenceRun:
         if self.supabase:
-            try:
-                row = self._run_to_row(run)
-                rows = self.supabase._post(self.RUNS_TABLE, row, prefer="return=representation")
-                return self._row_to_run(rows[0])
-            except SupabaseError:
-                pass
+            row = self._run_to_row(run)
+            rows = self.supabase._post(self.RUNS_TABLE, row, prefer="return=representation")
+            if not rows:
+                raise SupabaseError(
+                    f"create_run returned no rows for weekly run_id={run.run_id}"
+                )
+            return self._row_to_run(rows[0])
         return self.json.create_run(run)
 
     def update_run(self, run: WeeklyIntelligenceRun) -> None:
         if self.supabase:
-            try:
-                payload = self._run_to_row(run)
-                del payload["run_id"]
-                self.supabase._patch(
-                    self.RUNS_TABLE,
-                    {"run_id": f"eq.{run.run_id}"},
-                    payload,
+            payload = self._run_to_row(run)
+            del payload["run_id"]
+            updated = self.supabase._patch(
+                self.RUNS_TABLE,
+                {"run_id": f"eq.{run.run_id}"},
+                payload,
+            )
+            if not updated:
+                raise SupabaseError(
+                    f"update_run matched 0 rows for weekly run_id={run.run_id}"
                 )
-                return
-            except SupabaseError:
-                pass
+            return
         self.json.update_run(run)
 
     def persist_run_results(
@@ -266,31 +287,44 @@ class WeeklyStorage:
         *,
         market_movements: list | None = None,
     ) -> None:
+        """Persist official weekly results.
+
+        When Supabase is configured this is fail-closed: a successful write must
+        update the weekly run row (status + homepage_payload) before player
+        snapshots are inserted. Silent JSON fallback is disabled so cron/API
+        cannot diverge onto ephemeral local files.
+        """
         if self.supabase:
-            try:
-                payload = self._run_to_row(run)
-                payload["homepage_payload"] = homepage.model_dump(mode="json")
-                payload["stage_outcomes"] = run.stage_outcomes
-                self.supabase._patch(
-                    self.RUNS_TABLE,
-                    {"run_id": f"eq.{run.run_id}"},
-                    payload,
+            if str(run.status or "").upper() not in {"COMPLETED", "PARTIAL"}:
+                raise SupabaseError(
+                    f"persist_run_results requires COMPLETED/PARTIAL status, got {run.status!r}"
                 )
-                if player_snapshots:
-                    self.supabase._post(
-                        self.PLAYER_SNAPSHOTS_TABLE,
-                        [self._player_snapshot_to_row(s) for s in player_snapshots],
-                    )
-                if card_snapshots:
-                    self.supabase._post(
-                        self.CARD_SNAPSHOTS_TABLE,
-                        [self._card_snapshot_to_row(s) for s in card_snapshots],
-                    )
-                if signal:
-                    self.supabase._post(self.SIGNAL_TABLE, [self._signal_to_row(signal)])
-                return
-            except SupabaseError:
-                pass
+            payload = self._run_to_row(run)
+            payload["homepage_payload"] = homepage.model_dump(mode="json")
+            payload["stage_outcomes"] = run.stage_outcomes
+            updated = self.supabase._patch(
+                self.RUNS_TABLE,
+                {"run_id": f"eq.{run.run_id}"},
+                payload,
+            )
+            if not updated:
+                raise SupabaseError(
+                    f"persist_run_results matched 0 weekly run rows for run_id={run.run_id}. "
+                    "Refusing to insert orphaned player snapshots."
+                )
+            if player_snapshots:
+                self.supabase._post(
+                    self.PLAYER_SNAPSHOTS_TABLE,
+                    [self._player_snapshot_to_row(s) for s in player_snapshots],
+                )
+            if card_snapshots:
+                self.supabase._post(
+                    self.CARD_SNAPSHOTS_TABLE,
+                    [self._card_snapshot_to_row(s) for s in card_snapshots],
+                )
+            if signal:
+                self.supabase._post(self.SIGNAL_TABLE, [self._signal_to_row(signal)])
+            return
         self.json.append_run_payload(
             run,
             player_snapshots,
@@ -301,79 +335,86 @@ class WeeklyStorage:
         )
 
     def fetch_latest_completed_payload(self, league: str = "MLB") -> dict[str, Any] | None:
+        """Return the latest official weekly payload for homepage activation.
+
+        Requires a COMPLETED/PARTIAL non-force, non-test run. Player history alone
+        does not activate the homepage — homepage_payload should be present, but
+        leaders can still be rebuilt from player snapshots when needed.
+        """
         if self.supabase:
-            try:
-                rows = self.supabase._get(
-                    self.RUNS_TABLE,
-                    {
-                        "select": "*",
-                        "league": f"eq.{league.upper()}",
-                        "status": "in.(COMPLETED,PARTIAL)",
-                        "force": "eq.false",
-                        "triggered_by": "neq.test",
-                        "order": "completed_at.desc",
-                        "limit": "1",
-                    },
-                )
-                if not rows:
-                    return None
-                run_row = rows[0]
-                run_id = run_row["run_id"]
-                player_rows = self.supabase._get(
-                    self.PLAYER_SNAPSHOTS_TABLE,
-                    {"select": "*", "run_id": f"eq.{run_id}", "order": "rank.asc"},
-                )
-                card_rows = self.supabase._get(
-                    self.CARD_SNAPSHOTS_TABLE,
-                    {"select": "*", "run_id": f"eq.{run_id}"},
-                )
-                signal_rows = self.supabase._get(
-                    self.SIGNAL_TABLE,
-                    {"select": "*", "run_id": f"eq.{run_id}", "limit": "1"},
-                )
-                return {
-                    "run": run_row,
-                    "player_snapshots": player_rows,
-                    "card_snapshots": card_rows,
-                    "signal_of_the_week": signal_rows[0] if signal_rows else None,
-                    "homepage": run_row.get("homepage_payload"),
-                }
-            except SupabaseError:
-                pass
+            rows = self.supabase._get(
+                self.RUNS_TABLE,
+                {
+                    "select": "*",
+                    "league": f"eq.{str(league).upper()}",
+                    "status": "in.(COMPLETED,PARTIAL)",
+                    "order": "completed_at.desc",
+                    "limit": "25",
+                },
+            )
+            official = [row for row in rows if _is_official_completed_row(row)]
+            if not official:
+                return None
+            # Prefer runs that persisted the homepage contract payload.
+            official.sort(
+                key=lambda row: (
+                    1 if row.get("homepage_payload") else 0,
+                    str(row.get("completed_at") or ""),
+                    str(row.get("created_at") or ""),
+                ),
+                reverse=True,
+            )
+            run_row = official[0]
+            # Do not activate homepage from player history alone.
+            if not run_row.get("homepage_payload"):
+                return None
+            run_id = run_row["run_id"]
+            player_rows = self.supabase._get(
+                self.PLAYER_SNAPSHOTS_TABLE,
+                {"select": "*", "run_id": f"eq.{run_id}", "order": "rank.asc"},
+            )
+            card_rows = self.supabase._get(
+                self.CARD_SNAPSHOTS_TABLE,
+                {"select": "*", "run_id": f"eq.{run_id}"},
+            )
+            signal_rows = self.supabase._get(
+                self.SIGNAL_TABLE,
+                {"select": "*", "run_id": f"eq.{run_id}", "limit": "1"},
+            )
+            return {
+                "run": run_row,
+                "player_snapshots": player_rows,
+                "card_snapshots": card_rows,
+                "signal_of_the_week": signal_rows[0] if signal_rows else None,
+                "homepage": run_row.get("homepage_payload"),
+            }
         return self.json.fetch_latest_completed(league)
 
     def fetch_player_weekly_history(self, cs_player_id: str, limit: int = 12) -> list[dict[str, Any]]:
         if self.supabase:
-            try:
-                rows = self.supabase._get(
-                    self.PLAYER_SNAPSHOTS_TABLE,
-                    {
-                        "select": "*",
-                        "cs_player_id": f"eq.{cs_player_id}",
-                        "order": "captured_at.asc",
-                        "limit": str(limit),
-                    },
-                )
-                return rows
-            except SupabaseError:
-                pass
+            rows = self.supabase._get(
+                self.PLAYER_SNAPSHOTS_TABLE,
+                {
+                    "select": "*",
+                    "cs_player_id": f"eq.{cs_player_id}",
+                    "order": "captured_at.asc",
+                    "limit": str(limit),
+                },
+            )
+            return rows
         return self.json.fetch_player_weekly_history(cs_player_id, limit)
 
     def fetch_card_weekly_history(self, cs_card_id: str, limit: int = 12) -> list[dict[str, Any]]:
         if self.supabase:
-            try:
-                rows = self.supabase._get(
-                    self.CARD_SNAPSHOTS_TABLE,
-                    {
-                        "select": "*",
-                        "cs_card_id": f"eq.{cs_card_id}",
-                        "order": "captured_at.asc",
-                        "limit": str(limit),
-                    },
-                )
-                return rows
-            except SupabaseError:
-                pass
+            return self.supabase._get(
+                self.CARD_SNAPSHOTS_TABLE,
+                {
+                    "select": "*",
+                    "cs_card_id": f"eq.{cs_card_id}",
+                    "order": "captured_at.asc",
+                    "limit": str(limit),
+                },
+            )
         return self.json.fetch_card_weekly_history(cs_card_id, limit)
 
     def fetch_prior_official_player_snapshot(
@@ -384,24 +425,22 @@ class WeeklyStorage:
         week_number: int,
     ) -> PlayerWeeklySignalSnapshot | None:
         if self.supabase:
-            try:
-                rows = self.supabase._get(
-                    self.PLAYER_SNAPSHOTS_TABLE,
-                    {
-                        "select": "*",
-                        "cs_player_id": f"eq.{cs_player_id}",
-                        "league": f"eq.{league.upper()}",
-                        "order": "captured_at.desc",
-                        "limit": "5",
-                    },
-                )
-                for row in rows:
-                    row_year = int(row.get("year") or 0)
-                    row_week = int(row.get("week_number") or 0)
-                    if (row_year, row_week) < (year, week_number):
-                        return PlayerWeeklySignalSnapshot.model_validate(self._player_row_to_dict(row))
-            except SupabaseError:
-                pass
+            rows = self.supabase._get(
+                self.PLAYER_SNAPSHOTS_TABLE,
+                {
+                    "select": "*",
+                    "cs_player_id": f"eq.{cs_player_id}",
+                    "league": f"eq.{league.upper()}",
+                    "order": "captured_at.desc",
+                    "limit": "5",
+                },
+            )
+            for row in rows:
+                row_year = int(row.get("year") or 0)
+                row_week = int(row.get("week_number") or 0)
+                if (row_year, row_week) < (year, week_number):
+                    return PlayerWeeklySignalSnapshot.model_validate(self._player_row_to_dict(row))
+            return None
         history = self.json.fetch_player_weekly_history(cs_player_id, limit=24)
         prior = [
             h for h in history
