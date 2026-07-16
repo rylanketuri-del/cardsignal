@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from cardchase_ai.clients.nba_import import get_nba_provider as _get_import_provider
 from cardchase_ai.config import Settings, get_settings
 from cardchase_ai.providers.nba_performance import NBAPerformanceProvider
 
@@ -16,7 +15,12 @@ class NBAProvider:
 
     def __init__(self, inner: NBAPerformanceProvider | None = None, settings: Settings | None = None) -> None:
         self._settings = settings or get_settings()
-        self._inner = inner or _get_import_provider(self._settings)
+        if inner is not None:
+            self._inner = inner
+        else:
+            from cardchase_ai.clients.nba_import import get_nba_provider as _get_import_provider
+
+            self._inner = _get_import_provider(self._settings)
 
     @property
     def source_method(self) -> str:

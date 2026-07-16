@@ -228,6 +228,7 @@ def build_player_snapshot(
     recommendation = engine_result.recommendation
     status = derive_status(hotness, momentum)
     missing_inputs = engine_result.missing_inputs
+    prior_score = prior.card_signal_score if prior else None
     collector = engine_result.collector_score if engine_result.collector_score is not None else collector
     scarcity = engine_result.scarcity_score if engine_result.scarcity_score is not None else scarcity
     collector_evidence = engine_result.collector_evidence or collector_evidence
