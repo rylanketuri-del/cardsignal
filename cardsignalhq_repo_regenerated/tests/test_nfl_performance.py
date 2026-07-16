@@ -285,12 +285,12 @@ class NFLSeasonPresentationTests(unittest.TestCase):
 
 
 class NFLReportingPeriodTests(unittest.TestCase):
-    def test_nfl_thursday_monday_period(self):
+    def test_nfl_tuesday_monday_period(self):
         tz = ZoneInfo("America/New_York")
         anchor = datetime(2026, 10, 10, 12, 0, tzinfo=tz)  # Saturday
         period = build_reporting_period("NFL", anchor=anchor)
-        self.assertEqual(period.period_start.weekday(), 3)
-        self.assertEqual(period.period_end.weekday(), 0)
+        self.assertEqual(period.period_start.weekday(), 1)  # Tuesday
+        self.assertEqual(period.period_end.weekday(), 0)  # Monday
         self.assertEqual(period.league, "NFL")
 
 

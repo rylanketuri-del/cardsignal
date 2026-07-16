@@ -1,4 +1,8 @@
-"""NBA season phase and presentation rules."""
+"""NBA season phase and presentation rules.
+
+Native phases map into the shared engine vocabulary
+(IN_SEASON / OFFSEASON / PRESEASON) via ``cardchase_ai.engine.season_phase``.
+"""
 
 from __future__ import annotations
 
@@ -38,6 +42,13 @@ def nba_season_phase(
     if month in {5, 6, 7, 8, 9}:
         return "OFFSEASON"
     return "REGULAR_SEASON"
+
+
+def nba_engine_season_phase(**kwargs) -> str:
+    """Map NBA calendar rules onto the shared engine season phase."""
+    from cardchase_ai.engine.season_phase import resolve_engine_season_phase
+
+    return resolve_engine_season_phase(nba_season_phase(**kwargs))
 
 
 def nba_presentation_mode(phase: NBASeasonPhase) -> NBASeasonPresentation:

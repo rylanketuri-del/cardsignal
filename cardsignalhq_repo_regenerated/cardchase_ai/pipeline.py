@@ -421,22 +421,18 @@ def run() -> Path:
 
 
 def _ensure_weekly_intelligence(settings) -> list[dict]:
-    """Optionally generate weekly intelligence after a daily/leaderboard pipeline run.
+    """Optionally generate weekly intelligence after a leaderboard pipeline run.
 
-    Preserves the daily vs weekly architecture:
-      - Daily pipeline always refreshes the leaderboard/market.
-      - Weekly intelligence only executes when a new official weekly snapshot is due:
-          1) no completed official run for the current reporting week, AND
-          2) the configured weekly refresh window has opened (default Tue 06:00).
-      - Otherwise this returns SKIPPED without running the weekly pipeline.
-      - `run_weekly_intelligence` itself is also idempotent (duplicate-week guard).
+    Scheduling (shared helpers in pipelines.schedule):
+      - MLB: no Tuesday weekly snapshot requirement (product: leaderboard every 3 days).
+        MLB weekly generation remains available for compatibility when the refresh
+        window is open and no official run exists.
+      - NFL / NBA: Tuesday 06:00 America/New_York via ``is_weekly_pipeline_due``.
+      - ``run_weekly_intelligence`` itself is also idempotent (duplicate-week guard).
     """
     # Lazy import avoids a circular dependency (weekly_intelligence imports pipeline helpers).
-    from cardchase_ai.sports.registry import is_league_available, season_for_league
-    from cardchase_ai.utils.reporting_period import (
-        build_reporting_period,
-        is_weekly_refresh_window_open,
-    )
+    from cardchase_ai.pipelines.schedule import is_weekly_pipeline_due
+    from cardchase_ai.sports.registry import is_league_available
     from cardchase_ai.weekly_intelligence import build_weekly_storage, run_weekly_intelligence
 
     leagues = ["MLB"]
@@ -449,46 +445,29 @@ def _ensure_weekly_intelligence(settings) -> list[dict]:
     results: list[dict] = []
     for league in leagues:
         try:
-            period = build_reporting_period(
-                league=league,
-                timezone_name=settings.weekly_timezone,
-                season=season_for_league(league, settings),
-            )
-            existing = storage.find_official_completed_run(league, period.year, period.week_number)
-            if existing:
-                entry = {
-                    "league": league,
-                    "status": "SKIPPED",
-                    "run_id": existing.run_id,
-                    "players_processed": 0,
-                    "cards_processed": 0,
-                    "skipped_reason": (
-                        f"Official weekly run already completed for "
-                        f"{league} {period.year} W{period.week_number:02d}"
-                    ),
-                }
-                results.append(entry)
-                print(f"Weekly intelligence {league}: SKIPPED ({entry['skipped_reason']})")
-                continue
-
-            window_open, refresh_at = is_weekly_refresh_window_open(
-                period,
-                timezone_name=settings.weekly_timezone,
-                refresh_day=settings.weekly_refresh_day,
-                refresh_hour=settings.weekly_refresh_hour,
-            )
-            if not window_open:
+            due, reason = is_weekly_pipeline_due(league, settings, storage=storage)
+            if not due:
                 entry = {
                     "league": league,
                     "status": "SKIPPED",
                     "run_id": None,
                     "players_processed": 0,
                     "cards_processed": 0,
-                    "skipped_reason": (
-                        f"Weekly refresh not yet due until {refresh_at.isoformat()} "
-                        f"({league} {period.year} W{period.week_number:02d})"
-                    ),
+                    "skipped_reason": reason,
                 }
+                # Preserve run_id when skipping because an official run already exists.
+                if "already completed" in reason.lower():
+                    from cardchase_ai.sports.registry import season_for_league
+                    from cardchase_ai.utils.reporting_period import build_reporting_period
+
+                    period = build_reporting_period(
+                        league=league,
+                        timezone_name=settings.weekly_timezone,
+                        season=season_for_league(league, settings),
+                    )
+                    existing = storage.find_official_completed_run(league, period.year, period.week_number)
+                    if existing:
+                        entry["run_id"] = existing.run_id
                 results.append(entry)
                 print(f"Weekly intelligence {league}: SKIPPED ({entry['skipped_reason']})")
                 continue
@@ -519,17 +498,27 @@ def _ensure_weekly_intelligence(settings) -> list[dict]:
 
 
 def run_pipeline() -> PipelineResult:
+    """MLB leaderboard pipeline + gated weekly intelligence due-check.
+
+    Production persistence order: compute → write debug JSON → persist Supabase
+    → API reads Supabase. Local JSON is never the production source of truth.
+    """
+    from cardchase_ai.pipelines.schedule import record_mlb_pipeline_run
+    from cardchase_ai.storage.supabase import build_production_storage, production_storage_configured
+
     settings = get_settings()
 
     outputs = _build_outputs()
     serialized = [json.loads(output.model_dump_json()) for output in outputs]
 
+    # Debug artifact only — production reads come from Supabase.
     file_path = _write_outputs(serialized, settings.output_dir)
 
     result = PipelineResult(leaderboard_path=str(file_path))
 
-    if settings.supabase_url and settings.supabase_service_role_key:
-        storage = SupabaseStorage(settings.supabase_url, settings.supabase_service_role_key)
+    if production_storage_configured(settings):
+        storage = build_production_storage(settings)
+        assert storage is not None
 
         run_id = storage.persist_leaderboard(str(file_path), serialized)
 
@@ -546,7 +535,9 @@ def run_pipeline() -> PipelineResult:
             deliveries_attempted=deliveries_attempted,
         )
 
-    # Daily pipeline may host the weekly scheduler check, but weekly generation is gated.
+    record_mlb_pipeline_run(settings)
+
+    # Leaderboard cron may host the weekly scheduler check, but weekly generation is gated.
     weekly_results = _ensure_weekly_intelligence(settings)
     result = result.model_copy(update={"weekly_intelligence": weekly_results})
 

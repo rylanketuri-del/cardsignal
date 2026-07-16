@@ -117,11 +117,10 @@ def _stage_log(stages: list[dict[str, Any]], name: str, status: str, detail: str
 
 
 def build_weekly_storage(settings: Settings) -> WeeklyStorage:
-    supabase = None
-    if settings.supabase_url and settings.supabase_service_role_key:
-        supabase = SupabaseStorage(settings.supabase_url, settings.supabase_service_role_key)
-    json_store = WeeklyJsonStorage(settings.output_dir)
-    return WeeklyStorage(supabase, json_store)
+    """Build weekly storage with Supabase as production primary when configured."""
+    from cardchase_ai.storage.supabase import build_weekly_storage as _build
+
+    return _build(settings)
 
 
 def process_player_for_weekly(
@@ -199,15 +198,40 @@ def build_player_snapshot(
 
     performance = hotness.performance_score
     market = hotness.market_score if output.market_snapshots else None
-    card_signal = hotness.total_score if has_sufficient_evidence(performance, market, missing_inputs, league=run.league) else None
 
     prior = storage.fetch_prior_official_player_snapshot(csp_id, run.league, period.year, period.week_number)
-    prior_score = prior.card_signal_score if prior else None
-    weekly_change = compute_weekly_change(card_signal, prior_score)
 
-    conviction = derive_conviction(hotness.confidence_multiplier, len(missing_inputs))
-    recommendation = derive_recommendation(hotness, collector) if card_signal is not None else None
+    from cardchase_ai.engine.cardsignal_engine import (
+        CardSignalConfig,
+        CardSignalEngineInput,
+        compute_cardsignal,
+    )
+
+    engine_result = compute_cardsignal(
+        CardSignalEngineInput(
+            player_name=output.player_name,
+            performance_score=performance,
+            market_snapshots=output.market_snapshots,
+            confidence_multiplier=hotness.confidence_multiplier,
+            performance_reasons=list(hotness.reasons),
+            missing_inputs=missing_inputs,
+            prior_card_signal_score=prior.card_signal_score if prior else None,
+            prior_performance_score=prior.performance_score if prior else None,
+            market_score=market,
+        ),
+        CardSignalConfig(league="MLB", season_phase="IN_SEASON", algorithm_version=WEEKLY_INTELLIGENCE_V1),
+    )
+    # Preserve MLB momentum from 7d/30d rolling stats (engine weekly momentum needs priors).
+    card_signal = engine_result.card_signal_score
+    weekly_change = engine_result.weekly_change
+    conviction = engine_result.conviction
+    recommendation = engine_result.recommendation
     status = derive_status(hotness, momentum)
+    missing_inputs = engine_result.missing_inputs
+    collector = engine_result.collector_score if engine_result.collector_score is not None else collector
+    scarcity = engine_result.scarcity_score if engine_result.scarcity_score is not None else scarcity
+    collector_evidence = engine_result.collector_evidence or collector_evidence
+    scarcity_evidence = engine_result.scarcity_evidence or scarcity_evidence
 
     period_start_str = period.period_start.isoformat() if period.period_start else None
     period_end_str = period.period_end.isoformat() if period.period_end else None
@@ -526,29 +550,14 @@ def _execute_weekly_pipeline(
 ) -> WeeklyRunSummary:
     league_upper = league.upper()
 
-    if league_upper == "NFL" and not is_league_available("NFL", settings):
-        _record_stage(stages, outcomes, "player_universe", "UNAVAILABLE", "NFL data not loaded")
-        run.status = "SKIPPED"
-        run.completed_at = _utcnow()
-        run.warnings.append("NFL intelligence unavailable — import verified NFL data first")
-        run.stage_outcomes = outcomes
-        storage.update_run(run)
-        return WeeklyRunSummary(run=run, stages=stages, homepage=None, skipped_reason="NFL data unavailable")
+    if league_upper in {"NFL", "NBA"}:
+        # Shared weekly pipeline — NFL and NBA differ only by provider hooks.
+        from cardchase_ai.pipelines.weekly_pipeline import execute_weekly_league_pipeline
 
-    if league_upper == "NBA" and not is_league_available("NBA", settings):
-        _record_stage(stages, outcomes, "player_universe", "UNAVAILABLE", "NBA data not loaded")
-        run.status = "SKIPPED"
-        run.completed_at = _utcnow()
-        run.warnings.append("NBA intelligence unavailable — import verified NBA data first")
-        run.stage_outcomes = outcomes
-        storage.update_run(run)
-        return WeeklyRunSummary(run=run, stages=stages, homepage=None, skipped_reason="NBA data unavailable")
-
-    if league_upper == "NFL":
-        return _execute_nfl_weekly_pipeline(
+        return execute_weekly_league_pipeline(
             run=run,
             period=period,
-            league=league,
+            league=league_upper,
             player_limit=player_limit,
             market_enabled=market_enabled,
             population_enabled=population_enabled,
@@ -556,20 +565,10 @@ def _execute_weekly_pipeline(
             storage=storage,
             stages=stages,
             outcomes=outcomes,
-        )
-
-    if league_upper == "NBA":
-        return _execute_nba_weekly_pipeline(
-            run=run,
-            period=period,
-            league=league,
-            player_limit=player_limit,
-            market_enabled=market_enabled,
-            population_enabled=population_enabled,
-            settings=settings,
-            storage=storage,
-            stages=stages,
-            outcomes=outcomes,
+            build_card_snapshots=build_card_snapshots,
+            build_homepage_card_sections=build_homepage_card_sections,
+            snapshots_to_leaderboard_entries=snapshots_to_leaderboard_entries,
+            build_data_quality_summary=build_data_quality_summary,
         )
 
     mlb_client = MLBClient()
@@ -800,159 +799,25 @@ def _execute_nfl_weekly_pipeline(
     stages: list[dict[str, Any]],
     outcomes: list[dict[str, Any]],
 ) -> WeeklyRunSummary:
-    provider = get_nfl_provider(settings)
-    nfl_storage = build_nfl_storage(settings)
-    perf_storage = build_performance_storage(settings)
-    ebay_client = None
-    if market_enabled and settings.ebay_token:
-        ebay_client = EbayClient(
-            token=settings.ebay_token,
-            marketplace_id=settings.ebay_marketplace_id,
-            client_id=settings.ebay_client_id,
-            client_secret=settings.ebay_client_secret,
-        )
-    elif market_enabled:
-        run.warnings.append("Market enabled but eBay credentials missing; market snapshots skipped")
-        market_enabled = False
+    """Backward-compatible wrapper → shared weekly pipeline."""
+    from cardchase_ai.pipelines.weekly_pipeline import execute_weekly_league_pipeline
 
-    _record_stage(stages, outcomes, "player_universe", "COMPLETED", "building NFL candidate universe")
-    candidates = build_nfl_market_universe(
-        provider,
-        player_limit,
-        performance_storage=build_performance_storage(settings),
-    )[:player_limit]
-    outcomes[-1]["detail"] = f"{len(candidates)} candidates"
-
-    outputs: list[PlayerPipelineOutput] = []
-    player_errors: list[str] = []
-
-    _record_stage(stages, outcomes, "performance_scoring", "COMPLETED", "NFL refresh started")
-    for candidate in candidates:
-        output, _, err = process_player_for_nfl_weekly(
-            candidate,
-            provider,
-            ebay_client,
-            settings,
-            market_enabled=market_enabled,
-            nfl_storage=nfl_storage,
-        )
-        if output:
-            outputs.append(output)
-        elif err:
-            player_errors.append(err)
-
-    outputs.sort(key=lambda item: item.hotness.total_score, reverse=True)
-    run.players_processed = len(outputs)
-    perf_status: StageOutcome = "PARTIAL" if player_errors and outputs else ("FAILED" if player_errors and not outputs else "COMPLETED")
-    _record_stage(stages, outcomes, "performance_scoring", perf_status, f"{len(outputs)} ok, {len(player_errors)} errors")
-
-    market_count = sum(len(o.market_snapshots) for o in outputs)
-    run.market_snapshots_created = market_count
-    if not market_enabled:
-        _record_stage(stages, outcomes, "market_snapshots", "SKIPPED", "market_enabled=false")
-    elif market_count == 0:
-        _record_stage(stages, outcomes, "market_snapshots", "UNAVAILABLE", "no market snapshots captured")
-    else:
-        _record_stage(stages, outcomes, "market_snapshots", "COMPLETED", f"{market_count} snapshots")
-
-    population_provider = get_population_provider(settings)
-    population_result = run_population_stage(
-        enabled=population_enabled,
-        provider=population_provider,
-        league=run.league,
-        player_ids=[str(o.source_player_id or o.player_id) for o in outputs],
-    )
-    run.population_snapshots_created = population_result.snapshots_created
-    run.warnings.extend(population_result.warnings)
-    _record_stage(stages, outcomes, "population_snapshots", population_result.status, population_result.detail)
-
-    player_snapshots: list[PlayerWeeklySignalSnapshot] = []
-    card_snapshots: list[CardWeeklyIntelligenceSnapshot] = []
-    card_errors: list[str] = []
-
-    _record_stage(stages, outcomes, "card_intelligence", "COMPLETED", "building NFL snapshots")
-    for rank, output in enumerate(outputs, start=1):
-        try:
-            snap = build_nfl_player_snapshot(
-                output, run, period, rank, storage, nfl_storage, performance_storage=perf_storage,
-            )
-            player_snapshots.append(snap)
-        except Exception as error:
-            player_errors.append(f"{output.player_name}: {error}")
-            continue
-        try:
-            cards = build_card_snapshots(
-                output,
-                run,
-                period,
-                card_limit=settings.weekly_card_limit_per_player,
-            )
-            card_snapshots.extend(cards)
-        except Exception as error:
-            card_errors.append(f"{output.player_name} cards: {error}")
-
-    run.cards_processed = len(card_snapshots)
-    run.intelligence_records_created = len(player_snapshots) + len(card_snapshots)
-
-    _record_stage(stages, outcomes, "weekly_player_snapshots", "COMPLETED", f"{len(player_snapshots)} player snapshots")
-    _record_stage(stages, outcomes, "weekly_card_snapshots", "COMPLETED", f"{len(card_snapshots)} card snapshots")
-    _record_stage(stages, outcomes, "rankings", "COMPLETED", "ranking NFL leaders")
-
-    signal = select_signal_of_the_week(player_snapshots, run.run_id)
-    if signal:
-        signal.selected_at = _utcnow()
-    _record_stage(
-        stages,
-        outcomes,
-        "signal_of_the_week",
-        "COMPLETED" if signal else "UNAVAILABLE",
-        signal.player_name if signal else "no qualifying player",
-    )
-
-    card_sections = build_homepage_card_sections(card_snapshots)
-    leaders = snapshots_to_leaderboard_entries(player_snapshots)
-    quality = build_data_quality_summary(player_snapshots)
-    next_refresh = next_scheduled_refresh(
-        league=league,
-        timezone_name=settings.weekly_timezone,
-        refresh_day=settings.weekly_refresh_day,
-        refresh_hour=settings.weekly_refresh_hour,
-    )
-
-    homepage = WeeklyHomepageIntelligence(
+    return execute_weekly_league_pipeline(
         run=run,
-        signal_of_the_week=signal,
-        todays_leaders=leaders,
-        trending_cards=card_sections["trending_cards"],
-        biggest_movers=card_sections["biggest_movers"],
-        buy_low_watch=card_sections["buy_low_watch"],
-        most_chased=card_sections["most_chased"],
-        next_refresh=next_refresh,
-        data_quality_summary=quality,
+        period=period,
+        league="NFL",
+        player_limit=player_limit,
+        market_enabled=market_enabled,
+        population_enabled=population_enabled,
+        settings=settings,
+        storage=storage,
+        stages=stages,
+        outcomes=outcomes,
+        build_card_snapshots=build_card_snapshots,
+        build_homepage_card_sections=build_homepage_card_sections,
+        snapshots_to_leaderboard_entries=snapshots_to_leaderboard_entries,
+        build_data_quality_summary=build_data_quality_summary,
     )
-    _record_stage(stages, outcomes, "homepage_payload", "COMPLETED", "NFL homepage assembled")
-
-    registry = [
-        profile
-        for o in outputs
-        if (profile := provider.fetch_player_profile(str(o.source_player_id or o.player_id)))
-    ]
-    if registry:
-        nfl_storage.save_player_registry(registry)
-    nfl_storage.save_leaderboard([l.model_dump(mode="json") if hasattr(l, "model_dump") else l for l in leaders])
-
-    all_errors = player_errors + card_errors
-    run.errors.extend(all_errors[:20])
-    if all_errors:
-        run.warnings.append(f"{len(all_errors)} player/card-level errors")
-    run.status = "PARTIAL" if all_errors else "COMPLETED"
-    run.completed_at = _utcnow()
-    run.stage_outcomes = outcomes
-    storage.persist_run_results(run, player_snapshots, card_snapshots, signal, homepage, market_movements=[])
-    storage.update_run(run)
-    _record_stage(stages, outcomes, "persist", "COMPLETED", "NFL persist finished")
-
-    return WeeklyRunSummary(run=run, stages=stages, homepage=homepage)
 
 
 def _execute_nba_weekly_pipeline(
@@ -968,159 +833,25 @@ def _execute_nba_weekly_pipeline(
     stages: list[dict[str, Any]],
     outcomes: list[dict[str, Any]],
 ) -> WeeklyRunSummary:
-    provider = get_nba_provider(settings)
-    nba_storage = build_nba_storage(settings)
-    perf_storage = build_performance_storage(settings)
-    ebay_client = None
-    if market_enabled and settings.ebay_token:
-        ebay_client = EbayClient(
-            token=settings.ebay_token,
-            marketplace_id=settings.ebay_marketplace_id,
-            client_id=settings.ebay_client_id,
-            client_secret=settings.ebay_client_secret,
-        )
-    elif market_enabled:
-        run.warnings.append("Market enabled but eBay credentials missing; market snapshots skipped")
-        market_enabled = False
+    """Backward-compatible wrapper → shared weekly pipeline."""
+    from cardchase_ai.pipelines.weekly_pipeline import execute_weekly_league_pipeline
 
-    _record_stage(stages, outcomes, "player_universe", "COMPLETED", "building NBA candidate universe")
-    candidates = build_nba_market_universe(
-        provider,
-        player_limit,
-        performance_storage=perf_storage,
-    )[:player_limit]
-    outcomes[-1]["detail"] = f"{len(candidates)} candidates"
-
-    outputs: list[PlayerPipelineOutput] = []
-    player_errors: list[str] = []
-
-    _record_stage(stages, outcomes, "performance_scoring", "COMPLETED", "NBA refresh started")
-    for candidate in candidates:
-        output, _, err = process_player_for_nba_weekly(
-            candidate,
-            provider,
-            ebay_client,
-            settings,
-            market_enabled=market_enabled,
-            nba_storage=nba_storage,
-        )
-        if output:
-            outputs.append(output)
-        elif err:
-            player_errors.append(err)
-
-    outputs.sort(key=lambda item: item.hotness.total_score, reverse=True)
-    run.players_processed = len(outputs)
-    perf_status: StageOutcome = "PARTIAL" if player_errors and outputs else ("FAILED" if player_errors and not outputs else "COMPLETED")
-    _record_stage(stages, outcomes, "performance_scoring", perf_status, f"{len(outputs)} ok, {len(player_errors)} errors")
-
-    market_count = sum(len(o.market_snapshots) for o in outputs)
-    run.market_snapshots_created = market_count
-    if not market_enabled:
-        _record_stage(stages, outcomes, "market_snapshots", "SKIPPED", "market_enabled=false")
-    elif market_count == 0:
-        _record_stage(stages, outcomes, "market_snapshots", "UNAVAILABLE", "no market snapshots captured")
-    else:
-        _record_stage(stages, outcomes, "market_snapshots", "COMPLETED", f"{market_count} snapshots")
-
-    population_provider = get_population_provider(settings)
-    population_result = run_population_stage(
-        enabled=population_enabled,
-        provider=population_provider,
-        league=run.league,
-        player_ids=[str(o.source_player_id or o.player_id) for o in outputs],
-    )
-    run.population_snapshots_created = population_result.snapshots_created
-    run.warnings.extend(population_result.warnings)
-    _record_stage(stages, outcomes, "population_snapshots", population_result.status, population_result.detail)
-
-    player_snapshots: list[PlayerWeeklySignalSnapshot] = []
-    card_snapshots: list[CardWeeklyIntelligenceSnapshot] = []
-    card_errors: list[str] = []
-
-    _record_stage(stages, outcomes, "card_intelligence", "COMPLETED", "building NBA snapshots")
-    for rank, output in enumerate(outputs, start=1):
-        try:
-            snap = build_nba_player_snapshot(
-                output, run, period, rank, storage, nba_storage, performance_storage=perf_storage,
-            )
-            player_snapshots.append(snap)
-        except Exception as error:
-            player_errors.append(f"{output.player_name}: {error}")
-            continue
-        try:
-            cards = build_card_snapshots(
-                output,
-                run,
-                period,
-                card_limit=settings.weekly_card_limit_per_player,
-            )
-            card_snapshots.extend(cards)
-        except Exception as error:
-            card_errors.append(f"{output.player_name} cards: {error}")
-
-    run.cards_processed = len(card_snapshots)
-    run.intelligence_records_created = len(player_snapshots) + len(card_snapshots)
-
-    _record_stage(stages, outcomes, "weekly_player_snapshots", "COMPLETED", f"{len(player_snapshots)} player snapshots")
-    _record_stage(stages, outcomes, "weekly_card_snapshots", "COMPLETED", f"{len(card_snapshots)} card snapshots")
-    _record_stage(stages, outcomes, "rankings", "COMPLETED", "ranking NBA leaders")
-
-    signal = select_signal_of_the_week(player_snapshots, run.run_id)
-    if signal:
-        signal.selected_at = _utcnow()
-    _record_stage(
-        stages,
-        outcomes,
-        "signal_of_the_week",
-        "COMPLETED" if signal else "UNAVAILABLE",
-        signal.player_name if signal else "no qualifying player",
-    )
-
-    card_sections = build_homepage_card_sections(card_snapshots)
-    leaders = snapshots_to_leaderboard_entries(player_snapshots)
-    quality = build_data_quality_summary(player_snapshots)
-    next_refresh = next_scheduled_refresh(
-        league=league,
-        timezone_name=settings.weekly_timezone,
-        refresh_day=settings.weekly_refresh_day,
-        refresh_hour=settings.weekly_refresh_hour,
-    )
-
-    homepage = WeeklyHomepageIntelligence(
+    return execute_weekly_league_pipeline(
         run=run,
-        signal_of_the_week=signal,
-        todays_leaders=leaders,
-        trending_cards=card_sections["trending_cards"],
-        biggest_movers=card_sections["biggest_movers"],
-        buy_low_watch=card_sections["buy_low_watch"],
-        most_chased=card_sections["most_chased"],
-        next_refresh=next_refresh,
-        data_quality_summary=quality,
+        period=period,
+        league="NBA",
+        player_limit=player_limit,
+        market_enabled=market_enabled,
+        population_enabled=population_enabled,
+        settings=settings,
+        storage=storage,
+        stages=stages,
+        outcomes=outcomes,
+        build_card_snapshots=build_card_snapshots,
+        build_homepage_card_sections=build_homepage_card_sections,
+        snapshots_to_leaderboard_entries=snapshots_to_leaderboard_entries,
+        build_data_quality_summary=build_data_quality_summary,
     )
-    _record_stage(stages, outcomes, "homepage_payload", "COMPLETED", "NBA homepage assembled")
-
-    registry = [
-        profile
-        for o in outputs
-        if (profile := provider.fetch_player_profile(str(o.source_player_id or o.player_id)))
-    ]
-    if registry:
-        nba_storage.save_player_registry(registry)
-    nba_storage.save_leaderboard([l.model_dump(mode="json") if hasattr(l, "model_dump") else l for l in leaders])
-
-    all_errors = player_errors + card_errors
-    run.errors.extend(all_errors[:20])
-    if all_errors:
-        run.warnings.append(f"{len(all_errors)} player/card-level errors")
-    run.status = "PARTIAL" if all_errors else "COMPLETED"
-    run.completed_at = _utcnow()
-    run.stage_outcomes = outcomes
-    storage.persist_run_results(run, player_snapshots, card_snapshots, signal, homepage, market_movements=[])
-    storage.update_run(run)
-    _record_stage(stages, outcomes, "persist", "COMPLETED", "NBA persist finished")
-
-    return WeeklyRunSummary(run=run, stages=stages, homepage=homepage)
 
 
 def run_weekly_intelligence(

@@ -1,0 +1,58 @@
+"""NBA performance provider — approved import retrieval and normalization only."""
+
+from __future__ import annotations
+
+from typing import Any
+
+from cardchase_ai.clients.nba_import import get_nba_provider as _get_import_provider
+from cardchase_ai.config import Settings, get_settings
+from cardchase_ai.providers.nba_performance import NBAPerformanceProvider
+
+
+class NBAProvider:
+    """Thin wrapper over the NBA import provider. No CardSignal scoring."""
+
+    league = "NBA"
+
+    def __init__(self, inner: NBAPerformanceProvider | None = None, settings: Settings | None = None) -> None:
+        self._settings = settings or get_settings()
+        self._inner = inner or _get_import_provider(self._settings)
+
+    @property
+    def source_method(self) -> str:
+        return getattr(self._inner, "source_method", "UNAVAILABLE")
+
+    @property
+    def inner(self) -> NBAPerformanceProvider:
+        return self._inner
+
+    def is_available(self) -> bool:
+        return bool(self._inner.is_available())
+
+    def search_players(self, query: str, limit: int = 10) -> list[Any]:
+        return self._inner.search_players(query, limit=limit)
+
+    def fetch_player_universe(self, limit: int = 100) -> list[Any]:
+        return self._inner.fetch_player_universe(limit=limit)
+
+    def fetch_recent_games(self, source_player_id: str, limit: int = 5) -> list[Any]:
+        return self._inner.fetch_recent_games(source_player_id, limit=limit)
+
+    def fetch_season_stats(self, source_player_id: str, season: int) -> dict[str, Any] | None:
+        return self._inner.fetch_season_stats(source_player_id, season)
+
+    def fetch_player_profile(self, source_player_id: str) -> Any:
+        return self._inner.fetch_player_profile(source_player_id)
+
+    def fetch_team_roster(self, team_id: str, season: int) -> list[Any]:
+        return self._inner.fetch_team_roster(team_id, season)
+
+    def fetch_league_schedule(self, season: int) -> list[dict[str, Any]]:
+        return self._inner.fetch_league_schedule(season)
+
+    def fetch_player_status(self, source_player_id: str) -> dict[str, Any] | None:
+        return self._inner.fetch_player_status(source_player_id)
+
+
+def get_nba_provider(settings: Settings | None = None) -> NBAProvider:
+    return NBAProvider(settings=settings or get_settings())

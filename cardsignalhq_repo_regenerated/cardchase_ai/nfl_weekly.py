@@ -171,44 +171,47 @@ def build_nfl_player_snapshot(
         performance = hotness.performance_score
     market = hotness.market_score if output.market_snapshots else None
 
-    card_signal = None
-    if performance is not None and has_offseason_sufficient_evidence(
-        run.league,
-        performance,
-        market,
-        missing_inputs,
-        has_previous_season=has_prev,
-        season_phase=stored_phase,
-    ):
-        card_signal = round(0.55 * performance + 0.45 * (market or 0), 2)
-
     prior = storage.fetch_prior_official_player_snapshot(csp_id, run.league, period.year, period.week_number)
-    prior_score = prior.card_signal_score if prior else None
-    weekly_change = compute_weekly_change(card_signal, prior_score)
 
-    momentum = None
-    if prior is not None and not offseason:
-        momentum = derive_momentum_from_prior_snapshots(
-            performance,
-            prior.performance_score,
-        )
-
-    conviction = derive_conviction(hotness.confidence_multiplier, len(missing_inputs))
-    if offseason:
-        recommendation = derive_offseason_recommendation(
-            card_signal_score=card_signal,
-            has_recent_form=bool(recent_snap and recent_snap.games_played > 0),
-            has_market=bool(output.market_snapshots),
-            has_drivers=bool(drivers),
-        )
-    else:
-        recommendation = derive_recommendation(hotness, collector) if card_signal is not None else None
-    status = derive_nfl_status(
-        performance_score=performance,
-        weekly_change=weekly_change,
-        card_signal_score=card_signal,
-        recommendation=recommendation,
+    from cardchase_ai.engine.cardsignal_engine import (
+        CardSignalConfig,
+        CardSignalEngineInput,
+        compute_cardsignal,
     )
+    from cardchase_ai.engine.season_phase import resolve_engine_season_phase
+
+    engine_result = compute_cardsignal(
+        CardSignalEngineInput(
+            player_name=output.player_name,
+            performance_score=performance,
+            market_snapshots=output.market_snapshots,
+            confidence_multiplier=hotness.confidence_multiplier,
+            performance_reasons=list(hotness.reasons),
+            missing_inputs=missing_inputs,
+            prior_card_signal_score=prior.card_signal_score if prior else None,
+            prior_performance_score=prior.performance_score if prior else None,
+            has_previous_season=has_prev,
+            has_recent_form=bool(recent_snap and recent_snap.games_played > 0),
+            has_signal_drivers=bool(drivers),
+            market_score=market,
+        ),
+        CardSignalConfig(
+            league="NFL",
+            season_phase=resolve_engine_season_phase(stored_phase),
+            algorithm_version=NFL_PLAYER_SIGNAL_V1,
+        ),
+    )
+    card_signal = engine_result.card_signal_score
+    weekly_change = engine_result.weekly_change
+    momentum = engine_result.momentum_score
+    conviction = engine_result.conviction
+    recommendation = engine_result.recommendation
+    status = engine_result.status
+    missing_inputs = engine_result.missing_inputs
+    collector = engine_result.collector_score if engine_result.collector_score is not None else collector
+    scarcity = engine_result.scarcity_score if engine_result.scarcity_score is not None else scarcity
+    collector_evidence = engine_result.collector_evidence or collector_evidence
+    scarcity_evidence = engine_result.scarcity_evidence or scarcity_evidence
 
     recent_evidence = [] if offseason else build_nfl_performance_evidence(recent_snap)
     season_evidence = build_nfl_performance_evidence(season_snap)

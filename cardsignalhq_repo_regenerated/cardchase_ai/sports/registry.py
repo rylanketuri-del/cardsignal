@@ -2,23 +2,27 @@
 
 from __future__ import annotations
 
-from cardchase_ai.clients.nba_import import get_nba_provider
-from cardchase_ai.clients.nfl_import import get_nfl_provider
-from cardchase_ai.clients.mlb import MLBClient
 from cardchase_ai.config import Settings, get_settings
+from cardchase_ai.providers import get_mlb_provider, get_nba_provider, get_nfl_provider
 
 SUPPORTED_LEAGUES = frozenset({"MLB", "NFL", "NBA"})
 
 
 def get_performance_client(league: str, settings: Settings | None = None):
-    """Return the performance client for a league."""
+    """Return the performance provider/client for a league.
+
+    MLB returns the underlying MLBClient for backward compatibility with
+    existing pipeline code; NFL/NBA return import providers via the new
+    provider wrappers (``.inner``) so callers that expect the import API
+    keep working.
+    """
     league_upper = league.upper()
     if league_upper == "MLB":
-        return MLBClient()
+        return get_mlb_provider(settings).client
     if league_upper == "NFL":
-        return get_nfl_provider(settings)
+        return get_nfl_provider(settings).inner
     if league_upper == "NBA":
-        return get_nba_provider(settings)
+        return get_nba_provider(settings).inner
     raise ValueError(f"Unsupported league: {league}")
 
 
