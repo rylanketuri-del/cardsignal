@@ -175,36 +175,38 @@ This repo includes deployment scaffolding for a split deploy:
 
 ## Scheduling options
 
-### Option 1: Render Cron
+### Render Cron (production)
 
-`render.yaml` now includes a cron service named `cardchase-ai-pipeline-cron` that runs:
+`render.yaml` defines **two** cron services. There is **no** GitHub Actions production scheduler.
 
-```bash
-python scripts/run_pipeline.py
-```
+Render cron is UTC-only. America/New_York observes DST, so a fixed UTC expression cannot always equal 06:00 Eastern:
 
-on this schedule:
+| Season | UTC offset | `10:00 UTC` local Eastern |
+|---|---|---|
+| EDT (~Mar–Nov) | UTC−4 | **06:00** |
+| EST (~Nov–Mar) | UTC−5 | **05:00** |
 
-```text
-0 */3 * * *
-```
+Beta anchors weekly refresh to **06:00 Eastern Daylight Time** via `0 10 * * 2`. During EST the job runs at 05:00 local.
 
-That refreshes the MLB leaderboard every 3 hours. After each leaderboard write it checks whether a weekly intelligence snapshot is due (configured Tuesday 06:00 window, and no official run yet for the current reporting week). Weekly intelligence — Trending Cards, Biggest Movers, Buy Low Watch, Most Chased, and Trend / `weekly_change` — generates only when that gate passes; otherwise it is skipped.
+**Production entry points**
 
-### Option 2: GitHub Actions
-
-A scheduled workflow lives at `.github/workflows/pipeline_schedule.yml`.
-
-It calls your hosted API endpoint every 3 hours:
+1. **MLB refresh** — `cardchase-ai-mlb-pipeline-cron` → `python scripts/run_pipeline.py`
 
 ```text
-POST /api/pipeline/run
+0 10 */3 * *
 ```
 
-Set these GitHub repository secrets:
+Every 3 days at 10:00 UTC.
 
-- `CARDCHASE_API_URL`
-- `PIPELINE_TRIGGER_TOKEN` if your API run endpoint is protected
+2. **NFL + NBA weekly refresh** — `cardchase-ai-weekly-pipeline-cron` → `python scripts/run_weekly_pipelines.py`
+
+```text
+0 10 * * 2
+```
+
+Tuesdays at 10:00 UTC. Idempotent; skips when an official weekly snapshot already exists or league data is unavailable. NBA remains inactive until a verified previous-season seed and COMPLETED weekly run exist.
+
+When Supabase is configured, API leaderboard/player/weekly reads use Supabase only and do not silently fall back to local JSON.
 
 ## Notes
 

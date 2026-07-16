@@ -14,10 +14,12 @@ DEFAULT_REFRESH_DAY = 1  # Tuesday (Monday=0)
 DEFAULT_REFRESH_HOUR = 6
 
 # weekday: Monday=0 .. Sunday=6
+# NFL/NBA in-season performance window: previous Tuesday → current Tuesday
+# (period spans Tue 00:00 through Mon 23:59:59; refresh fires Tuesday 06:00).
 LEAGUE_PERIOD_RULES: dict[str, dict[str, int | tuple[int, ...]]] = {
     "MLB": {"period_start_weekday": 0, "period_end_weekday": 6},
-    "NBA": {"period_start_weekday": 0, "period_end_weekday": 6},
-    "NFL": {"period_start_weekday": 3, "period_end_weekday": 0},  # Thu–Mon (future)
+    "NBA": {"period_start_weekday": 1, "period_end_weekday": 0},  # Tue–Mon
+    "NFL": {"period_start_weekday": 1, "period_end_weekday": 0},  # Tue–Mon
 }
 
 
