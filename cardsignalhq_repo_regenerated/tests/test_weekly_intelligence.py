@@ -48,12 +48,12 @@ class ReportingPeriodTests(unittest.TestCase):
         previous = previous_reporting_period("MLB", "America/New_York")
         self.assertNotEqual(current.week_number, previous.week_number)
 
-    def test_nfl_period_is_thursday_to_monday(self):
+    def test_nfl_period_is_tuesday_to_monday(self):
         tz = ZoneInfo("America/New_York")
-        anchor = datetime(2026, 10, 10, 12, 0, tzinfo=tz)
+        anchor = datetime(2026, 10, 10, 12, 0, tzinfo=tz)  # Saturday
         period = build_reporting_period("NFL", anchor=anchor)
-        self.assertEqual(period.period_start.weekday(), 3)
-        self.assertEqual(period.period_end.weekday(), 0)
+        self.assertEqual(period.period_start.weekday(), 1)  # Tuesday
+        self.assertEqual(period.period_end.weekday(), 0)  # Monday
         self.assertEqual(period.league, "NFL")
 
     def test_next_refresh_is_tuesday_morning(self):

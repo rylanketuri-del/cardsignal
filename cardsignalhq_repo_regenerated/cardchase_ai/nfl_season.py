@@ -1,4 +1,9 @@
-"""NFL season phase and presentation rules."""
+"""NFL season phase and presentation rules.
+
+Native phases (PRESEASON / REGULAR_SEASON / POSTSEASON / OFFSEASON) map into the
+shared engine vocabulary (IN_SEASON / OFFSEASON / PRESEASON) via
+``cardchase_ai.engine.season_phase``.
+"""
 
 from __future__ import annotations
 
@@ -38,6 +43,13 @@ def nfl_season_phase(
     if month in {2, 3, 4, 5, 6, 7}:
         return "OFFSEASON"
     return "REGULAR_SEASON"
+
+
+def nfl_engine_season_phase(**kwargs) -> str:
+    """Map NFL calendar rules onto the shared engine season phase."""
+    from cardchase_ai.engine.season_phase import resolve_engine_season_phase
+
+    return resolve_engine_season_phase(nfl_season_phase(**kwargs))
 
 
 def nfl_presentation_mode(phase: NFLSeasonPhase) -> NFLSeasonPresentation:
