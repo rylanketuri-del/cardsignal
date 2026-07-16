@@ -1,7 +1,14 @@
-
 __pycache__/
 *.py[cod]
 *.pyc
 
-output/
+# Ignore generated output by default, then re-include the reviewed NFL seed.
+output/*
+!output/nfl/
+output/nfl/*
+!output/nfl/import/
+output/nfl/import/*
+!output/nfl/import/verified_nfl_previous_season_2025.json
+!output/nfl/import/verified_nfl_previous_season_2025.manifest.json
+
 weekly/

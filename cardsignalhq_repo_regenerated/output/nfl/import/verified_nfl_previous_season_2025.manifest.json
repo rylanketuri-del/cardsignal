@@ -1,0 +1,536 @@
+{
+  "provider": "nflverse",
+  "license": "CC-BY-4.0",
+  "license_url": "https://creativecommons.org/licenses/by/4.0/",
+  "attribution": "Player statistics adapted from nflverse (https://github.com/nflverse/nflverse-data), licensed under CC BY 4.0. Modifications: skill-position filtering, CardSignal previous-season schema mapping, derived rate metrics (completion_percentage, yards_per_attempt, passer_rating, yards_per_carry, yards_per_reception, catch_rate).",
+  "dataset_names": [
+    "stats_player_reg_2025.csv"
+  ],
+  "source_release_identifiers": {
+    "github_repo": "nflverse/nflverse-data",
+    "release_tag": "stats_player",
+    "asset": "stats_player_reg_2025.csv",
+    "download_url": "local:/tmp/nflverse/stats_player_reg_2025.csv",
+    "source_file_sha256": "08290c0c6cb3930d789416223dc262b000c3a1c93bbf0f66160dccd0d4f9fedf"
+  },
+  "retrieval_timestamp": "2026-07-15T23:20:45.781929+00:00",
+  "season": 2025,
+  "season_type": "REG",
+  "transformation_script": "scripts/build_nfl_previous_season_seed.py",
+  "transformation_script_version": "NFL_PREVIOUS_SEASON_SEED_V1",
+  "source_method": "APPROVED_IMPORT",
+  "selection_rules": {
+    "included_positions": [
+      "FB",
+      "QB",
+      "RB",
+      "TE",
+      "WR"
+    ],
+    "excluded_positions_reason": "Scoring engine supports QB/RB/WR/TE only (FB\u2192RB)",
+    "min_games_played": 6,
+    "activity_thresholds": {
+      "QB": {
+        "min_attempts": 100,
+        "or_min_passing_yards": 500
+      },
+      "RB/FB": {
+        "min_carries": 40,
+        "or_min_rushing_yards": 200,
+        "or_min_receptions": 15
+      },
+      "WR": {
+        "min_targets": 40,
+        "or_min_receiving_yards": 300
+      },
+      "TE": {
+        "min_targets": 25,
+        "or_min_receiving_yards": 200
+      }
+    },
+    "target_population_size": 180,
+    "ranking": "fantasy_points_ppr desc, then total yards, games, player_id",
+    "inactive_players": "Excluded when games < min_games_played or activity thresholds unmet",
+    "traded_players": "Season aggregates use nflverse recent_team as team abbreviation",
+    "rookies": "Included when thresholds met",
+    "free_agents": "Rejected when recent_team is empty",
+    "duplicate_resolution": "Unique by player_id; keep highest activity_rank_key"
+  },
+  "row_count": 180,
+  "rejected_row_count": 435,
+  "diagnostics": {
+    "source_row_count": 2020,
+    "selected_before_map": 180,
+    "mapped_valid": 180,
+    "map_rejections": [],
+    "validation_rejections": [],
+    "selection_rejection_sample": [
+      {
+        "player_id": "00-0022942",
+        "player_name": "Philip Rivers",
+        "reason": "below activity or games threshold"
+      },
+      {
+        "player_id": "00-0024243",
+        "player_name": "Marcedes Lewis",
+        "reason": "below activity or games threshold"
+      },
+      {
+        "player_id": "00-0026300",
+        "player_name": "Josh Johnson",
+        "reason": "below activity or games threshold"
+      },
+      {
+        "player_id": "00-0027973",
+        "player_name": "Andy Dalton",
+        "reason": "below activity or games threshold"
+      },
+      {
+        "player_id": "00-0030035",
+        "player_name": "Adam Thielen",
+        "reason": "below activity or games threshold"
+      },
+      {
+        "player_id": "00-0031236",
+        "player_name": "Brandin Cooks",
+        "reason": "below activity or games threshold"
+      },
+      {
+        "player_id": "00-0031237",
+        "player_name": "Teddy Bridgewater",
+        "reason": "below activity or games threshold"
+      },
+      {
+        "player_id": "00-0031345",
+        "player_name": "Jimmy Garoppolo",
+        "reason": "below activity or games threshold"
+      },
+      {
+        "player_id": "00-0031484",
+        "player_name": "Chris Manhertz",
+        "reason": "below activity or games threshold"
+      },
+      {
+        "player_id": "00-0031503",
+        "player_name": "Jameis Winston",
+        "reason": "below activity or games threshold"
+      },
+      {
+        "player_id": "00-0031687",
+        "player_name": "Raheem Mostert",
+        "reason": "below activity or games threshold"
+      },
+      {
+        "player_id": "00-0031763",
+        "player_name": "DeAndre Carter",
+        "reason": "below activity or games threshold"
+      },
+      {
+        "player_id": "00-0032398",
+        "player_name": "Chris Moore",
+        "reason": "below activity or games threshold"
+      },
+      {
+        "player_id": "00-0032434",
+        "player_name": "Brandon Allen",
+        "reason": "below activity or games threshold"
+      },
+      {
+        "player_id": "00-0032464",
+        "player_name": "Kalif Raymond",
+        "reason": "below activity or games threshold"
+      },
+      {
+        "player_id": "00-0032688",
+        "player_name": "Robbie Chosen",
+        "reason": "below activity or games threshold"
+      },
+      {
+        "player_id": "00-0032775",
+        "player_name": "Demarcus Robinson",
+        "reason": "below activity or games threshold"
+      },
+      {
+        "player_id": "00-0032918",
+        "player_name": "C.J. Ham",
+        "reason": "below activity or games threshold"
+      },
+      {
+        "player_id": "00-0032950",
+        "player_name": "Carson Wentz",
+        "reason": "below activity or games threshold"
+      },
+      {
+        "player_id": "00-0032951",
+        "player_name": "Laquon Treadwell",
+        "reason": "below activity or games threshold"
+      },
+      {
+        "player_id": "00-0033040",
+        "player_name": "Tyreek Hill",
+        "reason": "below activity or games threshold"
+      },
+      {
+        "player_id": "00-0033217",
+        "player_name": "Mo Alie-Cox",
+        "reason": "below activity or games threshold"
+      },
+      {
+        "player_id": "00-0033246",
+        "player_name": "Johnny Mundt",
+        "reason": "below activity or games threshold"
+      },
+      {
+        "player_id": "00-0033282",
+        "player_name": "Curtis Samuel",
+        "reason": "below activity or games threshold"
+      },
+      {
+        "player_id": "00-0033319",
+        "player_name": "Nick Mullens",
+        "reason": "below activity or games threshold"
+      }
+    ]
+  },
+  "validation_result": {
+    "valid": true,
+    "safe_to_import": true,
+    "total_rows": 180,
+    "valid_rows": 180,
+    "rejected_rows": 0,
+    "duplicate_ids": [],
+    "missing_teams": 0,
+    "missing_positions": 0,
+    "invalid_percentages": 0,
+    "synthetic_markers": [],
+    "errors": [],
+    "warnings": [],
+    "season": 2025
+  },
+  "output_seed_path": "output/nfl/import/verified_nfl_previous_season_2025.json",
+  "score_preview_top": [
+    {
+      "source_player_id": "00-0039075",
+      "player_name": "Puka Nacua",
+      "position": "WR",
+      "team": "LA",
+      "games_played": 16,
+      "performance_score": 68.75,
+      "data_quality": "HIGH",
+      "missing_inputs": [],
+      "normalized_metric_count": 6,
+      "reasons": [
+        "component_0",
+        "component_1"
+      ],
+      "season_label": "2025 Season Snapshot"
+    },
+    {
+      "source_player_id": "00-0038543",
+      "player_name": "Jaxon Smith-Njigba",
+      "position": "WR",
+      "team": "SEA",
+      "games_played": 17,
+      "performance_score": 68.5,
+      "data_quality": "HIGH",
+      "missing_inputs": [],
+      "normalized_metric_count": 6,
+      "reasons": [
+        "component_0",
+        "component_1",
+        "component_3"
+      ],
+      "season_label": "2025 Season Snapshot"
+    },
+    {
+      "source_player_id": "00-0039851",
+      "player_name": "Drake Maye",
+      "position": "QB",
+      "team": "NE",
+      "games_played": 17,
+      "performance_score": 62.25,
+      "data_quality": "HIGH",
+      "missing_inputs": [],
+      "normalized_metric_count": 6,
+      "reasons": [
+        "component_0",
+        "component_2"
+      ],
+      "season_label": "2025 Season Snapshot"
+    },
+    {
+      "source_player_id": "00-0039040",
+      "player_name": "De'Von Achane",
+      "position": "RB",
+      "team": "MIA",
+      "games_played": 16,
+      "performance_score": 62.0,
+      "data_quality": "HIGH",
+      "missing_inputs": [],
+      "normalized_metric_count": 6,
+      "reasons": [
+        "component_3"
+      ],
+      "season_label": "2025 Season Snapshot"
+    },
+    {
+      "source_player_id": "00-0037247",
+      "player_name": "George Pickens",
+      "position": "WR",
+      "team": "DAL",
+      "games_played": 17,
+      "performance_score": 61.75,
+      "data_quality": "HIGH",
+      "missing_inputs": [],
+      "normalized_metric_count": 6,
+      "reasons": [
+        "component_0",
+        "component_3"
+      ],
+      "season_label": "2025 Season Snapshot"
+    },
+    {
+      "source_player_id": "00-0038124",
+      "player_name": "Christian Watson",
+      "position": "WR",
+      "team": "GB",
+      "games_played": 10,
+      "performance_score": 61.5,
+      "data_quality": "HIGH",
+      "missing_inputs": [],
+      "normalized_metric_count": 6,
+      "reasons": [
+        "component_3",
+        "component_4"
+      ],
+      "season_label": "2025 Season Snapshot"
+    },
+    {
+      "source_player_id": "00-0036900",
+      "player_name": "Ja'Marr Chase",
+      "position": "WR",
+      "team": "CIN",
+      "games_played": 16,
+      "performance_score": 61.25,
+      "data_quality": "HIGH",
+      "missing_inputs": [],
+      "normalized_metric_count": 6,
+      "reasons": [
+        "component_0",
+        "component_1"
+      ],
+      "season_label": "2025 Season Snapshot"
+    },
+    {
+      "source_player_id": "00-0036963",
+      "player_name": "Amon-Ra St. Brown",
+      "position": "WR",
+      "team": "DET",
+      "games_played": 17,
+      "performance_score": 61.25,
+      "data_quality": "HIGH",
+      "missing_inputs": [],
+      "normalized_metric_count": 6,
+      "reasons": [
+        "component_0",
+        "component_1"
+      ],
+      "season_label": "2025 Season Snapshot"
+    },
+    {
+      "source_player_id": "00-0037238",
+      "player_name": "Drake London",
+      "position": "WR",
+      "team": "ATL",
+      "games_played": 12,
+      "performance_score": 59.75,
+      "data_quality": "HIGH",
+      "missing_inputs": [],
+      "normalized_metric_count": 6,
+      "reasons": [
+        "component_1"
+      ],
+      "season_label": "2025 Season Snapshot"
+    },
+    {
+      "source_player_id": "00-0037239",
+      "player_name": "Chris Olave",
+      "position": "WR",
+      "team": "NO",
+      "games_played": 16,
+      "performance_score": 59.25,
+      "data_quality": "HIGH",
+      "missing_inputs": [],
+      "normalized_metric_count": 6,
+      "reasons": [
+        "component_1",
+        "component_4"
+      ],
+      "season_label": "2025 Season Snapshot"
+    },
+    {
+      "source_player_id": "00-0038996",
+      "player_name": "Tucker Kraft",
+      "position": "TE",
+      "team": "GB",
+      "games_played": 8,
+      "performance_score": 59.25,
+      "data_quality": "HIGH",
+      "missing_inputs": [],
+      "normalized_metric_count": 6,
+      "reasons": [
+        "component_3",
+        "component_4"
+      ],
+      "season_label": "2025 Season Snapshot"
+    },
+    {
+      "source_player_id": "00-0031381",
+      "player_name": "Davante Adams",
+      "position": "WR",
+      "team": "LA",
+      "games_played": 14,
+      "performance_score": 59.0,
+      "data_quality": "HIGH",
+      "missing_inputs": [],
+      "normalized_metric_count": 6,
+      "reasons": [
+        "component_2",
+        "component_4"
+      ],
+      "season_label": "2025 Season Snapshot"
+    },
+    {
+      "source_player_id": "00-0036358",
+      "player_name": "CeeDee Lamb",
+      "position": "WR",
+      "team": "DAL",
+      "games_played": 13,
+      "performance_score": 59.0,
+      "data_quality": "HIGH",
+      "missing_inputs": [],
+      "normalized_metric_count": 6,
+      "reasons": [
+        "component_0",
+        "component_1",
+        "component_3",
+        "component_4"
+      ],
+      "season_label": "2025 Season Snapshot"
+    },
+    {
+      "source_player_id": "00-0036223",
+      "player_name": "Jonathan Taylor",
+      "position": "RB",
+      "team": "IND",
+      "games_played": 17,
+      "performance_score": 58.25,
+      "data_quality": "HIGH",
+      "missing_inputs": [],
+      "normalized_metric_count": 6,
+      "reasons": [
+        "component_2",
+        "component_3"
+      ],
+      "season_label": "2025 Season Snapshot"
+    },
+    {
+      "source_player_id": "00-0037834",
+      "player_name": "Brock Purdy",
+      "position": "QB",
+      "team": "SF",
+      "games_played": 9,
+      "performance_score": 57.5,
+      "data_quality": "HIGH",
+      "missing_inputs": [],
+      "normalized_metric_count": 6,
+      "reasons": [
+        "component_1",
+        "component_2"
+      ],
+      "season_label": "2025 Season Snapshot"
+    },
+    {
+      "source_player_id": "00-0026498",
+      "player_name": "Matthew Stafford",
+      "position": "QB",
+      "team": "LA",
+      "games_played": 17,
+      "performance_score": 57.25,
+      "data_quality": "HIGH",
+      "missing_inputs": [],
+      "normalized_metric_count": 6,
+      "reasons": [
+        "component_0",
+        "component_1",
+        "component_2"
+      ],
+      "season_label": "2025 Season Snapshot"
+    },
+    {
+      "source_player_id": "00-0033077",
+      "player_name": "Dak Prescott",
+      "position": "QB",
+      "team": "DAL",
+      "games_played": 17,
+      "performance_score": 57.25,
+      "data_quality": "HIGH",
+      "missing_inputs": [],
+      "normalized_metric_count": 6,
+      "reasons": [
+        "component_0",
+        "component_2"
+      ],
+      "season_label": "2025 Season Snapshot"
+    },
+    {
+      "source_player_id": "00-0033106",
+      "player_name": "Jared Goff",
+      "position": "QB",
+      "team": "DET",
+      "games_played": 17,
+      "performance_score": 57.25,
+      "data_quality": "HIGH",
+      "missing_inputs": [],
+      "normalized_metric_count": 6,
+      "reasons": [
+        "component_0",
+        "component_1",
+        "component_2"
+      ],
+      "season_label": "2025 Season Snapshot"
+    },
+    {
+      "source_player_id": "00-0038542",
+      "player_name": "Bijan Robinson",
+      "position": "RB",
+      "team": "ATL",
+      "games_played": 17,
+      "performance_score": 57.25,
+      "data_quality": "HIGH",
+      "missing_inputs": [],
+      "normalized_metric_count": 6,
+      "reasons": [
+        "component_3"
+      ],
+      "season_label": "2025 Season Snapshot"
+    },
+    {
+      "source_player_id": "00-0033873",
+      "player_name": "Patrick Mahomes",
+      "position": "QB",
+      "team": "KC",
+      "games_played": 14,
+      "performance_score": 56.25,
+      "data_quality": "HIGH",
+      "missing_inputs": [],
+      "normalized_metric_count": 6,
+      "reasons": [
+        "component_0"
+      ],
+      "season_label": "2025 Season Snapshot"
+    }
+  ],
+  "score_preview_unique_scores": 14,
+  "commercial_use_notes": "CC BY 4.0 permits commercial use with attribution. CardSignal beta may use this adapted dataset when attribution is retained in the manifest and product docs."
+}
