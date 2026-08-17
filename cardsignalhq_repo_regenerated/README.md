@@ -175,36 +175,35 @@ This repo includes deployment scaffolding for a split deploy:
 
 ## Scheduling options
 
-### Option 1: Render Cron
+### Render Cron (production)
 
-`render.yaml` now includes a cron service named `cardchase-ai-pipeline-cron` that runs:
+`render.yaml` defines two cron services (no duplicate GitHub Actions scheduler):
+
+1. **MLB leaderboard** — `cardchase-ai-mlb-pipeline-cron`
 
 ```bash
 python scripts/run_pipeline.py
 ```
 
-on this schedule:
-
 ```text
-0 */3 * * *
+0 10 */3 * *
 ```
 
-That refreshes the MLB leaderboard every 3 hours. After each leaderboard write it checks whether a weekly intelligence snapshot is due (configured Tuesday 06:00 window, and no official run yet for the current reporting week). Weekly intelligence — Trending Cards, Biggest Movers, Buy Low Watch, Most Chased, and Trend / `weekly_change` — generates only when that gate passes; otherwise it is skipped.
+Every 3 days at 10:00 UTC (~06:00 America/New_York). After each leaderboard write the pipeline also runs an idempotent weekly due-check.
 
-### Option 2: GitHub Actions
+2. **NFL + NBA weekly intelligence** — `cardchase-ai-weekly-pipeline-cron`
 
-A scheduled workflow lives at `.github/workflows/pipeline_schedule.yml`.
-
-It calls your hosted API endpoint every 3 hours:
-
-```text
-POST /api/pipeline/run
+```bash
+python scripts/run_weekly_pipelines.py
 ```
 
-Set these GitHub repository secrets:
+```text
+0 10 * * 2
+```
 
-- `CARDCHASE_API_URL`
-- `PIPELINE_TRIGGER_TOKEN` if your API run endpoint is protected
+Every Tuesday at 10:00 UTC (~06:00 America/New_York). Skips when an official weekly snapshot already exists for the current reporting week, or when league data is unavailable.
+
+Production API leaderboard/player reads use Supabase when configured and do not silently fall back to local JSON files.
 
 ## Notes
 
