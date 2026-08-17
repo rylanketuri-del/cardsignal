@@ -48,9 +48,21 @@ class SupabaseStorage:
             raise SupabaseError(f"Supabase user select failed for {table}: {response.status_code} {response.text}")
         return response.json()
 
-    def _post(self, table: str, payload: Any, prefer: str | None = None) -> list[dict[str, Any]]:
+    def _post(
+        self,
+        table: str,
+        payload: Any,
+        prefer: str | None = None,
+        params: dict[str, str] | None = None,
+    ) -> list[dict[str, Any]]:
         endpoint = f"{self.url.rstrip('/')}/rest/v1/{table}"
-        response = requests.post(endpoint, headers=self._headers(prefer), json=payload, timeout=self.timeout)
+        response = requests.post(
+            endpoint,
+            headers=self._headers(prefer),
+            params=params or None,
+            json=payload,
+            timeout=self.timeout,
+        )
         if response.status_code >= 400:
             raise SupabaseError(f"Supabase insert failed for {table}: {response.status_code} {response.text}")
         if not response.text.strip():
@@ -58,12 +70,25 @@ class SupabaseStorage:
         data = response.json()
         return data if isinstance(data, list) else [data]
 
-    def _post_as_user(self, table: str, payload: Any, user_token: str, prefer: str | None = None) -> list[dict[str, Any]]:
+    def _post_as_user(
+        self,
+        table: str,
+        payload: Any,
+        user_token: str,
+        prefer: str | None = None,
+        params: dict[str, str] | None = None,
+    ) -> list[dict[str, Any]]:
         endpoint = f"{self.url.rstrip('/')}/rest/v1/{table}"
         headers = self._auth_headers(user_token)
         if prefer:
             headers["Prefer"] = prefer
-        response = requests.post(endpoint, headers=headers, json=payload, timeout=self.timeout)
+        response = requests.post(
+            endpoint,
+            headers=headers,
+            params=params or None,
+            json=payload,
+            timeout=self.timeout,
+        )
         if response.status_code >= 400:
             raise SupabaseError(f"Supabase user insert failed for {table}: {response.status_code} {response.text}")
         if not response.text.strip():
@@ -110,7 +135,12 @@ class SupabaseStorage:
     def upsert_players(self, player_names: Iterable[str]) -> None:
         rows = [{"name": name} for name in player_names]
         if rows:
-            self._post("players", rows, prefer="resolution=merge-duplicates")
+            self._post(
+                "players",
+                rows,
+                prefer="resolution=merge-duplicates",
+                params={"on_conflict": "name"},
+            )
 
     def fetch_player_map(self, player_names: Iterable[str]) -> dict[str, str]:
         names = list(dict.fromkeys(player_names))
@@ -314,6 +344,7 @@ class SupabaseStorage:
             "tracked_player_configs",
             {"player_name": player_name, "active": True, "notes": notes},
             prefer="resolution=merge-duplicates,return=representation",
+            params={"on_conflict": "player_name"},
         )
         return rows[0]
 
@@ -336,6 +367,7 @@ class SupabaseStorage:
             {"user_id": user_id, "player_id": player_id, "player_name": player_name},
             user_token,
             prefer="resolution=merge-duplicates,return=representation",
+            params={"on_conflict": "user_id,player_name"},
         )
         return rows[0] if rows else {"player_id": player_id, "player_name": player_name}
 
@@ -367,6 +399,7 @@ class SupabaseStorage:
             },
             user_token,
             prefer="resolution=merge-duplicates,return=representation",
+            params={"on_conflict": "user_id,player_name"},
         )
         return rows[0] if rows else {}
 
@@ -402,13 +435,79 @@ class SupabaseStorage:
         return rows[0]
 
     def fetch_alert_targets(self) -> list[dict[str, Any]]:
-        return self._get(
+        """Load alert targets without PostgREST embeds.
+
+        alert_subscriptions / watchlists / player_alert_rules all FK to auth.users,
+        not to each other, so nested selects fail with PGRST200. Query each table
+        flat and join by user_id in Python. Shape matches what pipeline._process_alerts
+        expects (including optional profiles email fallback).
+        """
+        subscriptions = self._get(
             "alert_subscriptions",
             {
-                "select": "user_id,email,hotness_jump_enabled,buy_low_enabled,most_chased_enabled,daily_digest_enabled,profiles(email),watchlists(player_id,player_name),player_alert_rules(player_name,min_hotness_delta,alert_on_hotness_jump,alert_on_buy_low,alert_on_most_chased,muted_until)",
+                "select": "user_id,email,hotness_jump_enabled,buy_low_enabled,most_chased_enabled,daily_digest_enabled",
                 "order": "updated_at.desc",
             },
         )
+        if not subscriptions:
+            return []
+
+        user_ids = [str(row["user_id"]) for row in subscriptions]
+        in_list = ",".join(user_ids)
+
+        watchlists = self._get(
+            "watchlists",
+            {
+                "select": "user_id,player_id,player_name",
+                "user_id": f"in.({in_list})",
+            },
+        )
+        rules = self._get(
+            "player_alert_rules",
+            {
+                "select": "user_id,player_name,min_hotness_delta,alert_on_hotness_jump,alert_on_buy_low,alert_on_most_chased,muted_until",
+                "user_id": f"in.({in_list})",
+            },
+        )
+
+        watchlists_by_user: dict[str, list[dict[str, Any]]] = {}
+        for item in watchlists:
+            uid = str(item["user_id"])
+            watchlists_by_user.setdefault(uid, []).append(
+                {"player_id": item.get("player_id"), "player_name": item["player_name"]}
+            )
+
+        rules_by_user: dict[str, list[dict[str, Any]]] = {}
+        for item in rules:
+            uid = str(item["user_id"])
+            rules_by_user.setdefault(uid, []).append(
+                {
+                    "player_name": item["player_name"],
+                    "min_hotness_delta": item.get("min_hotness_delta"),
+                    "alert_on_hotness_jump": item.get("alert_on_hotness_jump"),
+                    "alert_on_buy_low": item.get("alert_on_buy_low"),
+                    "alert_on_most_chased": item.get("alert_on_most_chased"),
+                    "muted_until": item.get("muted_until"),
+                }
+            )
+
+        targets: list[dict[str, Any]] = []
+        for sub in subscriptions:
+            uid = str(sub["user_id"])
+            targets.append(
+                {
+                    "user_id": sub["user_id"],
+                    "email": sub.get("email"),
+                    "hotness_jump_enabled": sub.get("hotness_jump_enabled"),
+                    "buy_low_enabled": sub.get("buy_low_enabled"),
+                    "most_chased_enabled": sub.get("most_chased_enabled"),
+                    "daily_digest_enabled": sub.get("daily_digest_enabled"),
+                    "profiles": None,
+                    "watchlists": watchlists_by_user.get(uid, []),
+                    "player_alert_rules": rules_by_user.get(uid, []),
+                }
+            )
+        return targets
 
 
     def fetch_recent_notifications(self, since_iso: str) -> list[dict[str, Any]]:

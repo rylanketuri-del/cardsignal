@@ -533,11 +533,18 @@ def run_pipeline() -> PipelineResult:
 
         run_id = storage.persist_leaderboard(str(file_path), serialized)
 
-        alerts_created, deliveries_attempted = _process_alerts(
-            storage,
-            run_id,
-            serialized,
-        )
+        alerts_created = 0
+        deliveries_attempted = 0
+        try:
+            alerts_created, deliveries_attempted = _process_alerts(
+                storage,
+                run_id,
+                serialized,
+            )
+        except Exception as error:
+            # Leaderboard persistence already succeeded; do not fail the daily run
+            # because alert fan-out / PostgREST lookups blew up.
+            print(f"Alert processing failed after leaderboard persist (run_id={run_id}): {error}")
 
         result = PipelineResult(
             leaderboard_path=str(file_path),

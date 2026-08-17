@@ -12,3 +12,5 @@ output/nfl/import/*
 !output/nfl/import/verified_nfl_previous_season_2025.manifest.json
 
 weekly/
+.venv/
+.env
