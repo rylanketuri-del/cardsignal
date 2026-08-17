@@ -449,13 +449,14 @@ def build_data_quality_summary(snapshots: list[PlayerWeeklySignalSnapshot]) -> d
 def snapshots_to_leaderboard_entries(
     snapshots: list[PlayerWeeklySignalSnapshot],
     repos=None,
+    settings: Settings | None = None,
 ) -> list[TodaysLeaderEntry]:
     from cardchase_ai.intelligence_service import build_normalized_leader_rows
     from cardchase_ai.repositories.factory import build_repository_bundle
 
     if not snapshots:
         return []
-    bundle = repos or build_repository_bundle()
+    bundle = repos or build_repository_bundle(settings)
     rows = build_normalized_leader_rows(snapshots[0].league, snapshots, bundle)
     leader_fields = set(TodaysLeaderEntry.model_fields.keys())
     return [TodaysLeaderEntry.model_validate({k: v for k, v in row.items() if k in leader_fields}) for row in rows]
@@ -733,7 +734,7 @@ def _execute_weekly_pipeline(
     )
 
     card_sections = build_homepage_card_sections(card_snapshots)
-    leaders = snapshots_to_leaderboard_entries(player_snapshots)
+    leaders = snapshots_to_leaderboard_entries(player_snapshots, settings=settings)
     quality = build_data_quality_summary(player_snapshots)
     next_refresh = next_scheduled_refresh(
         league=league,
@@ -910,7 +911,7 @@ def _execute_nfl_weekly_pipeline(
     )
 
     card_sections = build_homepage_card_sections(card_snapshots)
-    leaders = snapshots_to_leaderboard_entries(player_snapshots)
+    leaders = snapshots_to_leaderboard_entries(player_snapshots, settings=settings)
     quality = build_data_quality_summary(player_snapshots)
     next_refresh = next_scheduled_refresh(
         league=league,
@@ -1078,7 +1079,7 @@ def _execute_nba_weekly_pipeline(
     )
 
     card_sections = build_homepage_card_sections(card_snapshots)
-    leaders = snapshots_to_leaderboard_entries(player_snapshots)
+    leaders = snapshots_to_leaderboard_entries(player_snapshots, settings=settings)
     quality = build_data_quality_summary(player_snapshots)
     next_refresh = next_scheduled_refresh(
         league=league,

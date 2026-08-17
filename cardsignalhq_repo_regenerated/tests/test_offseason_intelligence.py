@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import tempfile
 import unittest
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
@@ -45,6 +45,8 @@ from cardchase_ai.performance_import import (
 from cardchase_ai.performance_storage import build_performance_storage
 from cardchase_ai.repositories.factory import build_repository_bundle
 from cardchase_ai.storage_diagnostics import build_storage_diagnostics
+from cardchase_ai.nba_season import nba_season_phase as real_nba_season_phase
+from cardchase_ai.nfl_season import nfl_season_phase as real_nfl_season_phase
 from cardchase_ai.weekly_intelligence import (
     build_latest_weekly_api_payload,
     build_player_snapshot,
@@ -434,7 +436,18 @@ class TestOffseasonNflWeeklyRun(unittest.TestCase):
         for p in self.patches:
             p.start()
 
+        def _frozen_nfl_offseason(**kwargs):
+            kwargs.setdefault("today", date(2026, 3, 15))
+            return real_nfl_season_phase(**kwargs)
+
+        self.phase_patch = patch(
+            "cardchase_ai.nfl_weekly.nfl_season_phase",
+            side_effect=_frozen_nfl_offseason,
+        )
+        self.phase_patch.start()
+
     def tearDown(self) -> None:
+        self.phase_patch.stop()
         for p in self.patches:
             p.stop()
         self.tmp.cleanup()
@@ -519,7 +532,18 @@ class TestOffseasonNbaWeeklyRun(unittest.TestCase):
         for p in self.patches:
             p.start()
 
+        def _frozen_nba_offseason(**kwargs):
+            kwargs.setdefault("today", date(2026, 7, 15))
+            return real_nba_season_phase(**kwargs)
+
+        self.phase_patch = patch(
+            "cardchase_ai.nba_weekly.nba_season_phase",
+            side_effect=_frozen_nba_offseason,
+        )
+        self.phase_patch.start()
+
     def tearDown(self) -> None:
+        self.phase_patch.stop()
         for p in self.patches:
             p.stop()
         self.tmp.cleanup()
