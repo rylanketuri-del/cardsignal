@@ -1038,15 +1038,147 @@ function formatStatCount(value, pending = "—") {
   return String(Math.round(n));
 }
 
+function looksLikeUuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(value || "").trim());
+}
+
+function mlbSourceIdFromValue(value) {
+  if (value == null || value === "") return null;
+  const raw = String(value).trim();
+  if (looksLikeUuid(raw)) return null;
+  if (/^mlb:/i.test(raw)) {
+    const inner = raw.slice(4);
+    return /^\d+$/.test(inner) ? inner : null;
+  }
+  return /^\d+$/.test(raw) ? raw : null;
+}
+
 function normalizeCsPlayerId(entry = {}) {
+  const explicitCs = entry.cs_player_id ? String(entry.cs_player_id) : "";
+  if (explicitCs.startsWith("CS-NFL-P-") || explicitCs.startsWith("CS-NBA-P-")) return explicitCs;
+  const fromCs = mlbSourceIdFromValue(explicitCs);
+  if (fromCs) return `mlb:${fromCs}`;
+
+  const mlbId = mlbSourceIdFromValue(entry.source_player_id) || mlbSourceIdFromValue(entry.player_id);
+  if (mlbId && !isNflEntry(entry) && !isNbaEntry(entry)) return `mlb:${mlbId}`;
+
   const pid = entry.cs_player_id || entry.player_id || entry.source_player_id;
   if (!pid) return null;
   const raw = String(pid);
-  if (raw.startsWith('CS-NFL-P-') || raw.startsWith('CS-NBA-P-') || raw.includes(':')) return raw;
-  const league = String(entry.league || entry.sport || '').toUpperCase();
-  if (league === 'NFL' || league === 'FOOTBALL') return `CS-NFL-P-${raw}`;
-  if (league === 'NBA' || league === 'BASKETBALL') return `CS-NBA-P-${raw}`;
+  if (looksLikeUuid(raw)) return null;
+  if (raw.startsWith("CS-NFL-P-") || raw.startsWith("CS-NBA-P-") || raw.includes(":")) return raw;
+  const league = String(entry.league || entry.sport || "").toUpperCase();
+  if (league === "NFL" || league === "FOOTBALL") return `CS-NFL-P-${raw}`;
+  if (league === "NBA" || league === "BASKETBALL") return `CS-NBA-P-${raw}`;
   return `mlb:${raw}`;
+}
+
+function hasStoredPipelineReportData(player = {}) {
+  if (!player || typeof player !== "object") return false;
+  const hotness = player.hotness || {};
+  const hasHotness = hotness.total_score != null || hotness.performance_score != null || hotness.market_score != null;
+  const hasStats = Boolean(player.stats_7d || player.stats_30d);
+  const snapshots = player.market_snapshots;
+  const hasMarket = Boolean(snapshots && typeof snapshots === "object" && Object.keys(snapshots).length);
+  return Boolean(player.player_name && (hasHotness || hasStats || hasMarket));
+}
+
+async function resolveMlbSourcePlayerId(entry = {}) {
+  const direct = mlbSourceIdFromValue(entry.source_player_id) || mlbSourceIdFromValue(entry.player_id);
+  if (direct) return direct;
+  const name = String(entry.player_name || "").trim();
+  if (name.length < 2) return null;
+  try {
+    const matches = await fetchPlayerSearch(name, "mlb");
+    const list = Array.isArray(matches) ? matches : [];
+    const needle = name.toLowerCase();
+    const exact = list.find((item) => String(item.player_name || "").trim().toLowerCase() === needle);
+    if (!exact) return null;
+    return mlbSourceIdFromValue(exact.source_player_id || exact.player_id);
+  } catch (_) {
+    return null;
+  }
+}
+
+async function loadScoutingReportModel(entry) {
+  let player = entry;
+  const nflPlayerId = SRNfl.srNflResolvePlayerId(entry);
+  const nbaPlayerId = SRNba.srNbaResolvePlayerId(entry);
+  if (isNflEntry(entry) && nflPlayerId) {
+    try {
+      player = await fetchNflPlayer(nflPlayerId);
+    } catch (_) {
+      player = { ...entry, player_id: nflPlayerId };
+    }
+  } else if (isNbaEntry(entry) && nbaPlayerId) {
+    try {
+      player = await fetchNbaPlayer(nbaPlayerId);
+    } catch (_) {
+      player = { ...entry, player_id: nbaPlayerId };
+    }
+  } else if (entry.player_id && !isNflEntry(entry) && !isNbaEntry(entry)) {
+    try {
+      player = { ...entry, ...(await fetchPlayer(entry.player_id)) };
+    } catch (_) {
+      player = entry;
+    }
+  }
+
+  let normalizedPayload = entry.intelligence || player.intelligence || null;
+  const league = resolvePlayerLeague(player, null, normalizedPayload);
+  const isMlb = league === "MLB" && !isNflEntry(player) && !isNbaEntry(player);
+
+  if (isMlb) {
+    const mlbSourceId = await resolveMlbSourcePlayerId(player);
+    if (mlbSourceId) {
+      player = {
+        ...player,
+        source_player_id: String(mlbSourceId),
+        cs_player_id: player.cs_player_id && !looksLikeUuid(player.cs_player_id)
+          ? player.cs_player_id
+          : `mlb:${mlbSourceId}`,
+      };
+    }
+  }
+
+  const playerKey = isMlb
+    ? (mlbSourceIdFromValue(player.source_player_id) || mlbSourceIdFromValue(player.player_id))
+    : (player.source_player_id || player.player_id || player.cs_player_id);
+
+  if (!normalizedPayload && playerKey) {
+    try {
+      normalizedPayload = await fetchPlayerIntelligence(league, playerKey);
+    } catch (_) {
+      normalizedPayload = null;
+    }
+  }
+
+  let weeklySnap = null;
+  const weeklyPlayerKey = isMlb
+    ? (normalizeCsPlayerId(player) || (mlbSourceIdFromValue(player.source_player_id) ? `mlb:${mlbSourceIdFromValue(player.source_player_id)}` : null))
+    : (player.cs_player_id || normalizeCsPlayerId(player));
+  if (!normalizedPayload && weeklyPlayerKey) {
+    try {
+      const weeklyData = await fetchPlayerWeeklySignals(weeklyPlayerKey);
+      weeklySnap = resolveWeeklySnapshot(player, weeklyData?.items || []);
+    } catch (_) {
+      weeklySnap = null;
+    }
+  }
+
+  if (!normalizedPayload && !weeklySnap && !hasStoredPipelineReportData(player) && !hasStoredPipelineReportData(entry)) {
+    throw new Error("Stored intelligence is unavailable for this player.");
+  }
+
+  const reportPlayer = hasStoredPipelineReportData(player) ? player : entry;
+  const intel = buildPlayerIntel(reportPlayer, weeklySnap, normalizedPayload);
+  return {
+    player: reportPlayer,
+    intel,
+    weeklySnap,
+    normalizedPayload,
+    intelligenceLookupId: playerKey || null,
+  };
 }
 
 function isNbaEntry(entry = {}) {
@@ -1914,7 +2046,7 @@ function renderScoutingReportHeader(entry, intel) {
 function renderScoutingReport(entry, intel, cards = [], weeklySnap = null) {
   return `
     <div class="sr-report">
-      ${renderPlayerSnapshot(intel, player)}
+      ${renderPlayerSnapshot(intel, entry)}
       ${renderWhyThisSignal(entry, intel, weeklySnap)}
       ${renderReportCards(cards)}
       ${renderReportMarket(entry, intel, weeklySnap)}
@@ -1989,54 +2121,12 @@ async function openPlayerIntelligenceModal(entry) {
   selectedPlayer = entry;
 
   try {
-    let player = entry;
-    const nflPlayerId = SRNfl.srNflResolvePlayerId(entry);
-    const nbaPlayerId = SRNba.srNbaResolvePlayerId(entry);
-    if (isNflEntry(entry) && nflPlayerId) {
-      try {
-        player = await fetchNflPlayer(nflPlayerId);
-      } catch (_) {
-        player = { ...entry, player_id: nflPlayerId };
-      }
-    } else if (isNbaEntry(entry) && nbaPlayerId) {
-      try {
-        player = await fetchNbaPlayer(nbaPlayerId);
-      } catch (_) {
-        player = { ...entry, player_id: nbaPlayerId };
-      }
-    } else if (entry.player_id && !isNflEntry(entry) && !isNbaEntry(entry)) {
-      player = await fetchPlayer(entry.player_id);
-    }
+    const model = await loadScoutingReportModel(entry);
+    const player = model.player;
+    const intel = model.intel;
+    const weeklySnap = model.weeklySnap;
     selectedPlayer = player;
 
-    let normalizedPayload = entry.intelligence || null;
-    const league = resolvePlayerLeague(player, null, normalizedPayload);
-    const playerKey = player.source_player_id || player.player_id || player.cs_player_id;
-
-    if (!normalizedPayload && playerKey) {
-      try {
-        normalizedPayload = await fetchPlayerIntelligence(league, playerKey);
-      } catch (_) {
-        normalizedPayload = null;
-      }
-    }
-
-    let weeklySnap = null;
-    const weeklyPlayerKey = player.cs_player_id || normalizeCsPlayerId(player);
-    if (!normalizedPayload && weeklyPlayerKey) {
-      try {
-        const weeklyData = await fetchPlayerWeeklySignals(weeklyPlayerKey);
-        weeklySnap = resolveWeeklySnapshot(player, weeklyData?.items || []);
-      } catch (_) {
-        weeklySnap = null;
-      }
-    }
-
-    if (!normalizedPayload && !weeklySnap) {
-      throw new Error("Stored intelligence is unavailable for this player.");
-    }
-
-    const intel = buildPlayerIntel(player, weeklySnap, normalizedPayload);
     const cardRows = collectPlayerCards(player);
     const cards = await enrichPlayerCards(cardRows);
 
@@ -3402,4 +3492,16 @@ async function init() {
   }
 }
 
-init();
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = {
+    renderScoutingReport,
+    buildPlayerIntel,
+    loadScoutingReportModel,
+    hasStoredPipelineReportData,
+    resolveMlbSourcePlayerId,
+    mlbSourceIdFromValue,
+    looksLikeUuid,
+  };
+} else {
+  init();
+}

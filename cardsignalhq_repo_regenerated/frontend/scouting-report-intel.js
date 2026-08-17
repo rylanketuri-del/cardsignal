@@ -86,10 +86,16 @@ function srIntelFromNormalized(payload = {}, entry = {}) {
   };
 }
 
-if (typeof module !== "undefined") {
-  module.exports = {
-    srIntelFromNormalized,
-    srMapNormalizedDrivers,
-    srStatsFromEvidence,
-  };
+const SRIntel = {
+  srIntelFromNormalized,
+  srMapNormalizedDrivers,
+  srStatsFromEvidence,
+};
+
+if (typeof window !== "undefined") {
+  window.SRIntel = SRIntel;
+}
+
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = SRIntel;
 }

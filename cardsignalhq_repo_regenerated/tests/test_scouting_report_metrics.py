@@ -54,12 +54,24 @@ class ScoutingReportStaticGuardTests(unittest.TestCase):
             re.compile(r"csIntelFormatPercent\s*\(\s*(?:card\.)?momentum_score"),
         )
 
-    def test_scouting_metrics_module_loaded_before_app(self):
+    def test_app_namespaces_attach_window_globals(self):
         index_html = (FRONTEND / "index.html").read_text(encoding="utf-8")
-        metrics_pos = index_html.find("scouting-report-metrics.js")
-        app_pos = index_html.find("app.js")
-        self.assertGreater(metrics_pos, -1)
-        self.assertGreater(app_pos, metrics_pos)
+        namespaces = {
+            "SRIntel": "scouting-report-intel.js",
+            "SRMetrics": "scouting-report-metrics.js",
+            "SRNfl": "scouting-report-nfl.js",
+            "SRNba": "scouting-report-nba.js",
+            "WeeklyMovement": "weekly-movement.js",
+        }
+        app_pos = index_html.find("./app.js")
+        self.assertGreater(app_pos, -1)
+        for name, filename in namespaces.items():
+            source = (FRONTEND / filename).read_text(encoding="utf-8")
+            self.assertIn(f"window.{name} = {name}", source)
+            file_pos = index_html.find(filename)
+            self.assertGreater(file_pos, -1, msg=f"{filename} missing from index.html")
+            self.assertLess(file_pos, app_pos, msg=f"{filename} must load before app.js")
+
 
 
 if __name__ == "__main__":
