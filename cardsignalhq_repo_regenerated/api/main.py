@@ -157,10 +157,14 @@ def _load_player(player_id: str) -> tuple[dict[str, Any], str]:
     raise HTTPException(status_code=404, detail=f"Player {player_id} not found in latest leaderboard.")
 
 
+def _configured_secret(value: str | None) -> str:
+    return (value or "").strip()
+
+
 def _authorize_pipeline_trigger(authorization: str | None) -> None:
-    expected = _settings().pipeline_trigger_token
+    expected = _configured_secret(_settings().pipeline_trigger_token)
     if not expected:
-        return
+        raise HTTPException(status_code=503, detail="Pipeline trigger token not configured.")
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing bearer token.")
     provided = authorization.replace("Bearer ", "", 1)
@@ -177,7 +181,7 @@ def _get_bearer_token(authorization: str | None) -> str:
 
 
 def _require_admin(authorization: str | None = Header(default=None)) -> bool:
-    expected = _settings().admin_api_token
+    expected = _configured_secret(_settings().admin_api_token)
     if not expected:
         raise HTTPException(status_code=503, detail="Admin API token not configured.")
     if not authorization or not authorization.startswith("Bearer "):
