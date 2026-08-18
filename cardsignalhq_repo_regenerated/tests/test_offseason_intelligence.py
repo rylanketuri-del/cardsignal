@@ -503,15 +503,9 @@ class TestOffseasonNflWeeklyRun(unittest.TestCase):
         self.assertIsNotNone(payload["run"])
         self.assertEqual(payload["run"]["status"], "COMPLETED")
         self.assertEqual(len(payload["todays_leaders"]), 1)
-        intel = payload["todays_leaders"][0]["intelligence"]
-        self.assertEqual(intel["season_phase"], "OFFSEASON")
-        self.assertEqual(intel["season"], 2025)
-        self.assertEqual(intel["previous_season_label"], "2025 Season Performance")
-        self.assertEqual(intel["previous_season_helper_text"], "Most recently completed season")
-        self.assertEqual(len(intel["recent_performance"]), 0)
-        self.assertGreater(len(intel["previous_season_performance"]), 0)
-        self.assertNotEqual(intel.get("recommendation"), "BUY")
-        self.assertIsNone(intel.get("card_signal_score"))
+        leader = payload["todays_leaders"][0]
+        self.assertEqual(leader.get("league"), "NFL")
+        self.assertEqual(leader["source_player_id"], "12345")
 
         repos = build_repository_bundle(self.settings)
         normalized = get_player_intelligence("NFL", "12345", repos)
@@ -520,6 +514,10 @@ class TestOffseasonNflWeeklyRun(unittest.TestCase):
         self.assertEqual(normalized.season, 2025)
         self.assertEqual(normalized.previous_season_label, "2025 Season Performance")
         self.assertEqual(normalized.previous_season_helper_text, "Most recently completed season")
+        self.assertEqual(len(normalized.recent_performance), 0)
+        self.assertGreater(len(normalized.previous_season_performance), 0)
+        self.assertNotEqual(normalized.recommendation, "BUY")
+        self.assertIsNone(normalized.card_signal_score)
         self.assertIsNotNone(normalized.captured_at)
 
 
@@ -594,15 +592,21 @@ class TestOffseasonNbaWeeklyRun(unittest.TestCase):
         self.assertIsNotNone(payload["run"])
         self.assertEqual(payload["run"]["status"], "COMPLETED")
         self.assertEqual(len(payload["todays_leaders"]), 1)
-        intel = payload["todays_leaders"][0]["intelligence"]
-        self.assertEqual(intel["season_label"], "2025–26")
-        self.assertEqual(intel["previous_season_label"], "2025–26 Season Performance")
-        self.assertEqual(intel["previous_season_helper_text"], "Most recently completed season")
-        self.assertEqual(len(intel["recent_performance"]), 0)
-        self.assertNotEqual(intel.get("recommendation"), "BUY")
-        self.assertIsNone(intel.get("card_signal_score"))
-        self.assertNotEqual(intel.get("player_name"), "Demo Player")
-        self.assertEqual(intel.get("player_name"), "Test Star")
+        leader = payload["todays_leaders"][0]
+        self.assertEqual(leader.get("league"), "NBA")
+        self.assertEqual(leader["player_name"], "Test Star")
+        self.assertNotEqual(leader["player_name"], "Demo Player")
+
+        repos = build_repository_bundle(self.settings)
+        normalized = get_player_intelligence("NBA", "2544", repos)
+        assert normalized is not None
+        self.assertEqual(normalized.season_label, "2025–26")
+        self.assertEqual(normalized.previous_season_label, "2025–26 Season Performance")
+        self.assertEqual(normalized.previous_season_helper_text, "Most recently completed season")
+        self.assertEqual(len(normalized.recent_performance), 0)
+        self.assertNotEqual(normalized.recommendation, "BUY")
+        self.assertIsNone(normalized.card_signal_score)
+        self.assertEqual(normalized.player_name, "Test Star")
 
 
 class TestHomepageActivation(unittest.TestCase):
@@ -646,9 +650,8 @@ class TestHomepageActivation(unittest.TestCase):
         leader = payload["todays_leaders"][0]
         self.assertEqual(leader["player_name"], "Test QB")
         self.assertEqual(leader["source_player_id"], "12345")
-        self.assertIn("intelligence", leader)
+        self.assertEqual(leader.get("league"), "NFL")
         self.assertIsNone(leader["score"])
-        self.assertIsNone(leader["intelligence"]["card_signal_score"])
 
         board = fetch_nfl_leaderboard(self.settings)
         self.assertEqual(len(board["items"]), 1)
@@ -680,12 +683,12 @@ class TestHomepageActivation(unittest.TestCase):
         self.assertEqual(len(payload["todays_leaders"]), 1)
         self.assertEqual(payload["todays_leaders"][0]["league"], "NBA")
         self.assertEqual(payload["todays_leaders"][0]["player_name"], "Test Star")
-        self.assertEqual(payload["todays_leaders"][0]["intelligence"]["season_label"], "2025–26")
-        self.assertEqual(
-            payload["todays_leaders"][0]["intelligence"]["previous_season_label"],
-            "2025–26 Season Performance",
-        )
         self.assertNotEqual(payload["todays_leaders"][0]["player_name"], "Demo Player")
+        repos = build_repository_bundle(self.settings)
+        normalized = get_player_intelligence("NBA", "2544", repos)
+        assert normalized is not None
+        self.assertEqual(normalized.season_label, "2025–26")
+        self.assertEqual(normalized.previous_season_label, "2025–26 Season Performance")
 
         board = fetch_nba_leaderboard(self.settings)
         self.assertEqual(len(board["items"]), 1)

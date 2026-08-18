@@ -400,17 +400,96 @@ def empty_card_intelligence() -> dict[str, list[dict[str, Any]]]:
 
 def card_intelligence_from_homepage(homepage: Any) -> dict[str, list[dict[str, Any]]]:
     """Extract homepage card sections from a persisted homepage payload."""
-    if homepage is None:
-        return empty_card_intelligence()
-    if hasattr(homepage, "model_dump"):
-        homepage = homepage.model_dump(mode="json")
-    if not isinstance(homepage, dict):
+    homepage_dict = _homepage_as_dict(homepage)
+    if not homepage_dict:
         return empty_card_intelligence()
     return {
-        "trending_cards": list(homepage.get("trending_cards") or []),
-        "biggest_movers": list(homepage.get("biggest_movers") or []),
-        "buy_low_watch": list(homepage.get("buy_low_watch") or []),
-        "most_chased": list(homepage.get("most_chased") or []),
+        "trending_cards": list(homepage_dict.get("trending_cards") or []),
+        "biggest_movers": list(homepage_dict.get("biggest_movers") or []),
+        "buy_low_watch": list(homepage_dict.get("buy_low_watch") or []),
+        "most_chased": list(homepage_dict.get("most_chased") or []),
+    }
+
+
+def _homepage_as_dict(homepage: Any) -> dict[str, Any] | None:
+    if homepage is None:
+        return None
+    if hasattr(homepage, "model_dump"):
+        dumped = homepage.model_dump(mode="json")
+        return dumped if isinstance(dumped, dict) else None
+    if isinstance(homepage, dict):
+        return homepage
+    return None
+
+
+def homepage_has_usable_leaders(homepage: Any) -> bool:
+    """True when persisted homepage_payload can serve GET /api/weekly/latest."""
+    homepage_dict = _homepage_as_dict(homepage)
+    if not homepage_dict:
+        return False
+    leaders = homepage_dict.get("todays_leaders")
+    return isinstance(leaders, list) and len(leaders) > 0
+
+
+def _serialize_run(run_data: Any) -> dict[str, Any] | None:
+    if hasattr(run_data, "model_dump"):
+        dumped = run_data.model_dump(mode="json")
+        return dumped if isinstance(dumped, dict) else None
+    if isinstance(run_data, dict):
+        return run_data
+    return None
+
+
+def _leaders_from_homepage(homepage: dict[str, Any], run_dict: dict[str, Any] | None) -> list[dict[str, Any]]:
+    raw = homepage.get("todays_leaders") or []
+    if not isinstance(raw, list):
+        return []
+    league = (run_dict or {}).get("league")
+    sport = (run_dict or {}).get("sport")
+    leaders: list[dict[str, Any]] = []
+    for row in raw:
+        if hasattr(row, "model_dump"):
+            item = row.model_dump(mode="json")
+        elif isinstance(row, dict):
+            item = dict(row)
+        else:
+            continue
+        if not isinstance(item, dict):
+            continue
+        if league and not item.get("league"):
+            item["league"] = league
+        if sport and not item.get("sport"):
+            item["sport"] = sport
+        leaders.append(item)
+    return leaders
+
+
+def _empty_latest_weekly_api_payload(next_refresh: datetime) -> dict[str, Any]:
+    return {
+        "run": None,
+        "signal_of_the_week": None,
+        "todays_leaders": [],
+        "homepage": None,
+        "next_refresh": next_refresh.isoformat(),
+        "data_quality_summary": {},
+        "card_intelligence": empty_card_intelligence(),
+    }
+
+
+def _latest_payload_from_homepage(
+    run_dict: dict[str, Any] | None,
+    homepage: Any,
+    next_refresh: datetime,
+) -> dict[str, Any]:
+    homepage_dict = _homepage_as_dict(homepage) or {}
+    return {
+        "run": run_dict,
+        "signal_of_the_week": homepage_dict.get("signal_of_the_week"),
+        "todays_leaders": _leaders_from_homepage(homepage_dict, run_dict),
+        "homepage": homepage_dict,
+        "next_refresh": next_refresh.isoformat(),
+        "data_quality_summary": homepage_dict.get("data_quality_summary") or {},
+        "card_intelligence": card_intelligence_from_homepage(homepage_dict),
     }
 
 
@@ -1179,12 +1258,19 @@ def run_weekly_intelligence(
 
 
 def build_latest_weekly_api_payload(league: str, storage: WeeklyStorage, settings: Settings) -> dict[str, Any]:
-    """Build GET /api/weekly/latest response from stored data only."""
-    from cardchase_ai.intelligence_service import build_normalized_leader_rows
-    from cardchase_ai.repositories.factory import build_repository_bundle
+    """Build GET /api/weekly/latest response from stored data only.
 
-    payload = storage.fetch_latest_completed_payload(league)
-    repos = build_repository_bundle(settings)
+    Query count:
+      Fast path (homepage_payload.todays_leaders non-empty): 1 storage read
+        — weekly_intelligence_runs row only. No player snapshots, card
+        snapshots, signal table, batch_get_player_intelligence, or per-player
+        history. Shared for MLB/NFL/NBA.
+      Before this fast path: 4 payload reads (run + 100 players + 400 cards +
+        signal) then batch_get_player_intelligence reloaded the full weekly
+        payload and player history for each of 100 players (~500+ GETs).
+      Fallback (missing/empty/malformed homepage): unchanged reconstruction
+        via fetch_latest_completed_payload + snapshot rebuild.
+    """
     next_refresh = next_scheduled_refresh(
         league=league,
         timezone_name=settings.weekly_timezone,
@@ -1192,28 +1278,28 @@ def build_latest_weekly_api_payload(league: str, storage: WeeklyStorage, setting
         refresh_hour=settings.weekly_refresh_hour,
     )
 
+    run_row = storage.fetch_latest_official_run_row(league)
+    if not run_row:
+        return _empty_latest_weekly_api_payload(next_refresh)
+
+    run_dict = _serialize_run(run_row)
+    homepage = (run_dict or {}).get("homepage_payload")
+    if homepage_has_usable_leaders(homepage):
+        return _latest_payload_from_homepage(run_dict, homepage, next_refresh)
+
+    from cardchase_ai.intelligence_service import build_normalized_leader_rows
+    from cardchase_ai.repositories.factory import build_repository_bundle
+
+    payload = storage.fetch_latest_completed_payload(league)
     if not payload:
-        return {
-            "run": None,
-            "signal_of_the_week": None,
-            "todays_leaders": [],
-            "homepage": None,
-            "next_refresh": next_refresh.isoformat(),
-            "data_quality_summary": {},
-            "card_intelligence": empty_card_intelligence(),
-        }
+        return _empty_latest_weekly_api_payload(next_refresh)
 
     run_data = payload.get("run")
-    if hasattr(run_data, "model_dump"):
-        run_dict = run_data.model_dump(mode="json")
-    elif isinstance(run_data, dict):
-        run_dict = run_data
-    else:
-        run_dict = None
-
+    run_dict = _serialize_run(run_data) or run_dict
     homepage = payload.get("homepage")
     player_snaps = payload.get("player_snapshots", [])
     parsed_snaps = [PlayerWeeklySignalSnapshot.model_validate(p) for p in player_snaps] if player_snaps else []
+    repos = build_repository_bundle(settings)
 
     if parsed_snaps:
         leaders = build_normalized_leader_rows(league, parsed_snaps, repos)
@@ -1228,12 +1314,9 @@ def build_latest_weekly_api_payload(league: str, storage: WeeklyStorage, setting
         quality = build_data_quality_summary(parsed_snaps)
     elif homepage is not None:
         card_intel = card_intelligence_from_homepage(homepage)
-        if isinstance(homepage, dict):
-            quality = homepage.get("data_quality_summary", {})
-            leaders = homepage.get("todays_leaders", [])
-        else:
-            quality = getattr(homepage, "data_quality_summary", {}) or {}
-            leaders = getattr(homepage, "todays_leaders", []) or []
+        homepage_dict = _homepage_as_dict(homepage) or {}
+        quality = homepage_dict.get("data_quality_summary") or {}
+        leaders = homepage_dict.get("todays_leaders") or []
     else:
         card_intel = empty_card_intelligence()
         quality = {}

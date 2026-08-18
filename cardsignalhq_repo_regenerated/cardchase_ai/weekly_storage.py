@@ -300,6 +300,50 @@ class WeeklyStorage:
             market_movements=market_movements,
         )
 
+    def fetch_latest_official_run_row(self, league: str = "MLB") -> dict[str, Any] | None:
+        """Fetch only the latest official run row (includes homepage_payload).
+
+        One storage read. Does not load player snapshots, card snapshots, or
+        signal_of_the_week rows. Used by GET /api/weekly/latest when the
+        persisted homepage_payload can serve the public response.
+        """
+        if self.supabase:
+            try:
+                rows = self.supabase._get(
+                    self.RUNS_TABLE,
+                    {
+                        "select": "*",
+                        "league": f"eq.{league.upper()}",
+                        "status": "in.(COMPLETED,PARTIAL)",
+                        "force": "eq.false",
+                        "triggered_by": "neq.test",
+                        "order": "completed_at.desc",
+                        "limit": "1",
+                    },
+                )
+                if rows:
+                    return rows[0]
+                return None
+            except SupabaseError:
+                pass
+        return self._run_row_from_json_payload(self.json.fetch_latest_completed(league))
+
+    @staticmethod
+    def _run_row_from_json_payload(payload: dict[str, Any] | None) -> dict[str, Any] | None:
+        if not payload:
+            return None
+        run = payload.get("run")
+        if hasattr(run, "model_dump"):
+            run = run.model_dump(mode="json")
+        if not isinstance(run, dict):
+            return None
+        if run.get("homepage_payload") is None and payload.get("homepage") is not None:
+            homepage = payload.get("homepage")
+            if hasattr(homepage, "model_dump"):
+                homepage = homepage.model_dump(mode="json")
+            run = {**run, "homepage_payload": homepage}
+        return run
+
     def fetch_latest_completed_payload(self, league: str = "MLB") -> dict[str, Any] | None:
         if self.supabase:
             try:

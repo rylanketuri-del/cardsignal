@@ -151,29 +151,33 @@ class ApiPayloadFallbackTests(unittest.TestCase):
                 "most_chased": [{"cs_card_id": "c1", "player_name": "Alpha", "score": 80, "demand_score": 70}],
             }
 
-            with patch.object(storage, "fetch_latest_completed_payload") as mock_fetch:
+            run_row = {
+                "run_id": "r1",
+                "league": "MLB",
+                "sport": "MLB",
+                "season": 2026,
+                "year": 2026,
+                "week_number": 28,
+                "period_start": "2026-07-07T00:00:00+00:00",
+                "period_end": "2026-07-13T23:59:59+00:00",
+                "status": "COMPLETED",
+                "completed_at": "2026-07-14T10:00:00+00:00",
+                "algorithm_version": WEEKLY_INTELLIGENCE_V1,
+                "homepage_payload": {
+                    **homepage_sections,
+                    "todays_leaders": [],
+                    "data_quality_summary": {"total_players": 0},
+                },
+            }
+            homepage = run_row["homepage_payload"]
+            with patch.object(storage, "fetch_latest_official_run_row", return_value=run_row), \
+                 patch.object(storage, "fetch_latest_completed_payload") as mock_fetch:
                 mock_fetch.return_value = {
-                    "run": {
-                        "run_id": "r1",
-                        "league": "MLB",
-                        "sport": "MLB",
-                        "season": 2026,
-                        "year": 2026,
-                        "week_number": 28,
-                        "period_start": "2026-07-07T00:00:00+00:00",
-                        "period_end": "2026-07-13T23:59:59+00:00",
-                        "status": "COMPLETED",
-                        "completed_at": "2026-07-14T10:00:00+00:00",
-                        "algorithm_version": WEEKLY_INTELLIGENCE_V1,
-                    },
+                    "run": run_row,
                     "player_snapshots": [],
                     "card_snapshots": [],
                     "signal_of_the_week": None,
-                    "homepage": {
-                        **homepage_sections,
-                        "todays_leaders": [],
-                        "data_quality_summary": {"total_players": 0},
-                    },
+                    "homepage": homepage,
                 }
                 payload = build_latest_weekly_api_payload("MLB", storage, settings)
 
