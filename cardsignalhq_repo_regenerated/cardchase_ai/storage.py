@@ -6,13 +6,15 @@ from typing import Any, Iterable
 
 import requests
 
+from cardchase_ai.clients.mlb import mlb_headshot_url, mlb_source_player_id
+
 
 class SupabaseError(RuntimeError):
     pass
 
 
 _LEADERBOARD_STATS_SELECT = (
-    "player_name,player_id,rank,performance_score,market_score,total_score,"
+    "player_name,player_id,source_player_id,rank,performance_score,market_score,total_score,"
     "confidence_multiplier,tag,reasons,stats_7d,stats_30d,stats_season,market_snapshots"
 )
 
@@ -26,6 +28,19 @@ def _stats_season_payload(entry: dict[str, Any]) -> dict[str, Any]:
     if isinstance(value, dict):
         return value
     return {}
+
+
+def _source_player_id_for_insert(entry: dict[str, Any]) -> str | None:
+    return mlb_source_player_id(entry.get("source_player_id")) or mlb_source_player_id(entry.get("player_id"))
+
+
+def _leaderboard_identity_fields(row: dict[str, Any]) -> dict[str, Any]:
+    source_id = mlb_source_player_id(row.get("source_player_id"))
+    fields: dict[str, Any] = {"source_player_id": source_id}
+    headshot = mlb_headshot_url(source_id)
+    if headshot:
+        fields["headshot_url"] = headshot
+    return fields
 
 
 @dataclass
@@ -183,6 +198,7 @@ class SupabaseStorage:
                 {
                     "run_id": run_id,
                     "player_id": player_map.get(player_name),
+                    "source_player_id": _source_player_id_for_insert(entry),
                     "player_name": player_name,
                     "rank": rank,
                     "performance_score": round(entry["hotness"]["performance_score"], 2),
@@ -247,6 +263,7 @@ class SupabaseStorage:
                 {
                     "player_name": row["player_name"],
                     "player_id": row.get("player_id"),
+                    **_leaderboard_identity_fields(row),
                     "rank": row["rank"],
                     "stats_7d": row["stats_7d"],
                     "stats_30d": row["stats_30d"],
@@ -292,6 +309,7 @@ class SupabaseStorage:
         return {
             "player_name": row["player_name"],
             "player_id": row.get("player_id"),
+            **_leaderboard_identity_fields(row),
             "stats_7d": row["stats_7d"],
             "stats_30d": row["stats_30d"],
             "stats_season": row.get("stats_season") or {},

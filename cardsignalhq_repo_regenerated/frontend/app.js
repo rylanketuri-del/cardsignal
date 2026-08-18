@@ -1053,6 +1053,15 @@ function mlbSourceIdFromValue(value) {
   return /^\d+$/.test(raw) ? raw : null;
 }
 
+function mlbHeadshotUrlFromSourceId(value) {
+  const mlbId = mlbSourceIdFromValue(value);
+  if (!mlbId) return null;
+  return (
+    "https://img.mlbstatic.com/mlb-photos/image/upload/" +
+    `d_people:generic:headshot:silo:current.png/w_213,q_auto:best/v1/people/${mlbId}/headshot/67/current`
+  );
+}
+
 function normalizeCsPlayerId(entry = {}) {
   const explicitCs = entry.cs_player_id ? String(entry.cs_player_id) : "";
   if (explicitCs.startsWith("CS-NFL-P-") || explicitCs.startsWith("CS-NBA-P-")) return explicitCs;
@@ -1134,6 +1143,7 @@ async function loadScoutingReportModel(entry) {
       player = {
         ...player,
         source_player_id: String(mlbSourceId),
+        headshot_url: player.headshot_url || mlbHeadshotUrlFromSourceId(mlbSourceId),
         cs_player_id: player.cs_player_id && !looksLikeUuid(player.cs_player_id)
           ? player.cs_player_id
           : `mlb:${mlbSourceId}`,
@@ -3504,12 +3514,16 @@ if (typeof module !== "undefined" && module.exports) {
   module.exports = {
     renderScoutingReport,
     renderPlayerSnapshot,
+    renderPlayerHeadshot,
+    renderLeaderHeadshot,
+    renderFeaturedSignalCard,
     buildStoredPlayerIntel,
     buildPlayerIntel,
     loadScoutingReportModel,
     hasStoredPipelineReportData,
     resolveMlbSourcePlayerId,
     mlbSourceIdFromValue,
+    mlbHeadshotUrlFromSourceId,
     looksLikeUuid,
   };
 } else {

@@ -28,6 +28,7 @@ global.getCapabilityState = capabilityState.getCapabilityState;
 const {
   loadScoutingReportModel,
   renderScoutingReport,
+  renderPlayerHeadshot,
   hasStoredPipelineReportData,
 } = require(path.join(__dirname, "..", "frontend", "app.js"));
 
@@ -225,6 +226,22 @@ async function run() {
     assert.ok(season, "expected Season Performance panel");
     assert.ok(season[0].includes("Full-season stats unavailable"));
     assert.ok(!season[0].includes(">25<"));
+  });
+
+  await test("older UUID-only row hydrates scouting headshot from resolved MLB ID", async () => {
+    installFetchMock();
+    const legacyEntry = { ...jacLeaderboardEntry };
+    delete legacyEntry.headshot_url;
+    delete legacyEntry.source_player_id;
+    const model = await loadScoutingReportModel(legacyEntry);
+    assert.strictEqual(model.player.source_player_id, JAC_MLB_ID);
+    assert.ok(String(model.player.headshot_url).includes(`/people/${JAC_MLB_ID}/`));
+    assert.ok(!String(model.player.headshot_url).includes(JAC_UUID));
+    const header = renderPlayerHeadshot(model.player);
+    assert.ok(header.includes("<img"));
+    assert.ok(header.includes(`/people/${JAC_MLB_ID}/`));
+    const html = renderScoutingReport(model.player, model.intel, [], null);
+    assert.ok(html.includes("sr-report"));
   });
 
   await test("truly empty player still surfaces unavailable", async () => {

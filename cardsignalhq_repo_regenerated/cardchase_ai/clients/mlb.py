@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import date, timedelta
 from typing import Any, Dict, List
 
@@ -204,6 +205,36 @@ class MLBClient:
 
         candidates.sort(key=lambda item: item["breakout_score"], reverse=True)
         return candidates[:limit]
+
+
+_UUID_RE = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    re.IGNORECASE,
+)
+
+
+def mlb_source_player_id(value: Any) -> str | None:
+    """Return a numeric MLBAM ID string, or None for UUIDs / non-numeric values."""
+    if value is None:
+        return None
+    raw = str(value).strip()
+    if not raw or _UUID_RE.match(raw):
+        return None
+    if raw.lower().startswith("mlb:"):
+        raw = raw[4:].strip()
+        if _UUID_RE.match(raw):
+            return None
+    if raw.isdigit():
+        return raw
+    return None
+
+
+def mlb_headshot_url(source_player_id: Any) -> str | None:
+    """Derive an MLB CDN headshot URL from a numeric MLBAM ID only."""
+    mlb_id = mlb_source_player_id(source_player_id)
+    if not mlb_id:
+        return None
+    return _headshot_url(int(mlb_id))
 
 
 def _headshot_url(player_id: int) -> str:

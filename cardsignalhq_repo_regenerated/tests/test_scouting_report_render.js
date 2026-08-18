@@ -25,7 +25,15 @@ global.capabilityStatusCopy = capabilityState.capabilityStatusCopy;
 global.deriveSupportedEvidenceQuality = capabilityState.deriveSupportedEvidenceQuality;
 global.getCapabilityState = capabilityState.getCapabilityState;
 
-const { renderScoutingReport, renderPlayerSnapshot, buildStoredPlayerIntel } = require(path.join(__dirname, "..", "frontend", "app.js"));
+const {
+  renderScoutingReport,
+  renderPlayerSnapshot,
+  renderPlayerHeadshot,
+  renderLeaderHeadshot,
+  renderFeaturedSignalCard,
+  buildStoredPlayerIntel,
+  mlbHeadshotUrlFromSourceId,
+} = require(path.join(__dirname, "..", "frontend", "app.js"));
 
 const mlbEntry = {
   player_id: "660271",
@@ -142,5 +150,28 @@ const storedSeason = seasonPanelHtml(renderPlayerSnapshot(storedIntel, mlbEntry)
 assert.ok(storedSeason.includes(">123<"));
 assert.ok(!storedSeason.includes(">27<"));
 console.log("  ok stored leaderboard intel reads stats_season, not stats_30d");
+
+const bregmanUrl = mlbHeadshotUrlFromSourceId("608324");
+assert.ok(bregmanUrl.includes("/people/608324/"));
+assert.strictEqual(mlbHeadshotUrlFromSourceId("9ed6461a-a34b-4205-b55d-4da9dd203796"), null);
+assert.strictEqual(mlbHeadshotUrlFromSourceId("mlb:9ed6461a-a34b-4205-b55d-4da9dd203796"), null);
+console.log("  ok UUID is never used to construct an MLB photo URL");
+
+const withPhoto = { player_name: "Alex Bregman", headshot_url: bregmanUrl };
+assert.ok(renderLeaderHeadshot(withPhoto).includes("<img"));
+assert.ok(renderLeaderHeadshot(withPhoto).includes("/people/608324/"));
+assert.ok(renderPlayerHeadshot(withPhoto).includes("<img"));
+assert.ok(renderPlayerHeadshot(withPhoto).includes("/people/608324/"));
+assert.ok(renderFeaturedSignalCard(withPhoto, { label: "Featured Signal", metricValue: "85", metricCaption: "Score" }).includes("<img"));
+assert.ok(renderFeaturedSignalCard(withPhoto, { label: "Featured Signal", metricValue: "85", metricCaption: "Score" }).includes("/people/608324/"));
+console.log("  ok featured/leader/scouting render img when headshot_url exists");
+
+const withoutPhoto = { player_name: "Alex Bregman" };
+assert.ok(!renderLeaderHeadshot(withoutPhoto).includes("<img"));
+assert.ok(renderLeaderHeadshot(withoutPhoto).includes("AB"));
+assert.ok(!renderPlayerHeadshot(withoutPhoto).includes("<img"));
+assert.ok(renderPlayerHeadshot(withoutPhoto).includes("AB"));
+assert.ok(!renderFeaturedSignalCard(withoutPhoto, { label: "Featured Signal", metricValue: "85", metricCaption: "Score" }).includes("<img"));
+console.log("  ok initials fallback still works when headshot_url is missing");
 
 console.log("passed");

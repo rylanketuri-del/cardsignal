@@ -25,6 +25,7 @@ create table if not exists public.leaderboard_entries (
   created_at timestamptz not null default now(),
   run_id bigint not null references public.pipeline_runs(id) on delete cascade,
   player_id uuid references public.players(id) on delete set null,
+  source_player_id text,
   player_name text not null,
   rank integer not null,
   performance_score numeric(6,2) not null,
