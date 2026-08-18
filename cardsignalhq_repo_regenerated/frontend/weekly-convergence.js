@@ -5,6 +5,9 @@
  */
 const CARD_INTEL_AWAITING_REFRESH = "Card intelligence will appear after the next weekly refresh.";
 const CARD_INTEL_MARKET_UNAVAILABLE = "Card intelligence is unavailable this week because market evidence was not captured.";
+const CARD_INTEL_MOVEMENT_PENDING = "Weekly movement will appear after the next completed weekly snapshot.";
+const CARD_SCORE_LABEL = "CARDSIGNAL";
+const AVG_LISTING_LABEL = "Avg. listing";
 
 function isFiniteNumber(value) {
   return typeof value === "number" && Number.isFinite(value);
@@ -158,9 +161,39 @@ function cardIntelEmptyStateCopy(weeklyPayload = {}) {
   return CARD_INTEL_AWAITING_REFRESH;
 }
 
+function isHistoricalCardMovement(row = {}) {
+  if (!row || typeof row !== "object") return false;
+  if (row.movement_is_historical === true) return true;
+  const status = String(row.movement_status || "").trim().toLowerCase();
+  if (status === "calculated" || status === "historical") return true;
+  const type = String(row.movement_type || "").trim().toLowerCase();
+  return type === "price_change_pct" || type === "historical";
+}
+
+function formatCardRowMovement(row = {}) {
+  if (!isHistoricalCardMovement(row) || !isFiniteNumber(row.movement)) {
+    return "—";
+  }
+  const n = row.movement;
+  const sign = n > 0 ? "+" : "";
+  return `${sign}${n.toFixed(1)}%`;
+}
+
+function formatAvgListingPrice(value) {
+  if (!isFiniteNumber(value)) return `${AVG_LISTING_LABEL} —`;
+  return `${AVG_LISTING_LABEL} $${value.toFixed(2)}`;
+}
+
+function formatCardSignalScore(value) {
+  return isFiniteNumber(value) ? value.toFixed(1) : "—";
+}
+
 const WeeklyConvergence = {
   CARD_INTEL_AWAITING_REFRESH,
   CARD_INTEL_MARKET_UNAVAILABLE,
+  CARD_INTEL_MOVEMENT_PENDING,
+  CARD_SCORE_LABEL,
+  AVG_LISTING_LABEL,
   isFiniteNumber,
   formatScore,
   firstFiniteNumber,
@@ -173,6 +206,10 @@ const WeeklyConvergence = {
   weeklyRunCompleted,
   cardSectionsAreEmpty,
   cardIntelEmptyStateCopy,
+  isHistoricalCardMovement,
+  formatCardRowMovement,
+  formatAvgListingPrice,
+  formatCardSignalScore,
 };
 
 if (typeof window !== "undefined") {

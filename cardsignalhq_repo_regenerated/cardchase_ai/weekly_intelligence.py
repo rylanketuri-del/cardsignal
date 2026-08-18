@@ -493,22 +493,39 @@ def _latest_payload_from_homepage(
     }
 
 
-def build_homepage_card_sections(card_snapshots: list[CardWeeklyIntelligenceSnapshot]) -> dict[str, list[dict[str, Any]]]:
+def build_homepage_card_sections(
+    card_snapshots: list[CardWeeklyIntelligenceSnapshot],
+    market_movements: list | None = None,
+) -> dict[str, list[dict[str, Any]]]:
+    """Build homepage card modules from stored weekly card snapshots.
+
+    Movement is only attached when a genuine calculated historical
+    price_change_pct exists. Demand/momentum/avg_price are never copied
+    into movement. Biggest Movers stays empty without that history.
+    """
     scored = [c for c in card_snapshots if c.card_signal_score is not None]
 
     trending = sorted(scored, key=lambda c: (-(c.demand_score or 0), c.cs_card_id))[:5]
-    movers = sorted(
-        [c for c in scored if c.momentum_score is not None],
-        key=lambda c: (-(c.momentum_score or 0), c.cs_card_id),
-    )[:5]
     buy_low = sorted(
         [c for c in scored if c.recommendation == "BUY"],
         key=lambda c: (c.card_signal_score or 0, c.cs_card_id),
     )[:5]
     chased = sorted(scored, key=lambda c: (-(c.demand_score or 0), c.cs_card_id))[:5]
 
-    def row(c: CardWeeklyIntelligenceSnapshot, *, movement_score: float | None = None) -> dict[str, Any]:
-        display_movement = movement_score if movement_score is not None else c.demand_score
+    historical_by_card: dict[str, float] = {}
+    for movement in market_movements or []:
+        card_id, pct = _historical_price_change_pct(movement)
+        if card_id and pct is not None:
+            historical_by_card[card_id] = pct
+
+    movers = sorted(
+        [c for c in scored if c.cs_card_id in historical_by_card],
+        key=lambda c: (-abs(historical_by_card[c.cs_card_id]), c.cs_card_id),
+    )[:5]
+
+    def row(c: CardWeeklyIntelligenceSnapshot) -> dict[str, Any]:
+        pct = historical_by_card.get(c.cs_card_id)
+        historical = pct is not None
         return {
             "cs_card_id": c.cs_card_id,
             "cs_player_id": c.cs_player_id,
@@ -519,16 +536,41 @@ def build_homepage_card_sections(card_snapshots: list[CardWeeklyIntelligenceSnap
             "demand_score": c.demand_score,
             "momentum_score": c.momentum_score,
             "market_activity_score": c.market_activity_score,
-            "movement": display_movement,
+            "movement": round(pct, 2) if historical else None,
+            "movement_status": "calculated" if historical else "pending",
+            "movement_is_historical": historical,
+            "movement_type": "price_change_pct" if historical else None,
             "evidence": c.evidence or {},
         }
 
     return {
         "trending_cards": [row(c) for c in trending],
-        "biggest_movers": [row(c, movement_score=c.momentum_score) for c in movers],
+        "biggest_movers": [row(c) for c in movers],
         "buy_low_watch": [row(c) for c in buy_low],
         "most_chased": [row(c) for c in chased],
     }
+
+
+def _historical_price_change_pct(movement: Any) -> tuple[str | None, float | None]:
+    """Return (cs_card_id, price_change_pct) only for calculated historical moves."""
+    if movement is None:
+        return None, None
+    if hasattr(movement, "status"):
+        status = movement.status
+        pct = getattr(movement, "price_change_pct", None)
+        card_id = getattr(movement, "cs_card_id", None)
+    elif isinstance(movement, dict):
+        status = movement.get("status")
+        pct = movement.get("price_change_pct")
+        card_id = movement.get("cs_card_id")
+    else:
+        return None, None
+    if str(status or "").lower() != "calculated" or pct is None or not card_id:
+        return None, None
+    try:
+        return str(card_id), float(pct)
+    except (TypeError, ValueError):
+        return None, None
 
 
 def build_data_quality_summary(snapshots: list[PlayerWeeklySignalSnapshot]) -> dict[str, Any]:

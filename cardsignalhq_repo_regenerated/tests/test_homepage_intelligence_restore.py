@@ -10,6 +10,7 @@ from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
 from cardchase_ai.config import Settings
+from cardchase_ai.models.market_movement import CardMarketMovement
 from cardchase_ai.models.schemas import ListingTagSummary, MarketSnapshot
 from cardchase_ai.models.weekly import (
     WEEKLY_INTELLIGENCE_V1,
@@ -110,21 +111,21 @@ class HomepageCardSectionsTests(unittest.TestCase):
         sections = build_homepage_card_sections(snaps)
 
         self.assertTrue(sections["trending_cards"])
-        self.assertTrue(sections["biggest_movers"])
+        self.assertEqual(sections["biggest_movers"], [])
         self.assertTrue(sections["buy_low_watch"])
         self.assertTrue(sections["most_chased"])
 
         trending = sections["trending_cards"][0]
         self.assertEqual(trending["player_name"], "Alpha")
         self.assertEqual(trending["evidence"]["avg_price"], 55)
-        self.assertIn("movement", trending)
-
-        movers = sections["biggest_movers"][0]
-        self.assertEqual(movers["player_name"], "Beta")
-        self.assertEqual(movers["movement"], 95)
+        self.assertIsNone(trending["movement"])
+        self.assertFalse(trending["movement_is_historical"])
+        self.assertEqual(trending["movement_status"], "pending")
+        self.assertNotEqual(trending["movement"], trending["demand_score"])
 
         buy_low = sections["buy_low_watch"][0]
         self.assertEqual(buy_low["recommendation"], "BUY")
+        self.assertIsNone(buy_low["movement"])
 
     def test_card_intelligence_from_snapshot_scores_listings(self) -> None:
         snap = MarketSnapshot(
@@ -137,6 +138,87 @@ class HomepageCardSectionsTests(unittest.TestCase):
         self.assertIsNotNone(intel["card_signal_score"])
         self.assertIsNotNone(intel["demand_score"])
         self.assertEqual(intel["evidence"]["avg_price"], 40.0)
+        self.assertAlmostEqual(intel["card_signal_score"], (min(20 / 30 * 100, 100) + 12 / 20 * 100) / 2, places=2)
+        self.assertNotIn("%", str(intel["card_signal_score"]))
+
+    def test_trending_ranks_by_demand_not_score(self) -> None:
+        snaps = [
+            _card_snap(cs_card_id="c-high-score", player_name="HighScore", score=90, demand=40, momentum=10),
+            _card_snap(cs_card_id="c-high-demand", player_name="HighDemand", score=60, demand=88, momentum=10),
+        ]
+        sections = build_homepage_card_sections(snaps)
+        self.assertEqual(sections["trending_cards"][0]["player_name"], "HighDemand")
+        self.assertEqual(sections["most_chased"][0]["player_name"], "HighDemand")
+
+    def test_buy_low_keeps_existing_buy_filter(self) -> None:
+        snaps = [
+            _card_snap(cs_card_id="c-buy", player_name="Buyer", score=72, demand=80, momentum=5, recommendation="BUY"),
+            _card_snap(cs_card_id="c-hold", player_name="Holder", score=40, demand=20, momentum=90, recommendation="HOLD"),
+        ]
+        sections = build_homepage_card_sections(snaps)
+        self.assertEqual([row["player_name"] for row in sections["buy_low_watch"]], ["Buyer"])
+        self.assertEqual(sections["buy_low_watch"][0]["recommendation"], "BUY")
+
+    def test_biggest_movers_empty_without_historical_baseline(self) -> None:
+        snaps = [
+            _card_snap(cs_card_id="c1", player_name="Alpha", score=82, demand=88, momentum=40, recommendation="BUY", avg_price=55),
+            _card_snap(cs_card_id="c2", player_name="Beta", score=70, demand=60, momentum=95, recommendation="HOLD", avg_price=5114.40),
+        ]
+        sections = build_homepage_card_sections(snaps)
+        self.assertEqual(sections["biggest_movers"], [])
+        for row in sections["trending_cards"] + sections["buy_low_watch"] + sections["most_chased"]:
+            self.assertIsNone(row["movement"])
+            self.assertNotEqual(row["movement"], row["demand_score"])
+            self.assertNotEqual(row["movement"], row["momentum_score"])
+
+    def test_biggest_movers_does_not_rank_avg_price_over_100(self) -> None:
+        expensive = _card_snap(
+            cs_card_id="c-ohtani",
+            player_name="Shohei Ohtani",
+            score=96,
+            demand=92,
+            momentum=51.14,
+            avg_price=5114.40,
+        )
+        sections = build_homepage_card_sections([expensive])
+        self.assertEqual(sections["biggest_movers"], [])
+
+    def test_biggest_movers_uses_calculated_historical_pct(self) -> None:
+        snaps = [
+            _card_snap(cs_card_id="c1", player_name="Alpha", score=82, demand=88, momentum=40, recommendation="BUY"),
+            _card_snap(cs_card_id="c2", player_name="Beta", score=70, demand=60, momentum=95),
+        ]
+        pending = CardMarketMovement(
+            cs_player_id="mlb:Alpha",
+            cs_card_id="c1",
+            query_name="broad",
+            run_id="run-1",
+            league="MLB",
+            year=2026,
+            week_number=28,
+            status="pending",
+            price_change_pct=None,
+        )
+        calculated = CardMarketMovement(
+            cs_player_id="mlb:Beta",
+            cs_card_id="c2",
+            query_name="broad",
+            run_id="run-1",
+            league="MLB",
+            year=2026,
+            week_number=28,
+            status="calculated",
+            price_change_pct=12.34,
+        )
+        sections = build_homepage_card_sections(snaps, market_movements=[pending, calculated])
+        self.assertEqual(len(sections["biggest_movers"]), 1)
+        mover = sections["biggest_movers"][0]
+        self.assertEqual(mover["player_name"], "Beta")
+        self.assertEqual(mover["movement"], 12.34)
+        self.assertTrue(mover["movement_is_historical"])
+        self.assertEqual(mover["movement_status"], "calculated")
+        self.assertEqual(mover["movement_type"], "price_change_pct")
+        self.assertNotEqual(mover["movement"], mover["momentum_score"])
 
 
 class ApiPayloadFallbackTests(unittest.TestCase):

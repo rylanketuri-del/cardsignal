@@ -301,13 +301,14 @@ function signalOfWeekToEntry(signal = {}) {
 function weeklyCardRowToIntelItem(row = {}) {
   const label = row.card_label || 'Card';
   const player = row.player_name || 'Player';
-  const movementValue = row.movement != null ? row.movement
-    : (row.momentum_score != null ? row.momentum_score : row.demand_score);
+  const rawPrice = row.evidence?.avg_price;
   return {
     name: `${player} · ${label}`,
-    price: row.evidence?.avg_price ?? null,
-    movement: movementValue != null ? `${movementValue > 0 ? '+' : ''}${Number(movementValue).toFixed(1)}%` : '—',
-    score: row.score != null ? Number(row.score).toFixed(1) : '—',
+    price: rawPrice ?? null,
+    priceLabel: WeeklyConvergence.formatAvgListingPrice(rawPrice),
+    movement: WeeklyConvergence.formatCardRowMovement(row),
+    score: WeeklyConvergence.formatCardSignalScore(row.score),
+    scoreLabel: WeeklyConvergence.CARD_SCORE_LABEL,
   };
 }
 
@@ -664,10 +665,10 @@ function buildForecastReasons(entry, intel) {
 
 const SECTION_DESCRIPTIONS = {
   leaders: "The strongest collector signals across tracked players this week.",
-  trending: "Cards gaining the most attention across the market.",
+  trending: "Cards showing the strongest current market activity.",
   movers: "The sharpest weekly price and demand movement.",
-  buyLow: "Potential value spots before the broader market reacts.",
-  chased: "The cards and players collectors are chasing hardest.",
+  buyLow: "Cards meeting CardSignal's current BUY criteria.",
+  chased: "Card categories with the strongest premium-market concentration.",
 };
 
 /* Signal Center — unified intelligence row (player report) */
@@ -696,6 +697,7 @@ function parseMovementPercent(movement = "") {
 }
 
 function movementClass(movement = "") {
+  if (!movement || movement === "—") return "metric-flat";
   const n = parseMovementPercent(movement);
   if (n > 0.01) return "metric-up";
   if (n < -0.01) return "metric-down";
@@ -705,6 +707,9 @@ function movementClass(movement = "") {
 /* Landing page — Quick Intelligence grid row */
 function renderCardIntelRow(item) {
   const moveClass = movementClass(item.movement);
+  const priceLabel = item.priceLabel || WeeklyConvergence.formatAvgListingPrice(item.price);
+  const scoreLabel = item.scoreLabel || WeeklyConvergence.CARD_SCORE_LABEL;
+  const score = item.score ?? "—";
 
   return `
     <div class="qi-row">
@@ -712,9 +717,12 @@ function renderCardIntelRow(item) {
       <div class="qi-row-body">
         <span class="qi-row-name">${item.name}</span>
         <div class="qi-row-metrics">
-          <span class="qi-price">${csIntelFormatMoney(item.price)}</span>
+          <span class="qi-price">${priceLabel}</span>
           <span class="qi-move ${moveClass}">${item.movement}</span>
-          <span class="qi-score-pill">${item.score ?? "—"}</span>
+          <span class="qi-score-pill" title="CardSignal">
+            <span class="qi-score-pill-kicker">${scoreLabel}</span>
+            <span class="qi-score-pill-value">${score}</span>
+          </span>
         </div>
       </div>
     </div>
@@ -768,7 +776,12 @@ function renderCardSection(entries = [], cardIntel = null, weeklyPayload = weekl
     root.innerHTML = boxes.map((box) => {
       const rows = (stored[box.key] || []).map(weeklyCardRowToIntelItem);
       if (!rows.length) {
-        return renderCardIntelPendingBox({ ...box, pendingCopy });
+        const emptyCopy = box.key === "biggest_movers" && !WeeklyConvergence.cardSectionsAreEmpty(stored)
+          ? (typeof WeeklyMovement !== "undefined" && WeeklyMovement.WM_MOVEMENT_NOTE
+            ? WeeklyMovement.WM_MOVEMENT_NOTE
+            : WeeklyConvergence.CARD_INTEL_MOVEMENT_PENDING)
+          : pendingCopy;
+        return renderCardIntelPendingBox({ ...box, pendingCopy: emptyCopy });
       }
       return renderCardIntelBox({ ...box, items: rows });
     }).join("");
@@ -3491,6 +3504,8 @@ async function init() {
 
 if (typeof module !== "undefined" && module.exports) {
   module.exports = {
+    weeklyCardRowToIntelItem,
+    renderCardIntelRow,
     renderScoutingReport,
     renderPlayerSnapshot,
     renderPlayerHeadshot,
