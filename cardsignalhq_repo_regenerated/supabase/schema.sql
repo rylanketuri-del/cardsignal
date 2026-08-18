@@ -35,6 +35,7 @@ create table if not exists public.leaderboard_entries (
   reasons jsonb not null default '[]'::jsonb,
   stats_7d jsonb not null,
   stats_30d jsonb not null,
+  stats_season jsonb not null default '{}'::jsonb,
   market_snapshots jsonb not null
 );
 

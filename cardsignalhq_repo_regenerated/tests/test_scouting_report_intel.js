@@ -39,4 +39,46 @@ assert.strictEqual(intel.score, 72);
 assert.strictEqual(intel.mappedDrivers.length, 1);
 assert.strictEqual(intel.capabilities.recent_form, "SUPPORTED");
 assert.ok(!intel.isNfl);
+assert.strictEqual(intel.statsSeason, null);
+console.log("  ok normalized MLB payload maps without inventing season stats");
+
+const seasonIntel = srIntelFromNormalized(
+  {
+    ...payload,
+    season_performance: [
+      { metric: "ops", value: 0.902, label: "OPS (Season)" },
+      { metric: "games", value: 123, label: "Games (Season)" },
+    ],
+    league_evidence: {
+      stats_season: { games: 123, avg: 0.255, home_runs: 16, rbi: 61, ops: 0.807 },
+    },
+  },
+  {
+    player_name: "Test Player",
+    stats_30d: { games: 27, avg: 0.321, home_runs: 7, rbi: 20, ops: 0.902 },
+    stats_season: { games: 123, avg: 0.255, home_runs: 16, rbi: 61, ops: 0.807 },
+  }
+);
+assert.strictEqual(seasonIntel.statsSeason.games, 123);
+assert.strictEqual(seasonIntel.stats30d.games, 27);
+assert.notStrictEqual(seasonIntel.statsSeason.games, seasonIntel.stats30d.games);
+console.log("  ok MLB statsSeason comes from stats_season, not stats_30d");
+
+const noFallback = srIntelFromNormalized(
+  {
+    ...payload,
+    season_performance: [
+      { metric: "ops", value: 0.902, label: "OPS (30-Day Window)" },
+      { metric: "home_runs", value: 7, label: "Home Runs (30-Day Window)" },
+    ],
+  },
+  {
+    player_name: "Test Player",
+    stats_30d: { games: 27, avg: 0.321, home_runs: 7, rbi: 20, ops: 0.902 },
+  }
+);
+assert.strictEqual(noFallback.statsSeason, null);
+assert.strictEqual(noFallback.stats30d.games, 27);
+console.log("  ok missing stats_season does not fall back to stats_30d");
+
 console.log("passed");

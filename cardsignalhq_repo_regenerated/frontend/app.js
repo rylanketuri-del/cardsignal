@@ -1343,6 +1343,7 @@ function buildStoredPlayerIntel(entry = {}, weeklySnap = null, normalizedPayload
     capturedAt: weeklySnap?.captured_at || entry.generated_at || weeklyIntelligence?.run?.completed_at,
     stats7d: nbaReport?.recentStats || nflReport?.recentStats || entry.stats_7d || snapEvidence.nba_recent_stats || snapEvidence.nfl_recent_stats || null,
     stats30d: nbaReport?.seasonStats || nflReport?.seasonStats || entry.stats_30d || snapEvidence.nba_season_stats || snapEvidence.nfl_season_stats || null,
+    statsSeason: (!isNfl && !isNba) ? (SRIntel.srHasGames(entry.stats_season) ? entry.stats_season : (SRIntel.srHasGames(snapEvidence.stats_season) ? snapEvidence.stats_season : null)) : null,
     marketSnapshots: entry.market_snapshots || snapEvidence.market_snapshots || {},
     isNfl,
     isNba,
@@ -1380,10 +1381,14 @@ function renderSnapshotStat(label, value, { title = "" } = {}) {
 function renderPlayerSnapshot(intel, entry = {}) {
   const stats7d = intel.stats7d;
   const stats30d = intel.stats30d;
+  const statsSeason = intel.statsSeason;
   const previousSeason = intel.previousSeasonStats;
   const isOffseason = intel.seasonPhase === "OFFSEASON" || intel.nflSeasonPhase === "OFFSEASON" || intel.nba?.nbaSeasonPhase === "OFFSEASON";
+  const isMlb = Boolean(intel.isMlb) && !intel.isNfl && !intel.isNba;
   const has7d = hasPerformanceStats(stats7d) || (stats7d && Object.keys(stats7d).length > 1);
-  const hasSeason = hasPerformanceStats(stats30d) || (stats30d && Object.keys(stats30d).length > 1);
+  const hasNflNbaSeason = hasPerformanceStats(stats30d) || (stats30d && Object.keys(stats30d).length > 1);
+  const hasMlbSeason = hasPerformanceStats(statsSeason);
+  const hasSeason = isMlb ? hasMlbSeason : hasNflNbaSeason;
   const hasPreviousSeason = previousSeason && Object.keys(previousSeason).length > 0;
   const formatters = srMetricFormatters();
   const position = entry.position || piModalEntry?.position || '';
@@ -1421,9 +1426,12 @@ function renderPlayerSnapshot(intel, entry = {}) {
     seasonTitle = `${label} Season Performance`;
   }
 
-  const seasonStatsSource = isOffseason && hasPreviousSeason ? previousSeason : stats30d;
+  const seasonStatsSource = isOffseason && hasPreviousSeason ? previousSeason : (isMlb ? statsSeason : stats30d);
   const hasSeasonPanel = isOffseason ? (hasPreviousSeason || !!intel.previousSeasonLabel) : hasSeason;
   const offseasonUnavailable = isOffseason && !hasPreviousSeason;
+  const seasonUnavailableCopy = isMlb
+    ? "Full-season stats unavailable"
+    : "Performance data pending.";
 
   const last7Body = has7d
     ? `
@@ -1445,7 +1453,7 @@ function renderPlayerSnapshot(intel, entry = {}) {
     return renderSnapshotStat(stat.label, stat.display, { title: stat.title });
   }).join("")}
       </div>`
-    : `<p class="sr-pending">Performance data pending.</p>`;
+    : `<p class="sr-pending">${seasonUnavailableCopy}</p>`;
 
   const showRecent = (!intel.isNfl && !intel.isNba && !isOffseason) || (nfl && nfl.showRecentPanel) || (nba && nba.showRecentPanel) || (intel.showRecentPanel && !isOffseason);
 
@@ -3495,6 +3503,8 @@ async function init() {
 if (typeof module !== "undefined" && module.exports) {
   module.exports = {
     renderScoutingReport,
+    renderPlayerSnapshot,
+    buildStoredPlayerIntel,
     buildPlayerIntel,
     loadScoutingReportModel,
     hasStoredPipelineReportData,

@@ -100,38 +100,93 @@ def build_mlb_recent_evidence(
 
 
 def build_mlb_season_evidence(
-    stats_30d: RollingHitterStats,
+    stats_season: RollingHitterStats | None,
     *,
     period_start: str | None = None,
     period_end: str | None = None,
 ) -> list[NormalizedPerformanceEvidence]:
-    """Structured season-window evidence for MLB (30-day rolling window)."""
-    if stats_30d.games == 0:
+    """Structured full-season evidence for MLB (unfiltered season gamelog)."""
+    if not stats_season or stats_season.games == 0:
         return []
 
-    quality = _quality_from_games(stats_30d.games)
+    quality = _quality_from_games(stats_season.games)
     return [
         NormalizedPerformanceEvidence(
-            metric="ops",
-            label="OPS (30-Day Window)",
-            value=round(stats_30d.ops, 3),
-            period_type="LAST_30_DAYS",
+            metric="avg",
+            label="AVG (Season)",
+            value=round(stats_season.avg, 3),
+            period_type="REGULAR_SEASON",
             period_start=period_start,
             period_end=period_end,
             impact="neutral",
             quality=quality,
-            source_reference="mlb_stats_api:rolling_30d",
+            source_reference="mlb_stats_api:season",
         ),
         NormalizedPerformanceEvidence(
             metric="home_runs",
-            label="Home Runs (30-Day Window)",
-            value=stats_30d.home_runs,
-            period_type="LAST_30_DAYS",
+            label="Home Runs (Season)",
+            value=stats_season.home_runs,
+            period_type="REGULAR_SEASON",
             period_start=period_start,
             period_end=period_end,
-            impact="positive" if stats_30d.home_runs >= 4 else "neutral",
+            impact="positive" if stats_season.home_runs >= 15 else "neutral",
             quality=quality,
-            source_reference="mlb_stats_api:rolling_30d",
+            source_reference="mlb_stats_api:season",
+        ),
+        NormalizedPerformanceEvidence(
+            metric="rbi",
+            label="RBI (Season)",
+            value=stats_season.rbi,
+            period_type="REGULAR_SEASON",
+            period_start=period_start,
+            period_end=period_end,
+            impact="neutral",
+            quality=quality,
+            source_reference="mlb_stats_api:season",
+        ),
+        NormalizedPerformanceEvidence(
+            metric="ops",
+            label="OPS (Season)",
+            value=round(stats_season.ops, 3),
+            period_type="REGULAR_SEASON",
+            period_start=period_start,
+            period_end=period_end,
+            impact="neutral",
+            quality=quality,
+            source_reference="mlb_stats_api:season",
+        ),
+        NormalizedPerformanceEvidence(
+            metric="games",
+            label="Games (Season)",
+            value=stats_season.games,
+            period_type="REGULAR_SEASON",
+            period_start=period_start,
+            period_end=period_end,
+            impact="neutral",
+            quality=quality,
+            source_reference="mlb_stats_api:season",
+        ),
+        NormalizedPerformanceEvidence(
+            metric="obp",
+            label="OBP (Season)",
+            value=round(stats_season.obp, 3),
+            period_type="REGULAR_SEASON",
+            period_start=period_start,
+            period_end=period_end,
+            impact="neutral",
+            quality=quality,
+            source_reference="mlb_stats_api:season",
+        ),
+        NormalizedPerformanceEvidence(
+            metric="slg",
+            label="SLG (Season)",
+            value=round(stats_season.slg, 3),
+            period_type="REGULAR_SEASON",
+            period_start=period_start,
+            period_end=period_end,
+            impact="neutral",
+            quality=quality,
+            source_reference="mlb_stats_api:season",
         ),
     ]
 

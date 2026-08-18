@@ -41,7 +41,7 @@ from cardchase_ai.utils.reporting_period import (
     build_reporting_period,
     next_scheduled_refresh,
 )
-from cardchase_ai.utils.rolling import filter_last_n_days, summarize_hitter_window
+from cardchase_ai.utils.rolling import summarize_mlb_hitter_windows
 from cardchase_ai.weekly_scoring import (
     CARD_QUERY_LABELS,
     card_intelligence_from_snapshot,
@@ -136,8 +136,7 @@ def process_player_for_weekly(
     player_id = int(candidate["player_id"])
     try:
         gamelog = mlb_client.get_hitter_gamelog(player_id, settings.mlb_season)
-        stats_7d = summarize_hitter_window(filter_last_n_days(gamelog, 7))
-        stats_30d = summarize_hitter_window(filter_last_n_days(gamelog, 30))
+        stats_7d, stats_30d, stats_season = summarize_mlb_hitter_windows(gamelog)
 
         market_snapshots: dict[str, MarketSnapshot] = {}
         if market_enabled and ebay_client:
@@ -161,6 +160,7 @@ def process_player_for_weekly(
             player_id=player_id,
             stats_7d=stats_7d,
             stats_30d=stats_30d,
+            stats_season=stats_season,
             market_snapshots=market_snapshots,
             hotness=hotness,
             team=candidate.get("team") or "MLB",
@@ -218,7 +218,7 @@ def build_player_snapshot(
         period_end=period_end_str,
     )
     season_evidence = build_mlb_season_evidence(
-        output.stats_30d,
+        output.stats_season,
         period_start=period_start_str,
         period_end=period_end_str,
     )
@@ -244,6 +244,7 @@ def build_player_snapshot(
         "tag": hotness.tag,
         "recent_performance": [e.model_dump(mode="json") for e in recent_evidence],
         "season_performance": [e.model_dump(mode="json") for e in season_evidence],
+        "stats_season": output.stats_season.model_dump(mode="json") if output.stats_season else {},
         "signal_drivers": [d.model_dump(mode="json") for d in drivers],
         "performance_data_quality": perf_quality,
         "driver_data_quality": driver_quality,

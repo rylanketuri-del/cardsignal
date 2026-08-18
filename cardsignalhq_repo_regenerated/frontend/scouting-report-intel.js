@@ -25,10 +25,23 @@ function srStatsFromEvidence(evidenceList = []) {
   return stats;
 }
 
+function srHasGames(stats) {
+  return Boolean(stats && Number(stats.games) > 0);
+}
+
+function srMlbStatsSeason(entry = {}, payload = {}, leagueEvidence = {}) {
+  const candidates = [entry.stats_season, leagueEvidence.stats_season, payload.stats_season];
+  for (const candidate of candidates) {
+    if (srHasGames(candidate)) return candidate;
+  }
+  return null;
+}
+
 function srIntelFromNormalized(payload = {}, entry = {}) {
   const league = String(payload.league || entry.league || "MLB").toUpperCase();
   const isNfl = league === "NFL" || payload.sport === "FOOTBALL";
   const isNba = league === "NBA" || payload.sport === "BASKETBALL";
+  const isMlb = league === "MLB" && !isNfl && !isNba;
   const leagueEvidence = payload.league_evidence || {};
 
   const nflReport = isNfl
@@ -61,7 +74,8 @@ function srIntelFromNormalized(payload = {}, entry = {}) {
     algorithmVersion: payload.weekly_algorithm_version || payload.scoring_algorithm_version,
     capturedAt: payload.captured_at || payload.updated_at,
     stats7d: nflReport?.recentStats || nbaReport?.recentStats || recentStats || entry.stats_7d || leagueEvidence.nfl_recent_stats || leagueEvidence.nba_recent_stats || null,
-    stats30d: nflReport?.seasonStats || nbaReport?.seasonStats || seasonStats || entry.stats_30d || leagueEvidence.nfl_season_stats || leagueEvidence.nba_season_stats || null,
+    stats30d: nflReport?.seasonStats || nbaReport?.seasonStats || entry.stats_30d || leagueEvidence.nfl_season_stats || leagueEvidence.nba_season_stats || ((isNfl || isNba) ? seasonStats : null),
+    statsSeason: isMlb ? srMlbStatsSeason(entry, payload, leagueEvidence) : null,
     previousSeasonStats: previousSeasonStats.length ? previousSeasonStats : (nflReport?.previousSeasonStats || nbaReport?.previousSeasonStats || null),
     previousSeasonLabel: payload.previous_season_label || nflReport?.previousSeasonLabel || nbaReport?.previousSeasonLabel || null,
     previousSeasonHelperText: payload.previous_season_helper_text || nflReport?.previousSeasonHelperText || nbaReport?.previousSeasonHelperText || null,
@@ -74,7 +88,7 @@ function srIntelFromNormalized(payload = {}, entry = {}) {
     marketSnapshots: leagueEvidence.market_snapshots || entry.market_snapshots || {},
     isNfl,
     isNba,
-    isMlb: league === "MLB" && !isNfl && !isNba,
+    isMlb,
     nfl: nflReport,
     nba: nbaReport,
     nflSeasonPhase: payload.season_phase || nflReport?.nflSeasonPhase || null,
@@ -90,6 +104,8 @@ const SRIntel = {
   srIntelFromNormalized,
   srMapNormalizedDrivers,
   srStatsFromEvidence,
+  srHasGames,
+  srMlbStatsSeason,
 };
 
 if (typeof window !== "undefined") {

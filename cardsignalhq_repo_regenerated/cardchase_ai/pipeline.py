@@ -16,7 +16,7 @@ from cardchase_ai.models.schemas import HitterHotnessBreakdown, MarketSnapshot, 
 from cardchase_ai.score import build_hotness_breakdown
 from cardchase_ai.storage import SupabaseStorage
 from cardchase_ai.utils.normalize import summarize_market
-from cardchase_ai.utils.rolling import filter_last_n_days, summarize_hitter_window
+from cardchase_ai.utils.rolling import summarize_mlb_hitter_windows
 
 SEARCH_TEMPLATES = {
     "broad": "{player} baseball card",
@@ -45,6 +45,7 @@ class PlayerPipelineOutput(BaseModel):
     sport: str = "MLB"
     candidate_source: str = "dynamic"
     source_player_id: str | None = None
+    stats_season: RollingHitterStats | None = None
     nfl_season_phase: str | None = None
     nba_season_phase: str | None = None
 
@@ -137,9 +138,7 @@ def _build_outputs() -> list[PlayerPipelineOutput]:
 
         try:
             gamelog = mlb_client.get_hitter_gamelog(player_id, settings.mlb_season)
-
-            stats_7d = summarize_hitter_window(filter_last_n_days(gamelog, 7))
-            stats_30d = summarize_hitter_window(filter_last_n_days(gamelog, 30))
+            stats_7d, stats_30d, stats_season = summarize_mlb_hitter_windows(gamelog)
 
             market_snapshots: Dict[str, MarketSnapshot] = {}
 
@@ -164,6 +163,7 @@ def _build_outputs() -> list[PlayerPipelineOutput]:
                     player_id=player_id,
                     stats_7d=stats_7d,
                     stats_30d=stats_30d,
+                    stats_season=stats_season,
                     market_snapshots=market_snapshots,
                     hotness=hotness,
                     team=candidate.get("team") or "MLB",

@@ -58,3 +58,14 @@ def summarize_hitter_window(rows: Iterable[HitterGameLogRow]) -> RollingHitterSt
         slg=round(slg, 3),
         ops=round(ops, 3),
     )
+
+
+def summarize_mlb_hitter_windows(
+    rows: Iterable[HitterGameLogRow],
+) -> tuple[RollingHitterStats, RollingHitterStats, RollingHitterStats]:
+    """Return (stats_7d, stats_30d, stats_season) from one full-season gamelog."""
+    gamelog = list(rows)
+    stats_7d = summarize_hitter_window(filter_last_n_days(gamelog, 7))
+    stats_30d = summarize_hitter_window(filter_last_n_days(gamelog, 30))
+    stats_season = summarize_hitter_window(gamelog)
+    return stats_7d, stats_30d, stats_season

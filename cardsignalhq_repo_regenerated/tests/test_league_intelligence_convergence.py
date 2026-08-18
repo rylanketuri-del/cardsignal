@@ -96,10 +96,14 @@ class MlbConvergenceTests(unittest.TestCase):
         self.assertEqual(evidence[0].type, "PERFORMANCE")
 
     def test_structured_season_evidence(self):
-        stats_30d = RollingHitterStats(games=25, ops=0.850, home_runs=8)
-        evidence = build_mlb_season_evidence(stats_30d)
+        stats_season = RollingHitterStats(games=123, ops=0.807, home_runs=16, avg=0.255, rbi=61)
+        evidence = build_mlb_season_evidence(stats_season)
         self.assertTrue(evidence)
-        self.assertEqual(evidence[0].period_type, "LAST_30_DAYS")
+        self.assertEqual(evidence[0].period_type, "REGULAR_SEASON")
+        self.assertTrue(any(e.metric == "games" and e.value == 123 for e in evidence))
+        self.assertTrue(all(e.period_type == "REGULAR_SEASON" for e in evidence))
+        self.assertEqual(build_mlb_season_evidence(None), [])
+        self.assertEqual(build_mlb_season_evidence(RollingHitterStats()), [])
 
     def test_mlb_signal_drivers_serialize(self):
         stats_7d = RollingHitterStats(games=7, ops=1.100, home_runs=4, stolen_bases=3)
@@ -159,8 +163,9 @@ class SerializationTests(unittest.TestCase):
     def test_upstream_fields_not_dropped(self):
         stats_7d = RollingHitterStats(games=7, ops=0.950)
         stats_30d = RollingHitterStats(games=25, ops=0.820)
+        stats_season = RollingHitterStats(games=123, ops=0.807, home_runs=16)
         recent = [e.model_dump(mode="json") for e in build_mlb_recent_evidence(stats_7d, stats_30d)]
-        season = [e.model_dump(mode="json") for e in build_mlb_season_evidence(stats_30d)]
+        season = [e.model_dump(mode="json") for e in build_mlb_season_evidence(stats_season)]
         drivers = [d.model_dump(mode="json") for d in generate_mlb_signal_drivers(stats_7d=stats_7d, stats_30d=stats_30d)]
         snap = _base_snap(
             recent_performance=recent,

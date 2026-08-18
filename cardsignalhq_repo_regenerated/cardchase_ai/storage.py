@@ -11,6 +11,23 @@ class SupabaseError(RuntimeError):
     pass
 
 
+_LEADERBOARD_STATS_SELECT = (
+    "player_name,player_id,rank,performance_score,market_score,total_score,"
+    "confidence_multiplier,tag,reasons,stats_7d,stats_30d,stats_season,market_snapshots"
+)
+
+
+def _stats_season_payload(entry: dict[str, Any]) -> dict[str, Any]:
+    value = entry.get("stats_season")
+    if value is None:
+        return {}
+    if hasattr(value, "model_dump"):
+        return value.model_dump(mode="json")
+    if isinstance(value, dict):
+        return value
+    return {}
+
+
 @dataclass
 class SupabaseStorage:
     url: str
@@ -176,6 +193,7 @@ class SupabaseStorage:
                     "reasons": entry["hotness"]["reasons"],
                     "stats_7d": entry["stats_7d"],
                     "stats_30d": entry["stats_30d"],
+                    "stats_season": _stats_season_payload(entry),
                     "market_snapshots": entry["market_snapshots"],
                 }
             )
@@ -218,7 +236,7 @@ class SupabaseStorage:
         rows = self._get(
             "leaderboard_entries",
             {
-                "select": "player_name,player_id,rank,performance_score,market_score,total_score,confidence_multiplier,tag,reasons,stats_7d,stats_30d,market_snapshots",
+                "select": _LEADERBOARD_STATS_SELECT,
                 "run_id": f"eq.{run_id}",
                 "order": "rank.asc",
             },
@@ -232,6 +250,7 @@ class SupabaseStorage:
                     "rank": row["rank"],
                     "stats_7d": row["stats_7d"],
                     "stats_30d": row["stats_30d"],
+                    "stats_season": row.get("stats_season") or {},
                     "market_snapshots": row["market_snapshots"],
                     "hotness": {
                         "performance_score": float(row["performance_score"]),
@@ -261,7 +280,7 @@ class SupabaseStorage:
         rows = self._get(
             "leaderboard_entries",
             {
-                "select": "player_name,player_id,rank,performance_score,market_score,total_score,confidence_multiplier,tag,reasons,stats_7d,stats_30d,market_snapshots",
+                "select": _LEADERBOARD_STATS_SELECT,
                 "run_id": f"eq.{latest_run['id']}",
                 "player_id": f"eq.{player_id}",
                 "limit": "1",
@@ -275,6 +294,7 @@ class SupabaseStorage:
             "player_id": row.get("player_id"),
             "stats_7d": row["stats_7d"],
             "stats_30d": row["stats_30d"],
+            "stats_season": row.get("stats_season") or {},
             "market_snapshots": row["market_snapshots"],
             "hotness": {
                 "performance_score": float(row["performance_score"]),
@@ -292,7 +312,7 @@ class SupabaseStorage:
         rows = self._get(
             "leaderboard_entries",
             {
-                "select": "created_at,run_id,player_name,player_id,rank,performance_score,market_score,total_score,confidence_multiplier,tag,stats_7d,stats_30d",
+                "select": "created_at,run_id,player_name,player_id,rank,performance_score,market_score,total_score,confidence_multiplier,tag,stats_7d,stats_30d,stats_season",
                 "player_id": f"eq.{player_id}",
                 "order": "created_at.desc",
                 "limit": str(limit_runs),
@@ -312,6 +332,7 @@ class SupabaseStorage:
                 "tag": row["tag"],
                 "stats_7d": row["stats_7d"],
                 "stats_30d": row["stats_30d"],
+                "stats_season": row.get("stats_season") or {},
             }
             for row in rows
         ][::-1]

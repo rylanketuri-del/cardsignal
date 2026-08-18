@@ -25,7 +25,7 @@ global.capabilityStatusCopy = capabilityState.capabilityStatusCopy;
 global.deriveSupportedEvidenceQuality = capabilityState.deriveSupportedEvidenceQuality;
 global.getCapabilityState = capabilityState.getCapabilityState;
 
-const { renderScoutingReport } = require(path.join(__dirname, "..", "frontend", "app.js"));
+const { renderScoutingReport, renderPlayerSnapshot, buildStoredPlayerIntel } = require(path.join(__dirname, "..", "frontend", "app.js"));
 
 const mlbEntry = {
   player_id: "660271",
@@ -60,6 +60,7 @@ const mlbIntel = {
   capturedAt: "2026-08-17T12:00:00Z",
   stats7d: { games: 6, avg: 0.32, home_runs: 3, ops: 1.05, rbi: 8 },
   stats30d: { games: 22, avg: 0.29, home_runs: 8, ops: 0.89, rbi: 24 },
+  statsSeason: { games: 123, avg: 0.255, home_runs: 16, ops: 0.807, rbi: 61, obp: 0.346, slg: 0.407 },
   marketSnapshots: {},
   isNfl: false,
   isNba: false,
@@ -88,4 +89,58 @@ assert.ok(html.includes("Signal Analysis"), "expected Signal Analysis section");
 assert.ok(html.includes("CardSignal Outlook"), "expected Outlook section");
 
 console.log("  ok renderScoutingReport renders MLB player without throwing");
+
+function seasonPanelHtml(html) {
+  const match = String(html).match(/<h4 class="sr-panel-title">[^<]*Season Performance<\/h4>[\s\S]*?<\/article>/);
+  assert.ok(match, "expected Season Performance panel");
+  return match[0];
+}
+
+function last7PanelHtml(html) {
+  const match = String(html).match(/<h4 class="sr-panel-title">Last 7 Days<\/h4>[\s\S]*?<\/article>/);
+  assert.ok(match, "expected Last 7 Days panel");
+  return match[0];
+}
+
+const splitWindowsIntel = {
+  ...mlbIntel,
+  stats7d: { games: 7, avg: 0.32, home_runs: 3, ops: 1.05, rbi: 8 },
+  stats30d: { games: 27, avg: 0.321, home_runs: 7, ops: 0.902, rbi: 20 },
+  statsSeason: { games: 123, avg: 0.255, home_runs: 16, ops: 0.807, rbi: 61, obp: 0.346, slg: 0.407 },
+};
+
+const splitHtml = renderScoutingReport(mlbEntry, splitWindowsIntel);
+const seasonPanel = seasonPanelHtml(splitHtml);
+const last7Panel = last7PanelHtml(splitHtml);
+assert.ok(seasonPanel.includes(">123<"), "Season Performance must display full-season games");
+assert.ok(!seasonPanel.includes(">27<"), "Season Performance must not display rolling 30-day games");
+assert.ok(last7Panel.includes("Last 7 Days"), "Last 7 Days panel must remain");
+assert.ok(last7Panel.includes("0.320"), "Last 7 Days must still use 7-day AVG");
+console.log("  ok Season Performance displays 123 games, never 27");
+
+const missingSeasonIntel = {
+  ...mlbIntel,
+  stats7d: { games: 7, avg: 0.32, home_runs: 3, ops: 1.05, rbi: 8 },
+  stats30d: { games: 27, avg: 0.321, home_runs: 7, ops: 0.902, rbi: 20 },
+  statsSeason: null,
+};
+const missingHtml = renderPlayerSnapshot(missingSeasonIntel, mlbEntry);
+assert.ok(missingHtml.includes("Full-season stats unavailable"), "missing stats_season must be honest");
+assert.ok(!missingHtml.includes(">27<"), "missing stats_season must not fall back to stats_30d games");
+console.log("  ok missing stats_season shows unavailable instead of 30-day fallback");
+
+const storedIntel = buildStoredPlayerIntel({
+  ...mlbEntry,
+  stats_7d: splitWindowsIntel.stats7d,
+  stats_30d: splitWindowsIntel.stats30d,
+  stats_season: splitWindowsIntel.statsSeason,
+  hotness: { total_score: 72.4, performance_score: 68, market_score: 61, tag: "RISING" },
+});
+assert.strictEqual(storedIntel.statsSeason.games, 123);
+assert.strictEqual(storedIntel.stats30d.games, 27);
+const storedSeason = seasonPanelHtml(renderPlayerSnapshot(storedIntel, mlbEntry));
+assert.ok(storedSeason.includes(">123<"));
+assert.ok(!storedSeason.includes(">27<"));
+console.log("  ok stored leaderboard intel reads stats_season, not stats_30d");
+
 console.log("passed");

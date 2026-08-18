@@ -761,11 +761,13 @@ class TestMlbRegression(unittest.TestCase):
         )
         stats_7d = RollingHitterStats(games=7, at_bats=28, home_runs=3, ops=0.95, avg=0.310)
         stats_30d = RollingHitterStats(games=25, at_bats=95, home_runs=8, ops=0.880, avg=0.285)
+        stats_season = RollingHitterStats(games=123, at_bats=460, home_runs=16, rbi=61, ops=0.807, avg=0.255)
         output = PlayerPipelineOutput(
             player_name="MLB Star",
             player_id=101,
             stats_7d=stats_7d,
             stats_30d=stats_30d,
+            stats_season=stats_season,
             market_snapshots={"broad": MarketSnapshot(query_name="broad", listings_count=12, avg_price=30.0)},
             hotness=HitterHotnessBreakdown(
                 player_name="MLB Star",

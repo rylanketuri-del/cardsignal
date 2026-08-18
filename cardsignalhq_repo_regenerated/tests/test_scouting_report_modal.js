@@ -61,6 +61,13 @@ const jacLeaderboardEntry = {
     ops: 0.878,
     rbi: 23,
   },
+  stats_season: {
+    games: 117,
+    avg: 0.276,
+    home_runs: 22,
+    ops: 0.812,
+    rbi: 60,
+  },
   market_snapshots: {
     broad: { query_name: "broad", listings_count: 50, avg_price: 17.99 },
   },
@@ -103,6 +110,7 @@ function installFetchMock() {
         player_id: JAC_UUID,
         stats_7d: jacLeaderboardEntry.stats_7d,
         stats_30d: jacLeaderboardEntry.stats_30d,
+        stats_season: jacLeaderboardEntry.stats_season,
         market_snapshots: jacLeaderboardEntry.market_snapshots,
         hotness: jacLeaderboardEntry.hotness,
         data_source: "supabase",
@@ -173,6 +181,50 @@ async function run() {
     assert.ok(html.includes("sr-report"));
     assert.ok(html.includes("Player Snapshot"));
     assert.ok(html.includes("Card intelligence pending") || html.includes("Cards"));
+  });
+
+  await test("Season Performance uses stats_season games, not stats_30d", async () => {
+    installFetchMock();
+    const model = await loadScoutingReportModel(jacLeaderboardEntry);
+    const html = renderScoutingReport(model.player, model.intel, [], null);
+    const season = String(html).match(/<h4 class="sr-panel-title">[^<]*Season Performance<\/h4>[\s\S]*?<\/article>/);
+    assert.ok(season, "expected Season Performance panel");
+    assert.ok(season[0].includes(">117<"), "expected full-season games");
+    assert.ok(!season[0].includes(">25<"), "must not display rolling 30-day games as season");
+  });
+
+  await test("missing stats_season is unavailable rather than 30-day fallback", async () => {
+    const legacyEntry = { ...jacLeaderboardEntry };
+    delete legacyEntry.stats_season;
+    const calls = [];
+    global.fetch = async (url) => {
+      const href = String(url);
+      calls.push(href);
+      if (href.includes("/api/players/search")) {
+        return jsonResponse(200, [{ player_id: Number(JAC_MLB_ID), player_name: "Jac Caglianone", sport: "MLB" }]);
+      }
+      if (href.includes("/intelligence") || href.includes("/signals/weekly")) {
+        return jsonResponse(href.includes("/intelligence") ? 404 : 200, href.includes("/intelligence") ? { detail: "No stored intelligence found" } : { items: [] });
+      }
+      if (href.includes(`/api/players/${JAC_UUID}`)) {
+        return jsonResponse(200, {
+          player_name: "Jac Caglianone",
+          player_id: JAC_UUID,
+          stats_7d: jacLeaderboardEntry.stats_7d,
+          stats_30d: jacLeaderboardEntry.stats_30d,
+          market_snapshots: jacLeaderboardEntry.market_snapshots,
+          hotness: jacLeaderboardEntry.hotness,
+          data_source: "supabase",
+        });
+      }
+      return jsonResponse(404, { detail: "not found" });
+    };
+    const model = await loadScoutingReportModel(legacyEntry);
+    const html = renderScoutingReport(model.player, model.intel, [], null);
+    const season = String(html).match(/<h4 class="sr-panel-title">[^<]*Season Performance<\/h4>[\s\S]*?<\/article>/);
+    assert.ok(season, "expected Season Performance panel");
+    assert.ok(season[0].includes("Full-season stats unavailable"));
+    assert.ok(!season[0].includes(">25<"));
   });
 
   await test("truly empty player still surfaces unavailable", async () => {
