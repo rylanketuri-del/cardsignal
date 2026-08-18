@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
+import inspect
 import json
 import tempfile
 import unittest
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 from zoneinfo import ZoneInfo
 
-from cardchase_ai.models.schemas import HitterHotnessBreakdown, MarketSnapshot, RollingHitterStats
+from cardchase_ai.models.schemas import HitterGameLogRow, HitterHotnessBreakdown, MarketSnapshot, RollingHitterStats
 from cardchase_ai.models.weekly import (
     WEEKLY_INTELLIGENCE_V1,
     PlayerWeeklySignalSnapshot,
@@ -26,7 +27,8 @@ from cardchase_ai.utils.reporting_period import (
 from cardchase_ai.league_evidence import has_sufficient_evidence
 from cardchase_ai.weekly_scoring import compute_weekly_change
 from cardchase_ai.weekly_storage import WeeklyJsonStorage, WeeklyStorage
-from cardchase_ai.weekly_intelligence import run_weekly_intelligence
+from cardchase_ai.clients.ebay import has_usable_ebay_credentials
+from cardchase_ai.weekly_intelligence import _weekly_ebay_client, run_weekly_intelligence
 
 
 class ReportingPeriodTests(unittest.TestCase):
@@ -621,6 +623,196 @@ class GetEndpointReadOnlyTests(unittest.TestCase):
                 payload = build_latest_weekly_api_payload("MLB", storage, settings)
                 mock_mlb.assert_not_called()
             self.assertIn("next_refresh", payload)
+
+
+def _weekly_test_settings(tmp: str, **overrides):
+    from cardchase_ai.config import Settings
+
+    values = dict(
+        ebay_token="",
+        ebay_client_id="",
+        ebay_client_secret="",
+        ebay_marketplace_id="EBAY_US",
+        tracked_players=[],
+        output_dir=Path(tmp),
+        mlb_season=2026,
+        supabase_url="",
+        supabase_service_role_key="",
+        supabase_anon_key="",
+        pipeline_trigger_token="",
+        alert_webhook_url="",
+        alert_webhook_bearer_token="",
+        alert_from_email="",
+        alert_sender_name="",
+        app_base_url="",
+        resend_api_key="",
+        alert_cooldown_hours=12,
+        daily_digest_cooldown_hours=20,
+        notification_limit=50,
+        admin_api_token="",
+        weekly_player_limit=100,
+        weekly_card_limit_per_player=4,
+        weekly_market_enabled=True,
+        weekly_population_enabled=False,
+        weekly_timezone="America/New_York",
+        weekly_refresh_day=1,
+        weekly_refresh_hour=6,
+        nfl_season=2025,
+        nfl_player_limit=100,
+        nfl_enabled=False,
+        nba_season=2025,
+        nba_player_limit=100,
+        nba_enabled=False,
+    )
+    values.update(overrides)
+    return Settings(**values)
+
+
+def _weekly_gamelog() -> list[HitterGameLogRow]:
+    end = date(2026, 8, 17)
+    return [
+        HitterGameLogRow(
+            date=(end - timedelta(days=offset)).isoformat(),
+            at_bats=4,
+            hits=2,
+            home_runs=1,
+            rbi=2,
+        )
+        for offset in range(10)
+    ]
+
+
+class EbayCredentialDetectionTests(unittest.TestCase):
+    def test_token_or_oauth_pair_is_usable(self):
+        self.assertTrue(has_usable_ebay_credentials(token="tok"))
+        self.assertTrue(has_usable_ebay_credentials(token="", client_id="id", client_secret="secret"))
+        self.assertFalse(has_usable_ebay_credentials(token="", client_id="id", client_secret=""))
+        self.assertFalse(has_usable_ebay_credentials(token="", client_id="", client_secret="secret"))
+        self.assertFalse(has_usable_ebay_credentials(token="", client_id="", client_secret=""))
+        self.assertFalse(has_usable_ebay_credentials(token="  ", client_id="  ", client_secret="  "))
+
+    def test_weekly_client_uses_oauth_when_token_missing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = _weekly_test_settings(tmp, ebay_client_id="client-id", ebay_client_secret="client-secret")
+            run = MagicMock()
+            run.warnings = []
+            client, enabled = _weekly_ebay_client(settings, run, True)
+            self.assertTrue(enabled)
+            self.assertIsNotNone(client)
+            self.assertEqual(client.client_id, "client-id")
+            self.assertEqual(client.client_secret, "client-secret")
+            self.assertFalse(run.warnings)
+
+    def test_weekly_client_disabled_without_any_credentials(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = _weekly_test_settings(tmp)
+            run = MagicMock()
+            run.warnings = []
+            client, enabled = _weekly_ebay_client(settings, run, True)
+            self.assertFalse(enabled)
+            self.assertIsNone(client)
+            self.assertTrue(run.warnings)
+            self.assertNotIn("client-secret", " ".join(run.warnings))
+
+
+class WeeklyMarketCredentialRunTests(unittest.TestCase):
+    def _run_mlb(self, tmp: str, settings, *, ebay_client=None):
+        storage = WeeklyStorage(None, WeeklyJsonStorage(Path(tmp)))
+        mlb = MagicMock()
+        mlb.get_hitter_gamelog.return_value = _weekly_gamelog()
+        with (
+            patch("cardchase_ai.weekly_intelligence._build_market_universe") as mock_universe,
+            patch("cardchase_ai.weekly_intelligence.MLBClient", return_value=mlb),
+            patch("cardchase_ai.weekly_intelligence.EbayClient") as mock_ebay_cls,
+            patch("cardchase_ai.storage.SupabaseStorage.persist_leaderboard") as persist_lb,
+        ):
+            mock_universe.return_value = [
+                {
+                    "player_id": 608324,
+                    "player_name": "Alex Bregman",
+                    "team": "HOU",
+                    "position": "3B",
+                    "headshot_url": "https://img.mlbstatic.com/mlb-photos/image/upload/w_213,q_100/v1/people/608324/headshot/67/current",
+                    "candidate_source": "dynamic",
+                }
+            ]
+            if ebay_client is not None:
+                mock_ebay_cls.return_value = ebay_client
+            summary = run_weekly_intelligence(
+                league="MLB",
+                force=True,
+                triggered_by="test",
+                player_limit=1,
+                market_enabled=True,
+                settings=settings,
+                storage=storage,
+            )
+        return summary, mock_ebay_cls, persist_lb, storage
+
+    def test_no_ebay_credentials_leaves_market_and_cardsignal_null(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = _weekly_test_settings(tmp)
+            summary, mock_ebay_cls, persist_lb, _storage = self._run_mlb(tmp, settings)
+            self.assertIn(summary.run.status, {"COMPLETED", "PARTIAL"})
+            self.assertEqual(summary.run.players_processed, 1)
+            self.assertEqual(summary.run.cards_processed, 0)
+            self.assertEqual(summary.run.market_snapshots_created, 0)
+            mock_ebay_cls.assert_not_called()
+            persist_lb.assert_not_called()
+            import cardchase_ai.weekly_intelligence as wi
+
+            self.assertNotIn("persist_leaderboard", inspect.getsource(wi._execute_weekly_pipeline))
+            payload = json.loads((Path(tmp) / "weekly" / "runs" / f"{summary.run.run_id}.json").read_text())
+            player = payload["player_snapshots"][0]
+            self.assertIsNotNone(player["performance_score"])
+            self.assertGreater(player["performance_score"], 0)
+            self.assertIsNone(player["market_score"])
+            self.assertIsNone(player["card_signal_score"])
+            self.assertEqual(player["evidence"]["stats_season"]["games"], 10)
+            self.assertIn("608324", player["headshot_url"])
+            self.assertTrue(any("credentials missing" in w for w in summary.run.warnings))
+
+    def test_oauth_client_id_secret_enables_market_and_cards(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = _weekly_test_settings(
+                tmp,
+                ebay_token="",
+                ebay_client_id="ebay-client-id",
+                ebay_client_secret="ebay-client-secret",
+            )
+            ebay_client = MagicMock()
+            ebay_client.search_items.return_value = {"itemSummaries": []}
+            ebay_client.parse_listings.return_value = [
+                {
+                    "item_id": "1",
+                    "title": "Alex Bregman Bowman Chrome rookie",
+                    "price": 42.0,
+                    "currency": "USD",
+                    "condition": "New",
+                    "created_at": None,
+                    "item_web_url": "",
+                    "tags": [],
+                }
+            ]
+            summary, mock_ebay_cls, persist_lb, _storage = self._run_mlb(tmp, settings, ebay_client=ebay_client)
+            self.assertIn(summary.run.status, {"COMPLETED", "PARTIAL"})
+            mock_ebay_cls.assert_called()
+            kwargs = mock_ebay_cls.call_args.kwargs
+            self.assertEqual(kwargs.get("client_id"), "ebay-client-id")
+            self.assertEqual(kwargs.get("client_secret"), "ebay-client-secret")
+            self.assertTrue(ebay_client.search_items.called)
+            self.assertGreater(summary.run.market_snapshots_created, 0)
+            self.assertGreater(summary.run.cards_processed, 0)
+            persist_lb.assert_not_called()
+            payload = json.loads((Path(tmp) / "weekly" / "runs" / f"{summary.run.run_id}.json").read_text())
+            player = payload["player_snapshots"][0]
+            self.assertIsNotNone(player["performance_score"])
+            self.assertIsNotNone(player["market_score"])
+            self.assertIsNotNone(player["card_signal_score"])
+            self.assertGreater(len(payload["card_snapshots"]), 0)
+            warning_blob = " ".join(summary.run.warnings + summary.run.errors)
+            self.assertNotIn("ebay-client-secret", warning_blob)
+            self.assertNotIn("ebay-client-id", warning_blob)
 
 
 if __name__ == "__main__":

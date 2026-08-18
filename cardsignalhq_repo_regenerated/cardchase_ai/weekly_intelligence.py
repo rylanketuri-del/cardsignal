@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Callable
 
-from cardchase_ai.clients.ebay import EbayClient
+from cardchase_ai.clients.ebay import EbayClient, has_usable_ebay_credentials
 from cardchase_ai.clients.mlb import MLBClient
 from cardchase_ai.config import Settings, get_settings
 from cardchase_ai.models.schemas import MarketSnapshot
@@ -26,8 +26,6 @@ from cardchase_ai.pipeline import (
     SEARCH_TEMPLATES,
     PlayerPipelineOutput,
     _build_market_universe,
-    _process_alerts,
-    _write_outputs,
 )
 from cardchase_ai.market_movement import MarketSnapshotHistory
 from cardchase_ai.models.market_movement import CardMarketMovement
@@ -114,6 +112,36 @@ def _record_stage(
 
 def _stage_log(stages: list[dict[str, Any]], name: str, status: str, detail: str = "") -> None:
     stages.append({"stage": name, "status": status, "detail": detail, "at": _utcnow().isoformat()})
+
+
+def _weekly_ebay_client(
+    settings: Settings,
+    run: WeeklyIntelligenceRun,
+    market_enabled: bool,
+) -> tuple[EbayClient | None, bool]:
+    """Build an EbayClient when weekly market is on and usable credentials exist.
+
+    Usable credentials are a static token OR client-id + client-secret OAuth.
+    Never log credential values.
+    """
+    if not market_enabled:
+        return None, False
+    if has_usable_ebay_credentials(
+        token=settings.ebay_token,
+        client_id=settings.ebay_client_id,
+        client_secret=settings.ebay_client_secret,
+    ):
+        return (
+            EbayClient(
+                token=settings.ebay_token or None,
+                marketplace_id=settings.ebay_marketplace_id,
+                client_id=settings.ebay_client_id or None,
+                client_secret=settings.ebay_client_secret or None,
+            ),
+            True,
+        )
+    run.warnings.append("Market enabled but eBay credentials missing; market snapshots skipped")
+    return None, False
 
 
 def build_weekly_storage(settings: Settings) -> WeeklyStorage:
@@ -463,37 +491,6 @@ def snapshots_to_leaderboard_entries(
     return [TodaysLeaderEntry.model_validate({k: v for k, v in row.items() if k in leader_fields}) for row in rows]
 
 
-def snapshots_to_legacy_leaderboard(snapshots: list[PlayerWeeklySignalSnapshot]) -> list[dict[str, Any]]:
-    """Convert weekly snapshots to legacy leaderboard format for compatibility."""
-    entries: list[dict[str, Any]] = []
-    for snap in sorted(snapshots, key=lambda s: s.rank or 999)[:20]:
-        entries.append(
-            {
-                "player_name": snap.player_name,
-                "player_id": int(snap.source_player_id) if snap.source_player_id.isdigit() else snap.source_player_id,
-                "rank": snap.rank,
-                "team": snap.team,
-                "position": snap.position,
-                "headshot_url": snap.headshot_url,
-                "team_logo_url": snap.team_logo_url,
-                "hotness": {
-                    "performance_score": snap.performance_score,
-                    "market_score": snap.market_score,
-                    "total_score": snap.card_signal_score,
-                    "momentum_score": snap.momentum_score,
-                    "collector_score": snap.collector_score,
-                    "confidence_multiplier": 1.0,
-                    "tag": snap.status or "WATCH",
-                    "reasons": snap.evidence.get("performance_reasons", []),
-                },
-                "weekly_change": snap.weekly_change,
-                "recommendation": snap.recommendation,
-                "conviction": snap.conviction,
-            }
-        )
-    return entries
-
-
 def _finalize_failed_run(
     run: WeeklyIntelligenceRun,
     storage: WeeklyStorage,
@@ -575,17 +572,7 @@ def _execute_weekly_pipeline(
         )
 
     mlb_client = MLBClient()
-    ebay_client = None
-    if market_enabled and settings.ebay_token:
-        ebay_client = EbayClient(
-            token=settings.ebay_token,
-            marketplace_id=settings.ebay_marketplace_id,
-            client_id=settings.ebay_client_id,
-            client_secret=settings.ebay_client_secret,
-        )
-    elif market_enabled:
-        run.warnings.append("Market enabled but eBay credentials missing; market snapshots skipped")
-        market_enabled = False
+    ebay_client, market_enabled = _weekly_ebay_client(settings, run, market_enabled)
 
     _record_stage(stages, outcomes, "player_universe", "COMPLETED", "building candidate universe")
     candidates = _build_market_universe(mlb_client, settings, scan_limit=player_limit)[:player_limit]
@@ -758,15 +745,8 @@ def _execute_weekly_pipeline(
     _record_stage(stages, outcomes, "homepage_payload", "COMPLETED", "homepage assembled")
 
     _record_stage(stages, outcomes, "persist", "COMPLETED", "persist started")
-    legacy_entries = snapshots_to_legacy_leaderboard(player_snapshots)
-    if legacy_entries:
-        file_path = _write_outputs(legacy_entries, settings.output_dir)
-        if storage.uses_supabase and storage.supabase:
-            try:
-                run_id = storage.supabase.persist_leaderboard(str(file_path), legacy_entries)
-                _process_alerts(storage.supabase, run_id, legacy_entries)
-            except Exception as error:
-                run.warnings.append(f"legacy leaderboard persist: {_sanitize_error(error, settings)}")
+    # Weekly official snapshots persist via persist_run_results only.
+    # Do not write weekly CardSignal/Market scores into daily leaderboard_entries.
 
     all_errors = player_errors + card_errors
     run.errors.extend(all_errors[:20])
@@ -805,17 +785,7 @@ def _execute_nfl_weekly_pipeline(
     provider = get_nfl_provider(settings)
     nfl_storage = build_nfl_storage(settings)
     perf_storage = build_performance_storage(settings)
-    ebay_client = None
-    if market_enabled and settings.ebay_token:
-        ebay_client = EbayClient(
-            token=settings.ebay_token,
-            marketplace_id=settings.ebay_marketplace_id,
-            client_id=settings.ebay_client_id,
-            client_secret=settings.ebay_client_secret,
-        )
-    elif market_enabled:
-        run.warnings.append("Market enabled but eBay credentials missing; market snapshots skipped")
-        market_enabled = False
+    ebay_client, market_enabled = _weekly_ebay_client(settings, run, market_enabled)
 
     _record_stage(stages, outcomes, "player_universe", "COMPLETED", "building NFL candidate universe")
     candidates = build_nfl_market_universe(
@@ -973,17 +943,7 @@ def _execute_nba_weekly_pipeline(
     provider = get_nba_provider(settings)
     nba_storage = build_nba_storage(settings)
     perf_storage = build_performance_storage(settings)
-    ebay_client = None
-    if market_enabled and settings.ebay_token:
-        ebay_client = EbayClient(
-            token=settings.ebay_token,
-            marketplace_id=settings.ebay_marketplace_id,
-            client_id=settings.ebay_client_id,
-            client_secret=settings.ebay_client_secret,
-        )
-    elif market_enabled:
-        run.warnings.append("Market enabled but eBay credentials missing; market snapshots skipped")
-        market_enabled = False
+    ebay_client, market_enabled = _weekly_ebay_client(settings, run, market_enabled)
 
     _record_stage(stages, outcomes, "player_universe", "COMPLETED", "building NBA candidate universe")
     candidates = build_nba_market_universe(

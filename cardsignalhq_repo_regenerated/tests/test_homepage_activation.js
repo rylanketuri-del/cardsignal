@@ -1,43 +1,23 @@
 #!/usr/bin/env node
 /**
- * Homepage activation helpers — mirrors app.js weekly leader mapping/filter rules.
+ * Homepage activation + daily/weekly score convergence.
  */
 const assert = require("assert");
+const fs = require("fs");
+const path = require("path");
 
-function weeklyLeaderToEntry(leader = {}) {
-  return {
-    player_id: leader.source_player_id || leader.cs_player_id,
-    cs_player_id: leader.cs_player_id,
-    source_player_id: leader.source_player_id,
-    player_name: leader.player_name,
-    rank: leader.rank,
-    league: leader.league,
-    sport: leader.sport,
-    weekly_change: leader.weekly_change,
-    recommendation: leader.recommendation,
-    card_signal_score: leader.score,
-    hotness: {
-      total_score: leader.score,
-      performance_score: leader.performance,
-      market_score: leader.market,
-    },
-  };
-}
+const WC = require(path.join(__dirname, "..", "frontend", "weekly-convergence.js"));
+const {
+  weeklyLeaderToEntry,
+  mergeAllSportLeaders,
+  convergeWeeklyLeadersWithDaily,
+  formatScore,
+  CARD_INTEL_AWAITING_REFRESH,
+  CARD_INTEL_MARKET_UNAVAILABLE,
+  cardIntelEmptyStateCopy,
+} = WC;
 
-function mergeAllSportLeaders(mlbLeaders = [], nflLeaders = [], nbaLeaders = []) {
-  const combined = [
-    ...mlbLeaders.map((e) => ({ ...weeklyLeaderToEntry(e), sport: "MLB", league: "MLB" })),
-    ...nflLeaders.map((e) => ({ ...weeklyLeaderToEntry(e), sport: "FOOTBALL", league: "NFL" })),
-    ...nbaLeaders.map((e) => ({ ...weeklyLeaderToEntry(e), sport: "BASKETBALL", league: "NBA" })),
-  ];
-  return combined
-    .filter((e) => e.card_signal_score != null || e.hotness?.total_score != null)
-    .sort((a, b) => {
-      const aScore = a.card_signal_score ?? a.hotness?.total_score ?? -1;
-      const bScore = b.card_signal_score ?? b.hotness?.total_score ?? -1;
-      return bScore - aScore;
-    });
-}
+const BREGMAN_HEADSHOT = "https://img.mlbstatic.com/mlb-photos/image/upload/w_213,q_100/v1/people/608324/headshot/67/current";
 
 function hasGenuineWeeklyIntelligence(payload = {}) {
   return Boolean(payload.run) && Array.isArray(payload.todays_leaders) && payload.todays_leaders.length > 0;
@@ -144,6 +124,116 @@ test("null score is not coerced to zero", () => {
   const entry = weeklyLeaderToEntry({ score: null, player_name: "No Score" });
   assert.strictEqual(entry.hotness.total_score, null);
   assert.strictEqual(entry.card_signal_score, null);
+  assert.strictEqual(formatScore(entry.hotness.total_score), "—");
+  assert.notStrictEqual(formatScore(entry.hotness.total_score), "0.0");
+});
+
+test("daily Bregman scores fill weekly null Signal/Market", () => {
+  const daily = [{
+    player_name: "Alex Bregman",
+    source_player_id: "608324",
+    headshot_url: BREGMAN_HEADSHOT,
+    stats_season: { games: 123, home_runs: 16 },
+    hotness: { total_score: 87.04, performance_score: 81.25, market_score: 95.73 },
+  }];
+  const weekly = [{
+    player_name: "Alex Bregman",
+    source_player_id: "608324",
+    headshot_url: BREGMAN_HEADSHOT,
+    score: null,
+    performance: 81.25,
+    market: null,
+    team: "HOU",
+    position: "3B",
+  }];
+  const merged = convergeWeeklyLeadersWithDaily(weekly, daily);
+  assert.strictEqual(merged.length, 1);
+  assert.strictEqual(merged[0].hotness.total_score, 87.04);
+  assert.strictEqual(merged[0].hotness.market_score, 95.73);
+  assert.strictEqual(merged[0].hotness.performance_score, 81.25);
+  assert.strictEqual(formatScore(merged[0].hotness.total_score), "87.0");
+  assert.strictEqual(formatScore(merged[0].hotness.market_score), "95.7");
+  assert.notStrictEqual(formatScore(merged[0].hotness.total_score), "0.0");
+  assert.notStrictEqual(formatScore(merged[0].hotness.market_score), "0.0");
+  assert.strictEqual(merged[0].headshot_url, BREGMAN_HEADSHOT);
+  assert.strictEqual(merged[0].stats_season.games, 123);
+  assert.strictEqual(merged[0].team, "HOU");
+  assert.strictEqual(merged[0].position, "3B");
+});
+
+test("weekly valid score replaces daily score when present", () => {
+  const daily = [{
+    player_name: "Alex Bregman",
+    source_player_id: "608324",
+    hotness: { total_score: 87.04, performance_score: 81.25, market_score: 95.73 },
+  }];
+  const weekly = [{
+    player_name: "Alex Bregman",
+    source_player_id: "608324",
+    score: 91.2,
+    performance: 82.0,
+    market: 88.5,
+  }];
+  const merged = convergeWeeklyLeadersWithDaily(weekly, daily);
+  assert.strictEqual(merged[0].hotness.total_score, 91.2);
+  assert.strictEqual(merged[0].hotness.market_score, 88.5);
+  assert.strictEqual(merged[0].hotness.performance_score, 82.0);
+});
+
+test("NFL/NBA weekly null scores stay null and render as em dash", () => {
+  const nfl = convergeWeeklyLeadersWithDaily([{
+    player_name: "Emanuel Wilson",
+    source_player_id: "123",
+    score: null,
+    performance: null,
+    market: null,
+  }], []);
+  assert.strictEqual(nfl[0].hotness.total_score, null);
+  assert.strictEqual(nfl[0].hotness.market_score, null);
+  assert.strictEqual(formatScore(nfl[0].hotness.total_score), "—");
+  const allView = mergeAllSportLeaders([], [{
+    player_name: "Emanuel Wilson",
+    source_player_id: "123",
+    score: null,
+    market: null,
+  }], []);
+  assert.strictEqual(allView.length, 0);
+});
+
+test("no weekly run uses awaiting-refresh card copy", () => {
+  assert.strictEqual(cardIntelEmptyStateCopy({}), CARD_INTEL_AWAITING_REFRESH);
+  assert.strictEqual(cardIntelEmptyStateCopy({ run: null, card_intelligence: null }), CARD_INTEL_AWAITING_REFRESH);
+});
+
+test("completed weekly run with empty card sections uses market-unavailable copy", () => {
+  const payload = {
+    run: { status: "COMPLETED", cards_processed: 0, market_snapshots_created: 0 },
+    card_intelligence: {
+      trending_cards: [],
+      biggest_movers: [],
+      buy_low_watch: [],
+      most_chased: [],
+    },
+  };
+  const copy = cardIntelEmptyStateCopy(payload);
+  assert.strictEqual(copy, CARD_INTEL_MARKET_UNAVAILABLE);
+  assert.ok(!copy.toLowerCase().includes("next weekly refresh"));
+});
+
+test("partial weekly run with empty card sections uses market-unavailable copy", () => {
+  const copy = cardIntelEmptyStateCopy({
+    run: { status: "PARTIAL" },
+    card_intelligence: { trending_cards: [], biggest_movers: [], buy_low_watch: [], most_chased: [] },
+  });
+  assert.strictEqual(copy, CARD_INTEL_MARKET_UNAVAILABLE);
+});
+
+test("app.js converges weekly leaders with daily scores and does not coerce leaderboard nulls", () => {
+  const app = fs.readFileSync(path.join(__dirname, "..", "frontend", "app.js"), "utf8");
+  assert.ok(app.includes("WeeklyConvergence.convergeWeeklyLeadersWithDaily"));
+  assert.ok(app.includes("const score = entry.hotness?.total_score;"));
+  assert.ok(app.includes("const market = entry.hotness?.market_score;"));
+  assert.ok(app.includes("cardIntelEmptyStateCopy"));
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

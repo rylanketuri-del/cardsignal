@@ -5,6 +5,21 @@ from typing import Any, Dict
 import requests
 
 
+def has_usable_ebay_credentials(
+    token: str | None = None,
+    client_id: str | None = None,
+    client_secret: str | None = None,
+) -> bool:
+    """Return True when EbayClient can authenticate.
+
+    A static EBAY_TOKEN is sufficient. Otherwise both EBAY_CLIENT_ID and
+    EBAY_CLIENT_SECRET are required for client-credentials OAuth.
+    """
+    if str(token or "").strip():
+        return True
+    return bool(str(client_id or "").strip() and str(client_secret or "").strip())
+
+
 class EbayClient:
     def __init__(
         self,

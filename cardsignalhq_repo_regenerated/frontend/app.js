@@ -19,6 +19,7 @@ let piModalWeeklySnap = null;
 let piModalCards = [];
 let piModalKeydownHandler = null;
 let weeklyIntelligence = null;
+let dailyLeaderboardItems = [];
 let nflWeeklyIntelligence = null;
 let nflDataAvailable = false;
 let nbaWeeklyIntelligence = null;
@@ -31,7 +32,9 @@ function tagClass(tag) {
   if (tag === 'BUY LOW') return 'tag buylow';
   return `tag ${String(tag || '').toLowerCase().replace(/\s+/g, '-')}`;
 }
-function formatScore(value) { return typeof value === 'number' ? value.toFixed(1) : '—'; }
+function formatScore(value) {
+  return typeof value === "number" && Number.isFinite(value) ? value.toFixed(1) : "—";
+}
 function formatTimestamp(value) { return value ? new Date(value).toLocaleString() : '—'; }
 function formatEventLabel(eventType) {
   const map = { hotness_jump: 'HOTNESS JUMP', buy_low: 'BUY LOW', most_chased: 'MOST CHASED', daily_digest: 'DAILY DIGEST' };
@@ -266,35 +269,7 @@ function renderPlayerHeadshot(entry = {}) {
 }
 
 function weeklyLeaderToEntry(leader = {}) {
-  return {
-    player_id: leader.source_player_id || leader.cs_player_id,
-    cs_player_id: leader.cs_player_id,
-    source_player_id: leader.source_player_id,
-    player_name: leader.player_name,
-    rank: leader.rank,
-    team: leader.team,
-    position: leader.position,
-    headshot_url: leader.headshot_url,
-    team_logo_url: leader.team_logo_url,
-    weekly_change: leader.weekly_change,
-    league: leader.league,
-    sport: leader.sport,
-    capabilities: leader.capabilities || leader.intelligence?.capabilities || {},
-    intelligence: leader.intelligence || null,
-    status: leader.status,
-    hotness: {
-      total_score: leader.score,
-      performance_score: leader.performance,
-      market_score: leader.market,
-      momentum_score: leader.momentum,
-      collector_score: leader.collector,
-      confidence_multiplier: 1,
-      tag: leader.status || leader.recommendation || 'WATCH',
-      reasons: [],
-    },
-    recommendation: leader.recommendation,
-    conviction: leader.conviction,
-  };
+  return WeeklyConvergence.weeklyLeaderToEntry(leader);
 }
 
 function signalOfWeekToEntry(signal = {}) {
@@ -383,9 +358,9 @@ function buildLeaderboard(entries) {
           </div>
 
           ${entries.map((entry, index) => {
-            const score = entry.hotness?.total_score || 0;
-            const performance = entry.hotness?.performance_score || 0;
-            const market = entry.hotness?.market_score || 0;
+            const score = entry.hotness?.total_score;
+            const performance = entry.hotness?.performance_score;
+            const market = entry.hotness?.market_score;
             const movement = WeeklyMovement.formatWeeklyMovement(entry);
             const moveClass = WeeklyMovement.weeklyMovementClass(movement);
             const team = getTeamAbbrev(entry);
@@ -758,12 +733,12 @@ function renderCardIntelBox({ title, modifier, description, items }) {
   `;
 }
 
-function renderCardIntelPendingBox({ title, modifier, description }) {
+function renderCardIntelPendingBox({ title, modifier, description, pendingCopy }) {
   return `
     <article class="qi-card qi-card--${modifier} qi-card--pending">
       <h3 class="qi-card-title">${title}</h3>
       <p class="qi-card-desc">${description}</p>
-      <p class="qi-pending-copy">Card intelligence will appear after the next weekly refresh.</p>
+      <p class="qi-pending-copy">${pendingCopy || WeeklyConvergence.CARD_INTEL_AWAITING_REFRESH}</p>
     </article>
   `;
 }
@@ -772,12 +747,16 @@ function getCardSectionEntry(entries = []) {
   return getSignalOfWeekTopEntry(entries) || entries[0] || getSignalOfWeekPlaceholderEntry();
 }
 
-function renderCardSection(entries = [], cardIntel = null) {
+function renderCardSection(entries = [], cardIntel = null, weeklyPayload = weeklyIntelligence) {
   const root = document.getElementById("quick-intelligence-grid")
     || document.getElementById("card-section-grid");
   if (!root) return;
 
-  const stored = cardIntel || weeklyIntelligence?.card_intelligence;
+  const stored = cardIntel || weeklyPayload?.card_intelligence;
+  const pendingCopy = WeeklyConvergence.cardIntelEmptyStateCopy({
+    run: weeklyPayload?.run,
+    card_intelligence: stored,
+  });
   const boxes = [
     { title: "Trending Cards", modifier: "trending", description: SECTION_DESCRIPTIONS.trending, key: "trending_cards" },
     { title: "Biggest Movers", modifier: "movers", description: SECTION_DESCRIPTIONS.movers, key: "biggest_movers" },
@@ -789,14 +768,14 @@ function renderCardSection(entries = [], cardIntel = null) {
     root.innerHTML = boxes.map((box) => {
       const rows = (stored[box.key] || []).map(weeklyCardRowToIntelItem);
       if (!rows.length) {
-        return renderCardIntelPendingBox(box);
+        return renderCardIntelPendingBox({ ...box, pendingCopy });
       }
       return renderCardIntelBox({ ...box, items: rows });
     }).join("");
     return;
   }
 
-  root.innerHTML = boxes.map((box) => renderCardIntelPendingBox(box)).join("");
+  root.innerHTML = boxes.map((box) => renderCardIntelPendingBox({ ...box, pendingCopy })).join("");
 }
 
 /* Signal Center — player identity row with headshot for featured sections */
@@ -2884,7 +2863,7 @@ function renderSignalOfTheWeek(entries = [], storedSignal = null) {
     hasOfficialSelection,
     entry,
   });
-  const score = Number(entry?.hotness?.total_score ?? 0);
+  const score = entry?.hotness?.total_score;
   const aiReasonSentence = entry?.signal_of_week_reason
     ? clampToOneSentence(entry.signal_of_week_reason)
     : (hasOfficialSelection ? "Weekly signal rationale pending." : "Current leaderboard signal based on stored CardSignal scores.");
@@ -2963,7 +2942,7 @@ function renderSignalOfTheWeek(entries = [], storedSignal = null) {
 /* Signal Center — main dashboard render pipeline */
 function renderSignalCenter(entries) {
   renderSignalOfTheWeek(entries, weeklyIntelligence?.signal_of_the_week);
-  renderCardSection(entries, weeklyIntelligence?.card_intelligence);
+  renderCardSection(entries, weeklyIntelligence?.card_intelligence, weeklyIntelligence);
 }
 
 /** @deprecated Use renderSignalCenter — kept as alias for compatibility */
@@ -3105,7 +3084,7 @@ function renderSearchResults(matches, query, { loading = false } = {}) {
 
   let html = matches.map((entry, index) => {
     const scored = isLeaderboardPlayer(entry);
-    const score = entry.hotness?.total_score || 0;
+    const score = entry.hotness?.total_score;
     const team = getTeamAbbrev(entry);
     const position = entry.position || "—";
     const scoreMarkup = scored
@@ -3335,7 +3314,7 @@ function setupSportTabs() {
       const nbaPayload = await fetchWeeklyLatest('NBA').catch(() => null);
       if (nbaPayload?.todays_leaders?.length) {
         nbaWeeklyIntelligence = nbaPayload;
-        latestEntries = nbaPayload.todays_leaders.map(weeklyLeaderToEntry);
+        latestEntries = WeeklyConvergence.convergeWeeklyLeadersWithDaily(nbaPayload.todays_leaders, []);
         renderSignalCenter(latestEntries);
         const leaderboardRoot = document.getElementById('leaderboard-table');
         if (leaderboardRoot) leaderboardRoot.innerHTML = buildLeaderboard(latestEntries);
@@ -3344,19 +3323,23 @@ function setupSportTabs() {
       const nflPayload = await fetchWeeklyLatest('NFL').catch(() => null);
       if (nflPayload?.todays_leaders?.length) {
         nflWeeklyIntelligence = nflPayload;
-        latestEntries = nflPayload.todays_leaders.map(weeklyLeaderToEntry);
+        latestEntries = WeeklyConvergence.convergeWeeklyLeadersWithDaily(nflPayload.todays_leaders, []);
         renderSignalCenter(latestEntries);
         const leaderboardRoot = document.getElementById('leaderboard-table');
         if (leaderboardRoot) leaderboardRoot.innerHTML = buildLeaderboard(latestEntries);
       }
     } else if (showMlb || normalized === 'all') {
       const source = normalized === 'all'
-        ? mergeAllSportLeaders(
+        ? WeeklyConvergence.mergeAllSportLeaders(
           weeklyIntelligence?.todays_leaders || [],
           nflDataAvailable ? (nflWeeklyIntelligence?.todays_leaders || []) : [],
           nbaDataAvailable ? (nbaWeeklyIntelligence?.todays_leaders || []) : [],
+          { MLB: dailyLeaderboardItems },
         )
-        : (weeklyIntelligence?.todays_leaders || []).map(weeklyLeaderToEntry);
+        : WeeklyConvergence.convergeWeeklyLeadersWithDaily(
+          weeklyIntelligence?.todays_leaders || [],
+          dailyLeaderboardItems,
+        );
       if (source.length) {
         latestEntries = source;
         renderSignalCenter(latestEntries);
@@ -3390,18 +3373,9 @@ function setupSportTabs() {
 }
 
 function mergeAllSportLeaders(mlbLeaders = [], nflLeaders = [], nbaLeaders = []) {
-  const combined = [
-    ...mlbLeaders.map((e) => ({ ...weeklyLeaderToEntry(e), sport: 'MLB', league: 'MLB' })),
-    ...nflLeaders.map((e) => ({ ...weeklyLeaderToEntry(e), sport: 'FOOTBALL', league: 'NFL' })),
-    ...nbaLeaders.map((e) => ({ ...weeklyLeaderToEntry(e), sport: 'BASKETBALL', league: 'NBA' })),
-  ];
-  return combined
-    .filter((e) => e.card_signal_score != null || e.hotness?.total_score != null)
-    .sort((a, b) => {
-      const aScore = a.card_signal_score ?? a.hotness?.total_score ?? -1;
-      const bScore = b.card_signal_score ?? b.hotness?.total_score ?? -1;
-      return bScore - aScore;
-    });
+  return WeeklyConvergence.mergeAllSportLeaders(mlbLeaders, nflLeaders, nbaLeaders, {
+    MLB: dailyLeaderboardItems,
+  });
 }
 
 async function init() {
@@ -3442,16 +3416,21 @@ async function init() {
     let weeklyIdx = 1;
     nflWeeklyIntelligence = nflDataAvailable ? (weeklyResults[weeklyIdx++] || null) : null;
     nbaWeeklyIntelligence = nbaDataAvailable ? (weeklyResults[weeklyIdx++] || null) : null;
-    let entries = payload.items || [];
+    dailyLeaderboardItems = payload.items || [];
+    let entries = dailyLeaderboardItems;
 
     if (weeklyIntelligence?.todays_leaders?.length) {
-      entries = weeklyIntelligence.todays_leaders.map(weeklyLeaderToEntry);
+      entries = WeeklyConvergence.convergeWeeklyLeadersWithDaily(
+        weeklyIntelligence.todays_leaders,
+        dailyLeaderboardItems,
+      );
     }
     if (activeSportFilter === 'all') {
-      const merged = mergeAllSportLeaders(
+      const merged = WeeklyConvergence.mergeAllSportLeaders(
         weeklyIntelligence?.todays_leaders || [],
         nflDataAvailable ? (nflWeeklyIntelligence?.todays_leaders || []) : [],
         nbaDataAvailable ? (nbaWeeklyIntelligence?.todays_leaders || []) : [],
+        { MLB: dailyLeaderboardItems },
       );
       if (merged.length) entries = merged;
     }

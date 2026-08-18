@@ -62,6 +62,7 @@ class ScoutingReportStaticGuardTests(unittest.TestCase):
             "SRNfl": "scouting-report-nfl.js",
             "SRNba": "scouting-report-nba.js",
             "WeeklyMovement": "weekly-movement.js",
+            "WeeklyConvergence": "weekly-convergence.js",
         }
         app_pos = index_html.find("./app.js")
         self.assertGreater(app_pos, -1)

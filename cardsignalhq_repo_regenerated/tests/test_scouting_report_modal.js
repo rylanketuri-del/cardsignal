@@ -25,6 +25,9 @@ global.capabilityStatusCopy = capabilityState.capabilityStatusCopy;
 global.deriveSupportedEvidenceQuality = capabilityState.deriveSupportedEvidenceQuality;
 global.getCapabilityState = capabilityState.getCapabilityState;
 
+require(path.join(__dirname, "..", "frontend", "weekly-movement.js"));
+require(path.join(__dirname, "..", "frontend", "weekly-convergence.js"));
+
 const {
   loadScoutingReportModel,
   renderScoutingReport,
