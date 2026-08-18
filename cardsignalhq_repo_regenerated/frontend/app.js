@@ -494,7 +494,7 @@ function csIntelFormatPercent(value) {
 function csIntelFormatMoney(value) {
   const n = csIntelSafeToNumber(value);
   if (n === null) return "—";
-  return `$${n.toFixed(2)}`;
+  return WeeklyConvergence.formatUsdMoney(n);
 }
 
 function formatConvictionTier(tier = "") {
@@ -774,7 +774,10 @@ function renderCardSection(entries = [], cardIntel = null, weeklyPayload = weekl
 
   if (stored) {
     root.innerHTML = boxes.map((box) => {
-      const rows = (stored[box.key] || []).map(weeklyCardRowToIntelItem);
+      const sourceRows = box.key === "biggest_movers"
+        ? WeeklyConvergence.filterHistoricalCardMovers(stored[box.key] || [])
+        : (stored[box.key] || []);
+      const rows = sourceRows.map(weeklyCardRowToIntelItem);
       if (!rows.length) {
         const emptyCopy = box.key === "biggest_movers" && !WeeklyConvergence.cardSectionsAreEmpty(stored)
           ? (typeof WeeklyMovement !== "undefined" && WeeklyMovement.WM_MOVEMENT_NOTE
@@ -3506,6 +3509,7 @@ if (typeof module !== "undefined" && module.exports) {
   module.exports = {
     weeklyCardRowToIntelItem,
     renderCardIntelRow,
+    renderCardSection,
     renderScoutingReport,
     renderPlayerSnapshot,
     renderPlayerHeadshot,

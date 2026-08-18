@@ -31,6 +31,7 @@ const WC = require(path.join(__dirname, "..", "frontend", "weekly-convergence.js
 const {
   weeklyCardRowToIntelItem,
   renderCardIntelRow,
+  renderCardSection,
 } = require(path.join(__dirname, "..", "frontend", "app.js"));
 
 let passed = 0;
@@ -159,6 +160,203 @@ test("right-side pill is CARDSIGNAL score without a percent sign", () => {
   assert.ok(html.includes("CARDSIGNAL"));
   assert.ok(html.includes("100.0"));
   assert.ok(!html.includes("100.0%"));
+});
+
+const stewartLegacy = {
+  player_name: "Sal Stewart",
+  card_label: "PSA 10",
+  score: 100.0,
+  demand_score: 100,
+  movement: 100,
+  evidence: { avg_price: 3783.63 },
+};
+
+const ohtaniAutographLegacy = {
+  player_name: "Shohei Ohtani",
+  card_label: "Autographs",
+  score: 93.0,
+  demand_score: 90.0,
+  momentum_score: 47.15,
+  movement: 47.15,
+  evidence: { avg_price: 4714.60 },
+};
+
+const w34LegacyMovers = [ohtaniLegacy, ohtaniAutographLegacy, stewartLegacy];
+
+const populatedW34CardIntel = {
+  trending_cards: [altuveLegacy],
+  biggest_movers: w34LegacyMovers,
+  buy_low_watch: [altuveLegacy],
+  most_chased: [altuveLegacy],
+};
+
+function mockCardGrid() {
+  const el = { innerHTML: "" };
+  global.document = {
+    getElementById(id) {
+      if (id === "quick-intelligence-grid" || id === "card-section-grid") return el;
+      return null;
+    },
+  };
+  return el;
+}
+
+function sectionHtml(html, modifier) {
+  const match = html.match(
+    new RegExp(`<article class="qi-card qi-card--${modifier}[\\s\\S]*?</article>`),
+  );
+  return match ? match[0] : "";
+}
+
+test("legacy Biggest Movers row with momentum_score and no historical marker is filtered out", () => {
+  const row = { movement: 51.14, momentum_score: 51.14 };
+  assert.strictEqual(WC.isHistoricalCardMovement(row), false);
+  assert.strictEqual(WC.hasGenuineHistoricalCardMovement(row), false);
+  assert.deepStrictEqual(WC.filterHistoricalCardMovers([row]), []);
+});
+
+test("legacy Biggest Movers row with demand_score 100 and no historical marker is filtered out", () => {
+  const row = { movement: 100, demand_score: 100 };
+  assert.strictEqual(WC.isHistoricalCardMovement(row), false);
+  assert.strictEqual(WC.hasGenuineHistoricalCardMovement(row), false);
+  assert.deepStrictEqual(WC.filterHistoricalCardMovers([row]), []);
+});
+
+test("future genuine historical mover remains and renders +12.3%", () => {
+  const row = {
+    player_name: "Future Player",
+    card_label: "Autographs",
+    score: 80,
+    movement: 12.34,
+    movement_is_historical: true,
+    evidence: { avg_price: 40 },
+  };
+  assert.strictEqual(WC.hasGenuineHistoricalCardMovement(row), true);
+  assert.deepStrictEqual(WC.filterHistoricalCardMovers([row]), [row]);
+  assert.strictEqual(WC.formatCardRowMovement(row), "+12.3%");
+  const item = weeklyCardRowToIntelItem(row);
+  assert.strictEqual(item.movement, "+12.3%");
+  const html = renderCardIntelRow(item);
+  assert.ok(html.includes("+12.3%"));
+});
+
+test("future genuine negative mover with movement_status calculated remains and renders -8.3%", () => {
+  const row = {
+    player_name: "Future Player",
+    card_label: "PSA 10",
+    score: 70,
+    movement: -8.27,
+    movement_status: "calculated",
+    evidence: { avg_price: 30 },
+  };
+  assert.strictEqual(WC.hasGenuineHistoricalCardMovement(row), true);
+  assert.deepStrictEqual(WC.filterHistoricalCardMovers([row]), [row]);
+  assert.strictEqual(WC.formatCardRowMovement(row), "-8.3%");
+  const item = weeklyCardRowToIntelItem(row);
+  assert.strictEqual(item.movement, "-8.3%");
+  const html = renderCardIntelRow(item);
+  assert.ok(html.includes("-8.3%"));
+});
+
+test("numeric movement alone is not enough to keep a Biggest Mover", () => {
+  const row = { movement: 51.14 };
+  assert.deepStrictEqual(WC.filterHistoricalCardMovers([row]), []);
+  assert.strictEqual(WC.formatCardRowMovement(row), "—");
+});
+
+test("W34-style Biggest Movers array of only legacy rows becomes empty", () => {
+  assert.deepStrictEqual(WC.filterHistoricalCardMovers(w34LegacyMovers), []);
+});
+
+test("empty Biggest Movers UI shows weekly snapshot pending copy", () => {
+  const grid = mockCardGrid();
+  renderCardSection([], populatedW34CardIntel, { run: { status: "COMPLETED" }, card_intelligence: populatedW34CardIntel });
+  const movers = sectionHtml(grid.innerHTML, "movers");
+  assert.ok(movers.includes("qi-card--pending"));
+  assert.ok(movers.includes("Weekly movement will appear after the next completed weekly snapshot."));
+  assert.ok(!movers.includes("Shohei Ohtani"));
+  assert.ok(!movers.includes("Sal Stewart"));
+  assert.ok(!movers.includes("qi-row-name"));
+});
+
+test("Trending Cards are not filtered merely because they lack historical movement", () => {
+  const grid = mockCardGrid();
+  renderCardSection([], populatedW34CardIntel, { run: { status: "COMPLETED" } });
+  const trending = sectionHtml(grid.innerHTML, "trending");
+  assert.ok(trending.includes("Jose Altuve · Autographs"));
+  assert.ok(trending.includes("qi-move"));
+  assert.ok(trending.includes("—"));
+  assert.ok(!trending.includes("+100.0%"));
+  assert.deepStrictEqual(
+    (populatedW34CardIntel.trending_cards || []).map((row) => weeklyCardRowToIntelItem(row).name),
+    ["Jose Altuve · Autographs"],
+  );
+});
+
+test("Buy Low Watch is not filtered merely because it lacks historical movement", () => {
+  const grid = mockCardGrid();
+  renderCardSection([], populatedW34CardIntel, { run: { status: "COMPLETED" } });
+  const buyLow = sectionHtml(grid.innerHTML, "buy-low");
+  assert.ok(buyLow.includes("Jose Altuve · Autographs"));
+  assert.ok(!buyLow.includes("qi-card--pending"));
+});
+
+test("Most Chased is not filtered merely because it lacks historical movement", () => {
+  const grid = mockCardGrid();
+  renderCardSection([], populatedW34CardIntel, { run: { status: "COMPLETED" } });
+  const chased = sectionHtml(grid.innerHTML, "chased");
+  assert.ok(chased.includes("Jose Altuve · Autographs"));
+  assert.ok(!chased.includes("qi-card--pending"));
+});
+
+test("currency formatting uses USD grouping and two decimals", () => {
+  assert.strictEqual(WC.formatUsdMoney(5114.4), "$5,114.40");
+  assert.strictEqual(WC.formatUsdMoney(4714.6), "$4,714.60");
+  assert.strictEqual(WC.formatUsdMoney(3783.63), "$3,783.63");
+  assert.strictEqual(WC.formatUsdMoney(1335.35), "$1,335.35");
+  assert.strictEqual(WC.formatUsdMoney(141.29), "$141.29");
+  assert.strictEqual(WC.formatUsdMoney(125), "$125.00");
+  assert.strictEqual(WC.formatAvgListingPrice(5114.4), "Avg. listing $5,114.40");
+  assert.strictEqual(weeklyCardRowToIntelItem(ohtaniLegacy).priceLabel, "Avg. listing $5,114.40");
+  assert.strictEqual(weeklyCardRowToIntelItem(ohtaniAutographLegacy).priceLabel, "Avg. listing $4,714.60");
+  assert.strictEqual(weeklyCardRowToIntelItem(stewartLegacy).priceLabel, "Avg. listing $3,783.63");
+  const html = renderCardIntelRow(weeklyCardRowToIntelItem(ohtaniLegacy));
+  assert.ok(html.includes("Avg. listing $5,114.40"));
+  assert.ok(!html.includes("$5114.40"));
+});
+
+test("future genuine mover still appears in Biggest Movers after filtering mixed legacy rows", () => {
+  const genuine = {
+    player_name: "Future Player",
+    card_label: "Autographs",
+    score: 80,
+    movement: 12.34,
+    movement_is_historical: true,
+    evidence: { avg_price: 40 },
+  };
+  const mixed = [ohtaniLegacy, genuine, stewartLegacy];
+  const kept = WC.filterHistoricalCardMovers(mixed);
+  assert.strictEqual(kept.length, 1);
+  assert.strictEqual(kept[0], genuine);
+  const grid = mockCardGrid();
+  renderCardSection([], {
+    ...populatedW34CardIntel,
+    biggest_movers: mixed,
+  }, { run: { status: "COMPLETED" } });
+  const movers = sectionHtml(grid.innerHTML, "movers");
+  assert.ok(movers.includes("Future Player · Autographs"));
+  assert.ok(movers.includes("+12.3%"));
+  assert.ok(!movers.includes("Shohei Ohtani"));
+  assert.ok(!movers.includes("Sal Stewart"));
+});
+
+test("app.js filters Biggest Movers only at the display boundary", () => {
+  const src = fs.readFileSync(path.join(__dirname, "..", "frontend", "app.js"), "utf8");
+  assert.ok(src.includes("filterHistoricalCardMovers"));
+  assert.ok(src.includes('box.key === "biggest_movers"'));
+  assert.ok(!src.includes("filterHistoricalCardMovers(stored.trending_cards"));
+  assert.ok(!src.includes("filterHistoricalCardMovers(stored.buy_low_watch"));
+  assert.ok(!src.includes("filterHistoricalCardMovers(stored.most_chased"));
 });
 
 test("app.js card module copy is truthful", () => {

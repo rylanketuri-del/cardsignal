@@ -170,8 +170,17 @@ function isHistoricalCardMovement(row = {}) {
   return type === "price_change_pct" || type === "historical";
 }
 
+function hasGenuineHistoricalCardMovement(row = {}) {
+  return isHistoricalCardMovement(row) && isFiniteNumber(row.movement);
+}
+
+function filterHistoricalCardMovers(rows = []) {
+  if (!Array.isArray(rows)) return [];
+  return rows.filter((row) => hasGenuineHistoricalCardMovement(row));
+}
+
 function formatCardRowMovement(row = {}) {
-  if (!isHistoricalCardMovement(row) || !isFiniteNumber(row.movement)) {
+  if (!hasGenuineHistoricalCardMovement(row)) {
     return "—";
   }
   const n = row.movement;
@@ -179,9 +188,19 @@ function formatCardRowMovement(row = {}) {
   return `${sign}${n.toFixed(1)}%`;
 }
 
+function formatUsdMoney(value) {
+  if (!isFiniteNumber(value)) return "—";
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
 function formatAvgListingPrice(value) {
   if (!isFiniteNumber(value)) return `${AVG_LISTING_LABEL} —`;
-  return `${AVG_LISTING_LABEL} $${value.toFixed(2)}`;
+  return `${AVG_LISTING_LABEL} ${formatUsdMoney(value)}`;
 }
 
 function formatCardSignalScore(value) {
@@ -207,7 +226,10 @@ const WeeklyConvergence = {
   cardSectionsAreEmpty,
   cardIntelEmptyStateCopy,
   isHistoricalCardMovement,
+  hasGenuineHistoricalCardMovement,
+  filterHistoricalCardMovers,
   formatCardRowMovement,
+  formatUsdMoney,
   formatAvgListingPrice,
   formatCardSignalScore,
 };
