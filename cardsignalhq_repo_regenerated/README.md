@@ -350,6 +350,8 @@ API routes:
   - `POST /api/admin/tracked-players`
   - `PUT /api/admin/tracked-players/{player_name}`
   - `DELETE /api/admin/tracked-players/{player_name}`
+  - `GET /api/admin/storage/diagnostics`
+  - `GET /api/admin/pipeline/status` — leaderboard + weekly intelligence readiness
 - New history endpoints:
   - `GET /api/players/{player_id}/history`
   - `GET /api/history/leaderboard`

@@ -97,6 +97,11 @@ NBA remains **Coming Soon** in the UI until verified import data is seeded and w
 
 ## Up Next
 
+### Sprint 11.5 — Pipeline Health Endpoint
+
+- Admin diagnostics: `GET /api/admin/pipeline/status`
+- Reports last pipeline run, weekly snapshot readiness, homepage intelligence, and trend history
+
 ### Sprint 11.4 — Cross-Sport Signal Center
 
 - Unified cross-sport leaderboards and filters in Signal Center
