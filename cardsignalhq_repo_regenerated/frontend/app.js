@@ -304,17 +304,27 @@ function weeklyCardRowToIntelItem(row = {}) {
   const label = row.card_label || 'Card';
   const player = row.player_name || 'Player';
   const rawPrice = row.evidence?.avg_price;
+  const listingsCount = row.evidence?.listings_count;
   const offer = representativeOfferFromCardRow(row);
+  const listingsNumber = typeof listingsCount === "number" && Number.isFinite(listingsCount)
+    ? listingsCount
+    : (listingsCount != null && listingsCount !== "" ? Number(listingsCount) : null);
   return {
     name: `${player} · ${label}`,
+    playerName: player,
+    cardLabel: label,
+    queryName: offer?.query_name || row.evidence?.query_name || null,
+    listingsCount: Number.isFinite(listingsNumber) ? listingsNumber : null,
     price: rawPrice ?? null,
     priceLabel: WeeklyConvergence.formatAvgListingPrice(rawPrice),
     movement: WeeklyConvergence.formatCardRowMovement(row),
     score: WeeklyConvergence.formatCardSignalScore(row.score),
+    scoreValue: row.score ?? null,
     scoreLabel: WeeklyConvergence.CARD_SCORE_LABEL,
     representativeOffer: offer,
     imageUrl: offer?.image_url || null,
     listingUrl: offer?.listing_url || null,
+    source: offer?.source || null,
   };
 }
 
@@ -754,37 +764,48 @@ function renderCardIntelThumb(item = {}) {
 }
 
 /* Landing page — Quick Intelligence grid row */
-function renderCardIntelRow(item) {
+function renderCardIntelRow(item, marketIndex = 0) {
   const moveClass = movementClass(item.movement);
   const priceLabel = item.priceLabel || WeeklyConvergence.formatAvgListingPrice(item.price);
   const scoreLabel = item.scoreLabel || WeeklyConvergence.CARD_SCORE_LABEL;
   const score = item.score ?? "—";
+  const name = escapeAttribute(item.name || "Card");
+  const ariaLabel = escapeAttribute(`Open Card Market for ${item.name || "card"}`);
 
   return `
-    <div class="qi-row">
+    <div
+      class="qi-row qi-row--market"
+      role="button"
+      tabindex="0"
+      data-card-market-index="${Number(marketIndex) || 0}"
+      aria-haspopup="dialog"
+      aria-label="${ariaLabel}"
+    >
       ${renderCardIntelThumb(item)}
       <div class="qi-row-body">
-        <span class="qi-row-name">${item.name}</span>
+        <span class="qi-row-name">${name}</span>
         <div class="qi-row-metrics">
-          <span class="qi-price">${priceLabel}</span>
-          <span class="qi-move ${moveClass}">${item.movement}</span>
+          <span class="qi-price">${escapeAttribute(priceLabel)}</span>
+          <span class="qi-move ${moveClass}">${escapeAttribute(item.movement)}</span>
           <span class="qi-score-pill" title="CardSignal">
-            <span class="qi-score-pill-kicker">${scoreLabel}</span>
-            <span class="qi-score-pill-value">${score}</span>
+            <span class="qi-score-pill-kicker">${escapeAttribute(scoreLabel)}</span>
+            <span class="qi-score-pill-value">${escapeAttribute(score)}</span>
           </span>
         </div>
       </div>
+      <span class="qi-row-chevron" aria-hidden="true">›</span>
     </div>
   `;
 }
 
-function renderCardIntelBox({ title, modifier, description, items }) {
+function renderCardIntelBox({ title, modifier, description, items, startIndex = 0 }) {
+  const visible = items.slice(0, 3);
   return `
     <article class="qi-card qi-card--${modifier}">
       <h3 class="qi-card-title">${title}</h3>
       <p class="qi-card-desc">${description}</p>
       <div class="qi-card-list">
-        ${items.slice(0, 3).map((item) => renderCardIntelRow(item)).join("")}
+        ${visible.map((item, i) => renderCardIntelRow(item, startIndex + i)).join("")}
       </div>
     </article>
   `;
@@ -822,6 +843,7 @@ function renderCardSection(entries = [], cardIntel = null, weeklyPayload = weekl
   ];
 
   if (stored) {
+    const marketItems = [];
     root.innerHTML = boxes.map((box) => {
       const sourceRows = box.key === "biggest_movers"
         ? WeeklyConvergence.filterHistoricalCardMovers(stored[box.key] || [])
@@ -835,8 +857,14 @@ function renderCardSection(entries = [], cardIntel = null, weeklyPayload = weekl
           : pendingCopy;
         return renderCardIntelPendingBox({ ...box, pendingCopy: emptyCopy });
       }
-      return renderCardIntelBox({ ...box, items: rows });
+      const startIndex = marketItems.length;
+      rows.slice(0, 3).forEach((item) => marketItems.push(item));
+      return renderCardIntelBox({ ...box, items: rows, startIndex });
     }).join("");
+    if (typeof CardMarket !== "undefined") {
+      CardMarket.setCatalog(marketItems);
+      CardMarket.bindSection(root);
+    }
     return;
   }
 
@@ -2157,13 +2185,20 @@ function lockBodyScrollForModal() {
 }
 
 function unlockBodyScrollForModal() {
+  if (typeof CardMarket !== "undefined" && CardMarket.isOpen()) return;
   document.body.classList.remove("pi-modal-open");
 }
 
 function bindPiModalKeydown() {
   if (piModalKeydownHandler) return;
   piModalKeydownHandler = (event) => {
-    if (event.key === "Escape" && isPlayerIntelligenceModalOpen()) {
+    if (event.key !== "Escape") return;
+    if (typeof CardMarket !== "undefined" && CardMarket.isOpen()) {
+      event.preventDefault();
+      CardMarket.close();
+      return;
+    }
+    if (isPlayerIntelligenceModalOpen()) {
       event.preventDefault();
       closePlayerIntelligenceModal();
     }
@@ -2205,6 +2240,8 @@ async function openPlayerIntelligenceModal(entry) {
   const header = document.getElementById("pi-modal-header");
   const body = document.getElementById("pi-modal-body");
   if (!modal || !header || !body) return;
+
+  if (typeof CardMarket !== "undefined") CardMarket.close();
 
   selectedPlayer = entry;
 
@@ -3542,6 +3579,7 @@ async function init() {
     latestEntries = entries;
     setupPlayerSearch();
     setupPlayerIntelligenceModal();
+    if (typeof CardMarket !== "undefined") CardMarket.setup();
     setupSportTabs();
 
     status.textContent = 'Rendering Signal Center...';
@@ -3600,6 +3638,9 @@ if (typeof module !== "undefined" && module.exports) {
     renderCardIntelThumb,
     renderCardIntelRow,
     renderCardSection,
+    bindPiModalKeydown,
+    closePlayerIntelligenceModal,
+    isPlayerIntelligenceModalOpen,
     renderScoutingReport,
     renderPlayerSnapshot,
     renderPlayerHeadshot,

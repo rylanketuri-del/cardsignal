@@ -191,7 +191,7 @@ const populatedW34CardIntel = {
 };
 
 function mockCardGrid() {
-  const el = { innerHTML: "" };
+  const el = { innerHTML: "", dataset: {}, addEventListener() {} };
   global.document = {
     getElementById(id) {
       if (id === "quick-intelligence-grid" || id === "card-section-grid") return el;

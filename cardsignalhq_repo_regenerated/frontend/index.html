@@ -215,6 +215,21 @@
       </div>
     </div>
 
+    <div
+      id="card-market-modal"
+      class="pi-modal cm-modal hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="cm-modal-title"
+      aria-hidden="true"
+    >
+      <div class="pi-modal-backdrop" data-cm-close tabindex="-1"></div>
+      <div class="pi-modal-panel cm-modal-panel" role="document">
+        <header class="pi-modal-header cm-modal-header" id="cm-modal-header"></header>
+        <div class="pi-modal-body cm-modal-body" id="cm-modal-body"></div>
+      </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="./scouting-report-metrics.js"></script>
@@ -224,6 +239,7 @@
     <script src="./scouting-report-intel.js"></script>
     <script src="./weekly-movement.js"></script>
     <script src="./weekly-convergence.js"></script>
+    <script src="./card-market.js"></script>
     <script src="./app.js"></script>
   </body>
 </html>

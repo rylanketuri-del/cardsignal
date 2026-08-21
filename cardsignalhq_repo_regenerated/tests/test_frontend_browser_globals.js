@@ -17,6 +17,7 @@ const NAMESPACES = [
   { name: "SRNba", file: "scouting-report-nba.js" },
   { name: "WeeklyMovement", file: "weekly-movement.js" },
   { name: "WeeklyConvergence", file: "weekly-convergence.js" },
+  { name: "CardMarket", file: "card-market.js" },
 ];
 
 let passed = 0;
