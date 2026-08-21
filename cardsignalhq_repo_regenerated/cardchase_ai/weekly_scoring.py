@@ -7,6 +7,7 @@ from typing import Any
 from cardchase_ai.identity import cs_card_id, cs_player_id
 from cardchase_ai.models.schemas import HitterHotnessBreakdown, MarketSnapshot, RollingHitterStats
 from cardchase_ai.score import clamp_score
+from cardchase_ai.utils.representative_offer import build_representative_offer
 
 
 def derive_collector_score(market_snapshots: dict[str, MarketSnapshot]) -> tuple[float | None, list[str], list[str]]:
@@ -216,6 +217,16 @@ def card_intelligence_from_snapshot(
         else:
             recommendation = "HOLD"
 
+    evidence: dict[str, Any] = {
+        "query_name": query_name,
+        "listings_count": snapshot.listings_count,
+        "avg_price": snapshot.avg_price,
+        "tags": snapshot.tags.model_dump(),
+    }
+    offer = build_representative_offer(snapshot.listings, player_name, query_name)
+    if offer:
+        evidence["representative_offer"] = offer
+
     return {
         "card_signal_score": card_score,
         "recommendation": recommendation,
@@ -227,12 +238,7 @@ def card_intelligence_from_snapshot(
         "momentum_score": round(momentum, 2) if momentum is not None else None,
         "scarcity_score": round(scarcity, 2),
         "missing_inputs": missing,
-        "evidence": {
-            "query_name": query_name,
-            "listings_count": snapshot.listings_count,
-            "avg_price": snapshot.avg_price,
-            "tags": snapshot.tags.model_dump(),
-        },
+        "evidence": evidence,
     }
 
 

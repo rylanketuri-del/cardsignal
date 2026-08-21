@@ -3896,6 +3896,15 @@ button,
   background: linear-gradient(180deg, var(--charcoal-dark), #2A2219);
   box-shadow: inset 0 0 0 1px rgba(187, 132, 85, 0.18);
   flex-shrink: 0;
+  overflow: hidden;
+}
+
+.qi-row-thumb-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  display: block;
 }
 
 .qi-row-body {

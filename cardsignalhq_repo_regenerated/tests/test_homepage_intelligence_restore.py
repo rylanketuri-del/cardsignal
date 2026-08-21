@@ -140,6 +140,65 @@ class HomepageCardSectionsTests(unittest.TestCase):
         self.assertEqual(intel["evidence"]["avg_price"], 40.0)
         self.assertAlmostEqual(intel["card_signal_score"], (min(20 / 30 * 100, 100) + 12 / 20 * 100) / 2, places=2)
         self.assertNotIn("%", str(intel["card_signal_score"]))
+        self.assertNotIn("listings", intel["evidence"])
+
+    def test_homepage_card_row_carries_representative_offer_not_listings(self) -> None:
+        from cardchase_ai.models.schemas import ListingSummary
+
+        listings = [
+            ListingSummary(
+                item_id="first",
+                title="Alpha Bowman Chrome",
+                price=20.0,
+                currency="USD",
+                item_web_url="https://www.ebay.com/itm/first",
+                image_url="https://i.ebayimg.com/images/g/first/s-l1600.jpg",
+            ),
+            ListingSummary(
+                item_id="pick",
+                title="Alpha Bowman Chrome Refractor",
+                price=55.0,
+                currency="USD",
+                item_web_url="https://www.ebay.com/itm/pick",
+                image_url="https://i.ebayimg.com/images/g/pick/s-l1600.jpg",
+            ),
+            ListingSummary(
+                item_id="high",
+                title="Alpha Bowman Chrome Superfractor",
+                price=400.0,
+                currency="USD",
+                item_web_url="https://www.ebay.com/itm/high",
+                image_url="https://i.ebayimg.com/images/g/high/s-l1600.jpg",
+            ),
+        ]
+        snap = MarketSnapshot(
+            query_name="bowman_chrome",
+            listings_count=3,
+            avg_price=158.33,
+            tags=ListingTagSummary(premium_count=3, chrome_count=3),
+            listings=listings,
+        )
+        intel = card_intelligence_from_snapshot("bowman_chrome", snap, "Alpha")
+        card = _card_snap(
+            cs_card_id="c-alpha-bowman",
+            player_name="Alpha",
+            score=intel["card_signal_score"],
+            demand=intel["demand_score"],
+            momentum=40,
+            recommendation="BUY",
+            avg_price=158.33,
+        )
+        card.evidence = intel["evidence"]
+        sections = build_homepage_card_sections([card])
+        row = sections["trending_cards"][0]
+        offer = row["evidence"]["representative_offer"]
+        self.assertEqual(offer["source"], "ebay")
+        self.assertEqual(offer["external_id"], "pick")
+        self.assertEqual(offer["image_url"], "https://i.ebayimg.com/images/g/pick/s-l1600.jpg")
+        self.assertEqual(offer["listing_url"], "https://www.ebay.com/itm/pick")
+        self.assertNotIn("listings", row)
+        self.assertNotIn("listings", row["evidence"])
+        self.assertEqual(len(listings), 3)
 
     def test_trending_ranks_by_demand_not_score(self) -> None:
         snaps = [

@@ -372,5 +372,117 @@ test("app.js card module copy is truthful", () => {
   assert.ok(src.includes("CARD_INTEL_MOVEMENT_PENDING") || src.includes("WM_MOVEMENT_NOTE"));
 });
 
+test("legacy W34 rows keep empty thumbnail until a new weekly snapshot", () => {
+  const item = weeklyCardRowToIntelItem(altuveLegacy);
+  assert.strictEqual(item.imageUrl, null);
+  assert.strictEqual(item.representativeOffer, null);
+  const html = renderCardIntelRow(item);
+  assert.ok(html.includes("qi-row-thumb"));
+  assert.ok(!html.includes("<img"));
+  assert.ok(html.includes("Avg. listing $141.29"));
+  assert.ok(html.includes("CARDSIGNAL"));
+});
+
+test("representative offer image renders in card thumbs", () => {
+  const row = {
+    player_name: "Shohei Ohtani",
+    card_label: "Bowman Chrome",
+    score: 88.0,
+    evidence: {
+      avg_price: 44.0,
+      representative_offer: {
+        source: "ebay",
+        external_id: "v1|1|0",
+        title: "Shohei Ohtani Bowman Chrome",
+        image_url: "https://i.ebayimg.com/images/g/ohtani/s-l1600.jpg",
+        price: 42.0,
+        currency: "USD",
+        condition: "Used",
+        listing_url: "https://www.ebay.com/itm/1",
+        query_name: "bowman_chrome",
+      },
+    },
+  };
+  const item = weeklyCardRowToIntelItem(row);
+  assert.strictEqual(item.imageUrl, "https://i.ebayimg.com/images/g/ohtani/s-l1600.jpg");
+  assert.strictEqual(item.listingUrl, "https://www.ebay.com/itm/1");
+  assert.strictEqual(item.representativeOffer.source, "ebay");
+  assert.strictEqual(item.representativeOffer.external_id, "v1|1|0");
+  assert.strictEqual(item.representativeOffer.query_name, "bowman_chrome");
+  const html = renderCardIntelRow(item);
+  assert.ok(html.includes("<img"));
+  assert.ok(html.includes("https://i.ebayimg.com/images/g/ohtani/s-l1600.jpg"));
+  assert.ok(html.includes('alt="Shohei Ohtani · Bowman Chrome"'));
+  assert.ok(html.includes("onerror"));
+  assert.ok(html.includes("qi-row-thumb-image"));
+  assert.ok(html.includes("Avg. listing $44.00"));
+  assert.ok(html.includes("CARDSIGNAL"));
+  assert.ok(html.includes("88.0"));
+});
+
+test("missing representative image uses empty thumbnail", () => {
+  const html = renderCardIntelRow(weeklyCardRowToIntelItem({
+    player_name: "Jose Altuve",
+    card_label: "Autographs",
+    score: 80,
+    evidence: { avg_price: 20, representative_offer: { source: "ebay", image_url: "" } },
+  }));
+  assert.ok(html.includes("qi-row-thumb"));
+  assert.ok(!html.includes("<img"));
+});
+
+test("card modules render representative images when present", () => {
+  const withPhoto = {
+    player_name: "Jose Altuve",
+    card_label: "Autographs",
+    score: 100.0,
+    recommendation: "BUY",
+    demand_score: 100.0,
+    evidence: {
+      listings_count: 50,
+      avg_price: 141.29,
+      representative_offer: {
+        source: "ebay",
+        image_url: "https://i.ebayimg.com/images/g/altuve/s-l1600.jpg",
+        listing_url: "https://www.ebay.com/itm/altuve",
+        query_name: "auto",
+      },
+    },
+  };
+  const genuineMover = {
+    player_name: "Future Player",
+    card_label: "Autographs",
+    score: 80,
+    movement: 12.34,
+    movement_is_historical: true,
+    evidence: {
+      avg_price: 40,
+      representative_offer: {
+        source: "ebay",
+        image_url: "https://i.ebayimg.com/images/g/future/s-l1600.jpg",
+        listing_url: "https://www.ebay.com/itm/future",
+        query_name: "auto",
+      },
+    },
+  };
+  const grid = mockCardGrid();
+  renderCardSection([], {
+    trending_cards: [withPhoto],
+    biggest_movers: [ohtaniLegacy, genuineMover],
+    buy_low_watch: [withPhoto],
+    most_chased: [withPhoto],
+  }, { run: { status: "COMPLETED" } });
+  const trending = sectionHtml(grid.innerHTML, "trending");
+  const buyLow = sectionHtml(grid.innerHTML, "buy-low");
+  const chased = sectionHtml(grid.innerHTML, "chased");
+  const movers = sectionHtml(grid.innerHTML, "movers");
+  assert.ok(trending.includes("https://i.ebayimg.com/images/g/altuve/s-l1600.jpg"));
+  assert.ok(buyLow.includes("https://i.ebayimg.com/images/g/altuve/s-l1600.jpg"));
+  assert.ok(chased.includes("https://i.ebayimg.com/images/g/altuve/s-l1600.jpg"));
+  assert.ok(movers.includes("https://i.ebayimg.com/images/g/future/s-l1600.jpg"));
+  assert.ok(movers.includes("Future Player · Autographs"));
+  assert.ok(!movers.includes("Shohei Ohtani"));
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);

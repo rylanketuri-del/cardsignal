@@ -526,6 +526,8 @@ def build_homepage_card_sections(
     def row(c: CardWeeklyIntelligenceSnapshot) -> dict[str, Any]:
         pct = historical_by_card.get(c.cs_card_id)
         historical = pct is not None
+        evidence = dict(c.evidence or {})
+        evidence.pop("listings", None)
         return {
             "cs_card_id": c.cs_card_id,
             "cs_player_id": c.cs_player_id,
@@ -540,7 +542,7 @@ def build_homepage_card_sections(
             "movement_status": "calculated" if historical else "pending",
             "movement_is_historical": historical,
             "movement_type": "price_change_pct" if historical else None,
-            "evidence": c.evidence or {},
+            "evidence": evidence,
         }
 
     return {

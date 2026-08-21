@@ -25,6 +25,30 @@ TAG_TO_SUMMARY_FIELD = {
 }
 
 
+def _positive_price(value: Any) -> float | None:
+    if value is None or value == "":
+        return None
+    try:
+        price = float(value)
+    except (TypeError, ValueError):
+        return None
+    if price <= 0 or price != price:
+        return None
+    return price
+
+
+def _normalize_image_url(value: Any) -> str | None:
+    if value is None:
+        return None
+    url = str(value).strip()
+    if not url:
+        return None
+    lowered = url.lower()
+    if not (lowered.startswith("http://") or lowered.startswith("https://")):
+        return None
+    return url
+
+
 def tag_listing_title(title: str) -> List[str]:
     lowered = f" {title.lower()} "
     tags: List[str] = []
@@ -53,6 +77,7 @@ def normalize_listing(listing: Any) -> Dict[str, Any]:
             "condition": getattr(listing, "condition", None),
             "created_at": getattr(listing, "created_at", None),
             "item_web_url": getattr(listing, "item_web_url", None),
+            "image_url": getattr(listing, "image_url", None),
             "tags": getattr(listing, "tags", []),
         }
 
@@ -62,11 +87,12 @@ def normalize_listing(listing: Any) -> Dict[str, Any]:
     return {
         "item_id": str(data.get("item_id", "") or ""),
         "title": str(data.get("title", "") or ""),
-        "price": data.get("price"),
+        "price": _positive_price(data.get("price")),
         "currency": data.get("currency"),
         "condition": data.get("condition"),
         "created_at": data.get("created_at"),
         "item_web_url": data.get("item_web_url"),
+        "image_url": _normalize_image_url(data.get("image_url")),
         "tags": data.get("tags", []),
     }
 
@@ -77,17 +103,14 @@ def enrich_listings(listings: List[Any]) -> List[Dict[str, Any]]:
 
 def summarize_market(query_name: str, listings: List[Any]) -> MarketSnapshot:
     enriched = enrich_listings(listings)
+    scored = [listing for listing in enriched if listing.get("price") is not None]
 
-    prices = sorted([
-        listing["price"]
-        for listing in enriched
-        if listing.get("price") is not None
-    ])
+    prices = sorted(listing["price"] for listing in scored)
 
     tag_summary = ListingTagSummary()
     premium_count = 0
 
-    for listing in enriched:
+    for listing in scored:
         for tag in listing.get("tags", []):
             if tag == "premium":
                 premium_count += 1
@@ -105,7 +128,7 @@ def summarize_market(query_name: str, listings: List[Any]) -> MarketSnapshot:
 
     return MarketSnapshot(
         query_name=query_name,
-        listings_count=len(enriched),
+        listings_count=len(scored),
         avg_price=avg_price,
         min_price=min_price,
         max_price=max_price,

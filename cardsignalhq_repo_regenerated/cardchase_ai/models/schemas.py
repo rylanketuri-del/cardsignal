@@ -54,6 +54,7 @@ class ListingSummary(BaseModel):
     condition: Optional[str] = None
     created_at: Optional[str] = None
     item_web_url: Optional[str] = None
+    image_url: Optional[str] = None
     tags: List[str] = Field(default_factory=list)
 
 

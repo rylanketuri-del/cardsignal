@@ -304,6 +304,7 @@ function weeklyCardRowToIntelItem(row = {}) {
   const label = row.card_label || 'Card';
   const player = row.player_name || 'Player';
   const rawPrice = row.evidence?.avg_price;
+  const offer = representativeOfferFromCardRow(row);
   return {
     name: `${player} · ${label}`,
     price: rawPrice ?? null,
@@ -311,6 +312,26 @@ function weeklyCardRowToIntelItem(row = {}) {
     movement: WeeklyConvergence.formatCardRowMovement(row),
     score: WeeklyConvergence.formatCardSignalScore(row.score),
     scoreLabel: WeeklyConvergence.CARD_SCORE_LABEL,
+    representativeOffer: offer,
+    imageUrl: offer?.image_url || null,
+    listingUrl: offer?.listing_url || null,
+  };
+}
+
+function representativeOfferFromCardRow(row = {}) {
+  const raw = row?.representative_offer || row?.evidence?.representative_offer;
+  if (!raw || typeof raw !== "object") return null;
+  const imageUrl = typeof raw.image_url === "string" ? raw.image_url.trim() : "";
+  return {
+    source: raw.source || null,
+    external_id: raw.external_id || null,
+    title: raw.title || null,
+    image_url: imageUrl || null,
+    price: raw.price ?? null,
+    currency: raw.currency || null,
+    condition: raw.condition || null,
+    listing_url: raw.listing_url || null,
+    query_name: raw.query_name || null,
   };
 }
 
@@ -706,6 +727,32 @@ function movementClass(movement = "") {
   return "metric-flat";
 }
 
+function escapeAttribute(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;");
+}
+
+function renderCardIntelThumb(item = {}) {
+  const imageUrl = item.imageUrl || item.representativeOffer?.image_url || "";
+  if (!imageUrl) {
+    return `<div class="qi-row-thumb" aria-hidden="true"></div>`;
+  }
+  const alt = escapeAttribute(item.name || "Card");
+  const src = escapeAttribute(imageUrl);
+  return `
+      <div class="qi-row-thumb">
+        <img
+          src="${src}"
+          alt="${alt}"
+          loading="lazy"
+          class="qi-row-thumb-image"
+          onerror="this.remove()"
+        />
+      </div>`;
+}
+
 /* Landing page — Quick Intelligence grid row */
 function renderCardIntelRow(item) {
   const moveClass = movementClass(item.movement);
@@ -715,7 +762,7 @@ function renderCardIntelRow(item) {
 
   return `
     <div class="qi-row">
-      <div class="qi-row-thumb" aria-hidden="true"></div>
+      ${renderCardIntelThumb(item)}
       <div class="qi-row-body">
         <span class="qi-row-name">${item.name}</span>
         <div class="qi-row-metrics">
@@ -3549,6 +3596,8 @@ async function init() {
 if (typeof module !== "undefined" && module.exports) {
   module.exports = {
     weeklyCardRowToIntelItem,
+    representativeOfferFromCardRow,
+    renderCardIntelThumb,
     renderCardIntelRow,
     renderCardSection,
     renderScoutingReport,

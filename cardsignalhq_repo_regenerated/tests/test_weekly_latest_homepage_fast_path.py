@@ -390,6 +390,42 @@ class HomepageFastPathTests(unittest.TestCase):
         self.assertAlmostEqual(payload["todays_leaders"][0]["score"], 87.03, places=2)
         self.assertEqual(payload["card_intelligence"]["buy_low_watch"][0]["recommendation"], "BUY")
 
+    def test_fast_path_passes_representative_offer_without_listings_arrays(self) -> None:
+        homepage = _homepage()
+        offer = {
+            "source": "ebay",
+            "external_id": "v1|1|0",
+            "title": "Alex Bregman Bowman Chrome",
+            "image_url": "https://i.ebayimg.com/images/g/bregman/s-l1600.jpg",
+            "price": 44.0,
+            "currency": "USD",
+            "condition": "Used",
+            "listing_url": "https://www.ebay.com/itm/1",
+            "query_name": "bowman_chrome",
+        }
+        homepage["trending_cards"][0]["evidence"] = {
+            "query_name": "bowman_chrome",
+            "listings_count": 12,
+            "avg_price": 44.0,
+            "representative_offer": offer,
+        }
+        storage = CountingStorage(_run_row(homepage))
+        with tempfile.TemporaryDirectory() as tmp, \
+             patch("cardchase_ai.intelligence_service.batch_get_player_intelligence") as mock_batch:
+            payload = build_latest_weekly_api_payload("MLB", storage, _settings(tmp))
+
+        self.assertEqual(storage.calls, ["fetch_latest_official_run_row"])
+        self.assertEqual(len(storage.calls), FAST_PATH_STORAGE_READS)
+        mock_batch.assert_not_called()
+        row = payload["card_intelligence"]["trending_cards"][0]
+        self.assertEqual(row["evidence"]["representative_offer"]["image_url"], offer["image_url"])
+        self.assertEqual(row["evidence"]["representative_offer"]["listing_url"], offer["listing_url"])
+        self.assertNotIn("listings", row)
+        self.assertNotIn("listings", row["evidence"])
+        blob = str(payload["card_intelligence"])
+        self.assertNotIn("'listings': [", blob)
+        self.assertNotIn('"listings": [', blob)
+
 
 class HomepageFastPathFallbackTests(unittest.TestCase):
     def test_missing_homepage_uses_legacy_reconstruction(self) -> None:

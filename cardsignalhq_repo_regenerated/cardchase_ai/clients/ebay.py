@@ -5,6 +5,41 @@ from typing import Any, Dict
 import requests
 
 
+def _safe_price(price: Any) -> float | None:
+    if not isinstance(price, dict):
+        return None
+    raw = price.get("value")
+    if raw is None or raw == "":
+        return None
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return None
+    if value <= 0 or value != value:
+        return None
+    return value
+
+
+def _safe_image_url(item: Dict[str, Any]) -> str | None:
+    """Extract Browse API image.imageUrl without failing the listing."""
+    try:
+        image = item.get("image")
+        if not isinstance(image, dict):
+            return None
+        raw = image.get("imageUrl")
+        if raw is None:
+            return None
+        url = str(raw).strip()
+        if not url:
+            return None
+        lowered = url.lower()
+        if not (lowered.startswith("http://") or lowered.startswith("https://")):
+            return None
+        return url
+    except Exception:
+        return None
+
+
 def has_usable_ebay_credentials(
     token: str | None = None,
     client_id: str | None = None,
@@ -99,16 +134,19 @@ class EbayClient:
 
         listings = []
         for item in items:
+            if not isinstance(item, dict):
+                continue
             price = item.get("price") or {}
 
             listings.append({
-                "item_id": item.get("itemId", ""),
-                "title": item.get("title", ""),
-                "price": float(price.get("value", 0) or 0),
-                "currency": price.get("currency", "USD"),
-                "condition": item.get("condition", ""),
+                "item_id": item.get("itemId", "") or "",
+                "title": item.get("title", "") or "",
+                "price": _safe_price(price),
+                "currency": price.get("currency", "USD") if isinstance(price, dict) else "USD",
+                "condition": item.get("condition", "") or "",
                 "created_at": item.get("itemCreationDate"),
-                "item_web_url": item.get("itemWebUrl", ""),
+                "item_web_url": item.get("itemWebUrl", "") or "",
+                "image_url": _safe_image_url(item),
                 "tags": [],
             })
 
