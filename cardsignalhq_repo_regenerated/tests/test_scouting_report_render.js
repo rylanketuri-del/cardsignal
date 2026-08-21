@@ -156,18 +156,27 @@ console.log("  ok stored leaderboard intel reads stats_season, not stats_30d");
 
 const bregmanUrl = mlbHeadshotUrlFromSourceId("608324");
 assert.ok(bregmanUrl.includes("/people/608324/"));
+assert.ok(bregmanUrl.includes("/w_213,"), "default MLB headshot width must remain w_213");
+assert.ok(!bregmanUrl.includes("/w_640,"), "default helper must not emit hero width");
 assert.strictEqual(mlbHeadshotUrlFromSourceId("9ed6461a-a34b-4205-b55d-4da9dd203796"), null);
 assert.strictEqual(mlbHeadshotUrlFromSourceId("mlb:9ed6461a-a34b-4205-b55d-4da9dd203796"), null);
 console.log("  ok UUID is never used to construct an MLB photo URL");
+console.log("  ok mlbHeadshotUrlFromSourceId defaults to w_213");
 
 const withPhoto = { player_name: "Alex Bregman", headshot_url: bregmanUrl };
 assert.ok(renderLeaderHeadshot(withPhoto).includes("<img"));
 assert.ok(renderLeaderHeadshot(withPhoto).includes("/people/608324/"));
+assert.ok(renderLeaderHeadshot(withPhoto).includes("/w_213,"));
+assert.ok(!renderLeaderHeadshot(withPhoto).includes("/w_640,"));
 assert.ok(renderPlayerHeadshot(withPhoto).includes("<img"));
 assert.ok(renderPlayerHeadshot(withPhoto).includes("/people/608324/"));
+assert.ok(renderPlayerHeadshot(withPhoto).includes("/w_213,"));
+assert.ok(!renderPlayerHeadshot(withPhoto).includes("/w_640,"));
 assert.ok(renderFeaturedSignalCard(withPhoto, { label: "Featured Signal", metricValue: "85", metricCaption: "Score" }).includes("<img"));
 assert.ok(renderFeaturedSignalCard(withPhoto, { label: "Featured Signal", metricValue: "85", metricCaption: "Score" }).includes("/people/608324/"));
+assert.ok(renderFeaturedSignalCard(withPhoto, { label: "Featured Signal", metricValue: "85", metricCaption: "Score" }).includes("/w_213,"));
 console.log("  ok featured/leader/scouting render img when headshot_url exists");
+console.log("  ok leaderboard/scouting continue using w_213");
 
 const withoutPhoto = { player_name: "Alex Bregman" };
 assert.ok(!renderLeaderHeadshot(withoutPhoto).includes("<img"));

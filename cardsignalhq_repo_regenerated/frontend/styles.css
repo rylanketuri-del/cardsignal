@@ -390,7 +390,6 @@ body {
     linear-gradient(180deg, rgba(15, 15, 16, 0.10), rgba(15, 15, 16, 0.45));
   z-index: 1;
   pointer-events: none;
-  backdrop-filter: blur(8px);
 }
 
 .signal-week-copy {
@@ -3328,6 +3327,7 @@ button,
   background: linear-gradient(90deg, rgba(15, 15, 16, 0.55), transparent 55%);
   z-index: 3;
   pointer-events: none;
+  backdrop-filter: none;
 }
 
 .signal-week-content {
@@ -3764,6 +3764,10 @@ button,
 
 .featured-signal-banner .signal-week-media {
   background: linear-gradient(180deg, #171717 0%, #1F1A15 100%);
+}
+
+.featured-signal-banner .signal-week-photo-glass {
+  backdrop-filter: none;
 }
 
 .featured-signal-banner .signal-week-name {

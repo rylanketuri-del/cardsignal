@@ -276,6 +276,8 @@ function signalOfWeekToEntry(signal = {}) {
   if (!signal || !signal.player_name) return null;
   return {
     player_id: signal.source_player_id || signal.cs_player_id,
+    source_player_id: signal.source_player_id || null,
+    cs_player_id: signal.cs_player_id || null,
     player_name: signal.player_name,
     rank: signal.rank,
     team: signal.team,
@@ -1048,13 +1050,39 @@ function mlbSourceIdFromValue(value) {
   return /^\d+$/.test(raw) ? raw : null;
 }
 
-function mlbHeadshotUrlFromSourceId(value) {
+const MLB_HEADSHOT_WIDTH_DEFAULT = 213;
+const MLB_HEADSHOT_WIDTH_MIN = 32;
+const MLB_HEADSHOT_WIDTH_MAX = 2048;
+const SIGNAL_WEEK_MLB_HEADSHOT_WIDTH = 640;
+
+function mlbHeadshotWidthFromValue(width) {
+  if (width == null || width === "") return MLB_HEADSHOT_WIDTH_DEFAULT;
+  if (typeof width === "string") {
+    const trimmed = width.trim();
+    if (!/^\d+$/.test(trimmed)) return MLB_HEADSHOT_WIDTH_DEFAULT;
+    width = Number(trimmed);
+  }
+  if (!Number.isInteger(width) || width < MLB_HEADSHOT_WIDTH_MIN || width > MLB_HEADSHOT_WIDTH_MAX) {
+    return MLB_HEADSHOT_WIDTH_DEFAULT;
+  }
+  return width;
+}
+
+function mlbHeadshotUrlFromSourceId(value, width = MLB_HEADSHOT_WIDTH_DEFAULT) {
   const mlbId = mlbSourceIdFromValue(value);
   if (!mlbId) return null;
+  const safeWidth = mlbHeadshotWidthFromValue(width);
   return (
     "https://img.mlbstatic.com/mlb-photos/image/upload/" +
-    `d_people:generic:headshot:silo:current.png/w_213,q_auto:best/v1/people/${mlbId}/headshot/67/current`
+    `d_people:generic:headshot:silo:current.png/w_${safeWidth},q_auto:best/v1/people/${mlbId}/headshot/67/current`
   );
+}
+
+function mlbSourceIdFromHeadshotUrl(url) {
+  const raw = String(url || "");
+  if (!/img\.mlbstatic\.com\/mlb-photos\/image\/upload\//i.test(raw)) return null;
+  const match = raw.match(/\/people\/(\d+)\/headshot\//);
+  return match ? match[1] : null;
 }
 
 function normalizeCsPlayerId(entry = {}) {
@@ -2789,7 +2817,20 @@ function getSignalOfWeekActionPhotoUrl(entry = {}) {
 }
 
 function getSignalOfWeekHeadshotUrl(entry = {}) {
-  return entry?.headshot_url || entry?.photo_url || entry?.player_photo_url || null;
+  const storedUrl = entry?.headshot_url || entry?.photo_url || entry?.player_photo_url || null;
+  if (isNflEntry(entry) || isNbaEntry(entry)) return storedUrl || null;
+
+  const mlbIdFromUrl = mlbSourceIdFromHeadshotUrl(storedUrl);
+  if (mlbIdFromUrl) {
+    return mlbHeadshotUrlFromSourceId(mlbIdFromUrl, SIGNAL_WEEK_MLB_HEADSHOT_WIDTH);
+  }
+  if (storedUrl) return storedUrl;
+
+  const mlbId =
+    mlbSourceIdFromValue(entry.source_player_id) ||
+    mlbSourceIdFromValue(entry.player_id) ||
+    mlbSourceIdFromValue(entry.cs_player_id);
+  return mlbId ? mlbHeadshotUrlFromSourceId(mlbId, SIGNAL_WEEK_MLB_HEADSHOT_WIDTH) : null;
 }
 
 function renderSignalWeekPlayerImage(entry = {}) {
@@ -3522,6 +3563,9 @@ if (typeof module !== "undefined" && module.exports) {
     resolveMlbSourcePlayerId,
     mlbSourceIdFromValue,
     mlbHeadshotUrlFromSourceId,
+    mlbSourceIdFromHeadshotUrl,
+    getSignalOfWeekHeadshotUrl,
+    renderSignalWeekPlayerImage,
     looksLikeUuid,
   };
 } else {
